@@ -1,68 +1,58 @@
-# RDP 客户端入口
+# 请先创建专用入口命令，例如：copy Favorites\template.rdp1.cmd myrdp.cmd，然后修改 myrdp.cmd 中的绑定信息
 
-一个入口命令对应一个远程账号和一份生成的 .rdp 文件。请先复制并修改 Favorites\template.rdp1.cmd。
+# 基础用法示例：
+  {{COMMAND}}                               启动远程桌面（会生成或复用已生成的 .rdp 文件）
+  {{COMMAND}} .help en                      Show English help.
+  {{COMMAND}} .help zh                      显示中文帮助
+  {{COMMAND}} .list                         列出对端会话ID；依赖 SSH 远程-即入口命令中须指定 RDP_PEER_SSH_ENTRY
+  {{COMMAND}} .2                            以普通 RDP 精确连接会话 ID 2；必要时自动切换并验证
+  {{COMMAND}} .rdp create                   仅生成 RDP 文件；目标已存在时拒绝覆盖
+  {{COMMAND}} .rdp create --force           生成 RDP 文件并覆盖已有目标
 
-# 连接与会话查询：
-  {{COMMAND}}                          生成或复用 RDP 文件并启动远程桌面
-  {{COMMAND}} .<会话ID>                以普通 RDP 重新连接现有用户会话，例如 .2
-  {{COMMAND}} .list                   列出交互会话，包括空 console 与锁定状态
-  {{COMMAND}} .rdp create             只生成 RDP 文件；目标已存在时拒绝覆盖
-  {{COMMAND}} .rdp create --force     生成 RDP 文件并覆盖已有目标
 
-会话选择器只允许接入属于本入口账号的会话。普通 mstsc 没有会话 ID 参数，因此还要求该账号只有一个会话，且对端 fSingleSessionPerUser=1。
-
-# 帮助：
-  {{COMMAND}} .help en                显示英文帮助
-  {{COMMAND}} .help zh                显示中文帮助
-
-# Shadow 模式：
-  {{COMMAND}} .shadow doctor                    检查当前客户端到对端的 Shadow 前置条件
-  {{COMMAND}} .shadow console                   自动发现并查看对端已激活的 console 用户会话
-  {{COMMAND}} .shadow <会话ID>                  查看会话；默认要求目标用户同意
-  {{COMMAND}} .shadow <会话ID> --control        查看并控制目标键盘和鼠标
-  {{COMMAND}} .shadow <会话ID> --no-consent     请求免同意查看；可与 --control 同时使用
-  console 支持相同的 --control 和 --no-consent 参数，且不会把目标会话从 console 终端搬走。
-
-# 通过 SSH 管理对端 Shadow：
+# 管理对端开启或关闭 Shadow 模式（依赖 SSH 远程-即入口命令中须指定 RDP_PEER_SSH_ENTRY）：
   {{COMMAND}} .peer shadow status               查看对端 Shadow 状态及本工具可恢复的改动
   {{COMMAND}} .peer shadow enable               启用跨主机 Shadow 的对端网络条件
   {{COMMAND}} .peer shadow enable --dry-run     查看 enable 将进行的修改
-  {{COMMAND}} .peer shadow mode <0-4>           设置对端整机 Shadow 模式
+  {{COMMAND}} .peer shadow mode <0-4>           设置对端整机 Shadow 模式：
+                                         0=禁止；1=经同意控制；2=免同意控制；3=经同意查看；4=免同意查看
   {{COMMAND}} .peer shadow mode <0-4> --dry-run 查看 mode 将进行的修改
   {{COMMAND}} .peer shadow restore              恢复本工具修改过的对端 Shadow 设置
   {{COMMAND}} .peer shadow restore --dry-run    查看 restore 将进行的修改
-  模式：0=禁止；1=经同意控制；2=免同意控制；3=经同意查看；4=免同意查看
+
+
+
+# Shadow 模式：
+  {{COMMAND}} .shadow doctor                检查当前客户端到对端的 Shadow 前置条件
+  {{COMMAND}} .shadow 2                     申请查看 ID 为 2 的会话（对端会弹出，是否同意的对话框）
+  {{COMMAND}} .shadow 2 --no-consent        无需对方同意
+  {{COMMAND}} .shadow 3 --control           申请控制，可叠加 --no-consent
+  {{COMMAND}} .shadow console               自动查找当前挂接到 console 的活动用户会话并 shadow
+
 
 # 通过 SSH 管理和调用对端 PsExec：
-  {{COMMAND}} .peer psexec status               查看对端 SSH 账号的托管 PsExec
-  {{COMMAND}} .peer psexec add                  按原生架构下载、验签并添加 PsExec
-  {{COMMAND}} .peer psexec add --dry-run        查看 add 将进行的修改
-  {{COMMAND}} .peer psexec remove               删除本工具托管的 PsExec 文件
-  {{COMMAND}} .peer psexec remove --dry-run     查看 remove 将进行的修改
-  {{COMMAND}} .peer psexec <会话ID> <程序及参数...> 以该会话的登录用户身份启动程序
-  {{COMMAND}} .peer psexec -- <原生参数...>      调用对端 PsExec；自动补 -accepteula
-  PsExec 会保留当前 SSH 账号的 EULA 接受记录；remove 只删除本工具托管的文件
+  {{COMMAND}} .peer psexec status           查看对端机 PsExec 可用情况
+  {{COMMAND}} .peer psexec add              下载 PsExec 拷贝到对端机指定位置，待用
+  {{COMMAND}} .peer psexec add --dry-run    同上，但仅预览要做的操作，不真实执行
+  {{COMMAND}} .peer psexec remove           add 的反向操作
+  {{COMMAND}} .peer psexec remove --dry-run 同上，但仅预览要做的操作，不真实执行
+  {{COMMAND}} .peer psexec 2 notepad.exe    在会话 2 的桌面，打开记事本（窗口程序）
+  {{COMMAND}} .peer psexec -- <原生参数...> 在对端机上执行原生 PsExec 命令（会自动补 -accepteula）
 
-# 通过系统 hosts 管理别名：
-  {{COMMAND}} .hosts status            查看本入口别名的 hosts 托管状态
-  {{COMMAND}} .hosts install           非交互安装或修复；权限不足时直接报错
-  {{COMMAND}} .hosts install --uac     安装或修复托管映射；仅在需要提权时弹出 UAC
-  {{COMMAND}} .hosts remove            非交互删除本入口映射；权限不足时直接报错
-  {{COMMAND}} .hosts remove --uac      删除本入口创建的映射；仅在需要提权时弹出 UAC
-  {{COMMAND}} .hosts cleanup --dry-run 显示可清理的托管映射，不修改 hosts
-  {{COMMAND}} .hosts cleanup           非交互清理失去入口的托管映射；权限不足时直接报错
-  {{COMMAND}} .hosts cleanup --uac     清理失去入口的托管映射；仅在需要提权时弹出 UAC
+
+# 通过系统 hosts 管理别名（实现按账户区分凭据）：
+  {{COMMAND}} .hosts status                 查看本入口别名的 hosts 托管状态
+  {{COMMAND}} .hosts install                非交互安装或修复；权限不足时直接报错
+  {{COMMAND}} .hosts install --uac          安装或修复托管映射；仅在需要提权时弹出 UAC
+  {{COMMAND}} .hosts remove                 非交互删除本入口映射；权限不足时直接报错
+  {{COMMAND}} .hosts remove --uac           删除本入口创建的映射；仅在需要提权时弹出 UAC
+  {{COMMAND}} .hosts cleanup --dry-run      显示可清理的托管映射，不修改 hosts
+  {{COMMAND}} .hosts cleanup                非交互清理失去入口的托管映射；权限不足时直接报错
+  {{COMMAND}} .hosts cleanup --uac          清理失去入口的托管映射；仅在需要提权时弹出 UAC
 
 # .rdp 文件自签名管理：
-  {{COMMAND}} .sign status             查看 My、Root 和 mstsc 信任策略状态
-  {{COMMAND}} .sign install            创建 My 私钥证书、Root 公钥副本和 mstsc 信任项
-  {{COMMAND}} .sign install --dry-run  列出上述 ADD，不修改证书库或注册表
-  {{COMMAND}} .sign remove             删除上述专用证书及其 mstsc 信任项
-  {{COMMAND}} .sign open               打开“证书 - 当前用户”管理器
-
-# RDP 属性参考：
-  Microsoft Learn：https://learn.microsoft.com/zh-cn/azure/virtual-desktop/rdp-properties
-  RDP 文件参数：https://www.cnblogs.com/Tuzki/p/4515279.html
-  RDP 文件安全策略：https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remotepc/manage-rdp-file-security-settings-with-group-policy
-  Windows 代码自签名：https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_signing
-  rdpsign 命令：https://learn.microsoft.com/windows-server/administration/windows-commands/rdpsign
+  {{COMMAND}} .sign status                  查看 My、Root 和 mstsc 信任策略状态
+  {{COMMAND}} .sign install                 创建 My 私钥证书、Root 公钥副本和 mstsc 信任项
+  {{COMMAND}} .sign install --dry-run       列出上述 ADD，不修改证书库或注册表
+  {{COMMAND}} .sign remove                  删除上述专用证书及其 mstsc 信任项
+  {{COMMAND}} .sign open                    打开“证书 - 当前用户”管理器

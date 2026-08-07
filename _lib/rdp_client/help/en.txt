@@ -1,68 +1,58 @@
-# RDP client entry
+# First create a dedicated entry command, for example: copy Favorites\template.rdp1.cmd myrdp.cmd, then edit the bindings in myrdp.cmd
 
-One entry command represents one remote account and one generated .rdp file. Start by copying and editing Favorites\template.rdp1.cmd.
+# Basic usage examples:
+  {{COMMAND}}                               Start Remote Desktop (generates or reuses the generated .rdp file)
+  {{COMMAND}} .help en                      Show English help
+  {{COMMAND}} .help zh                      Show Chinese help
+  {{COMMAND}} .list                         List peer session IDs; requires RDP_PEER_SSH_ENTRY in the entry command
+  {{COMMAND}} .2                            Connect ordinary RDP to session ID 2; switch and verify when needed
+  {{COMMAND}} .rdp create                   Generate the RDP file only; refuse to overwrite an existing target
+  {{COMMAND}} .rdp create --force           Generate the RDP file and overwrite an existing target
 
-# Connect and inspect sessions:
-  {{COMMAND}}                          Generate or reuse the RDP file and start Remote Desktop
-  {{COMMAND}} .<session-id>            Reconnect an existing user session through ordinary RDP (for example, .2)
-  {{COMMAND}} .list                   List interactive peer sessions, including an empty console and lock state
-  {{COMMAND}} .rdp create             Generate only; refuse to overwrite an existing target
-  {{COMMAND}} .rdp create --force     Generate and overwrite an existing target
 
-Session selectors require the selected session to belong to this entry's account. Ordinary mstsc has no session-ID argument, so selection also requires exactly one session for that account and fSingleSessionPerUser=1.
-
-# Help:
-  {{COMMAND}} .help en                Show English help
-  {{COMMAND}} .help zh                Show Chinese help
-
-# Shadow:
-  {{COMMAND}} .shadow doctor                    Check Shadow prerequisites from this client to the peer
-  {{COMMAND}} .shadow console                   Discover and view the active peer console user session
-  {{COMMAND}} .shadow <session-id>              View a session; request target-user consent by default
-  {{COMMAND}} .shadow <session-id> --control    View and control the target keyboard and mouse
-  {{COMMAND}} .shadow <session-id> --no-consent Request no-consent viewing; can be combined with --control
-  console accepts the same --control and --no-consent options and does not move the target session away from its console terminal.
-
-# Manage peer Shadow through SSH:
+# Manage whether Shadow mode is enabled on the peer (requires RDP_PEER_SSH_ENTRY in the entry command):
   {{COMMAND}} .peer shadow status               Show peer Shadow state and restorable tool changes
   {{COMMAND}} .peer shadow enable               Enable peer network prerequisites for cross-host Shadow
-  {{COMMAND}} .peer shadow enable --dry-run     Show the enable change plan
-  {{COMMAND}} .peer shadow mode <0-4>           Set the peer's machine-wide Shadow mode
-  {{COMMAND}} .peer shadow mode <0-4> --dry-run Show the mode change plan
+  {{COMMAND}} .peer shadow enable --dry-run     Preview the changes made by enable
+  {{COMMAND}} .peer shadow mode <0-4>           Set the peer's machine-wide Shadow mode:
+                                         0=disabled; 1=control with consent; 2=control without consent; 3=view with consent; 4=view without consent
+  {{COMMAND}} .peer shadow mode <0-4> --dry-run Preview the changes made by mode
   {{COMMAND}} .peer shadow restore              Restore peer Shadow settings changed by this tool
-  {{COMMAND}} .peer shadow restore --dry-run    Show the restore change plan
-  Modes: 0=disabled; 1=control with consent; 2=control without consent; 3=view with consent; 4=view without consent
+  {{COMMAND}} .peer shadow restore --dry-run    Preview the changes made by restore
+
+
+
+# Shadow mode:
+  {{COMMAND}} .shadow doctor                Check Shadow prerequisites from this client to the peer
+  {{COMMAND}} .shadow 2                     Request to view session ID 2 (the peer user receives a consent prompt)
+  {{COMMAND}} .shadow 2 --no-consent        View without peer-user consent
+  {{COMMAND}} .shadow 3 --control           Request control; can be combined with --no-consent
+  {{COMMAND}} .shadow console               Find the active user session attached to the console and shadow it
+
 
 # Manage and invoke peer PsExec through SSH:
-  {{COMMAND}} .peer psexec status               Show managed PsExec for the peer SSH account
-  {{COMMAND}} .peer psexec add                  Download, verify, and add the native PsExec binary
-  {{COMMAND}} .peer psexec add --dry-run        Show the add change plan
-  {{COMMAND}} .peer psexec remove               Remove the PsExec files managed by this tool
-  {{COMMAND}} .peer psexec remove --dry-run     Show the remove change plan
-  {{COMMAND}} .peer psexec <session-id> <program-and-args...>  Start as that session's logged-on user
-  {{COMMAND}} .peer psexec -- <native-args...>  Invoke peer PsExec; adds -accepteula automatically
-  PsExec keeps the SSH account's EULA record; remove only deletes the managed files
+  {{COMMAND}} .peer psexec status           Show whether PsExec is ready on the peer
+  {{COMMAND}} .peer psexec add              Download PsExec and copy it to the managed peer location
+  {{COMMAND}} .peer psexec add --dry-run    Preview the preceding operation without making changes
+  {{COMMAND}} .peer psexec remove           Reverse the add operation
+  {{COMMAND}} .peer psexec remove --dry-run Preview the preceding operation without making changes
+  {{COMMAND}} .peer psexec 2 notepad.exe    Open Notepad on the desktop of session 2 (windowed program)
+  {{COMMAND}} .peer psexec -- <native-args...> Invoke native PsExec on the peer (adds -accepteula automatically)
 
-# Manage aliases through the system hosts file:
-  {{COMMAND}} .hosts status            Show this entry's managed hosts alias
-  {{COMMAND}} .hosts install           Non-interactive install or repair; fail if elevation is required
-  {{COMMAND}} .hosts install --uac     Install or repair; prompt for UAC only when required
-  {{COMMAND}} .hosts remove            Non-interactive removal; fail if elevation is required
-  {{COMMAND}} .hosts remove --uac      Remove this entry's mapping; prompt for UAC only when required
-  {{COMMAND}} .hosts cleanup --dry-run Show removable orphan mappings without changing hosts
-  {{COMMAND}} .hosts cleanup           Non-interactive orphan cleanup; fail if elevation is required
-  {{COMMAND}} .hosts cleanup --uac     Clean orphan mappings; prompt for UAC only when required
+
+# Manage aliases through the system hosts file (separates credentials by account):
+  {{COMMAND}} .hosts status                 Show this entry's managed hosts alias
+  {{COMMAND}} .hosts install                Non-interactive install or repair; fail if elevation is required
+  {{COMMAND}} .hosts install --uac          Install or repair; prompt for UAC only when required
+  {{COMMAND}} .hosts remove                 Non-interactive removal; fail if elevation is required
+  {{COMMAND}} .hosts remove --uac           Remove this entry's mapping; prompt for UAC only when required
+  {{COMMAND}} .hosts cleanup --dry-run      Show removable orphan mappings without changing hosts
+  {{COMMAND}} .hosts cleanup                Non-interactive orphan cleanup; fail if elevation is required
+  {{COMMAND}} .hosts cleanup --uac          Clean orphan mappings; prompt for UAC only when required
 
 # Manage .rdp file self-signing:
-  {{COMMAND}} .sign status             Show My, Root, and mstsc trust-policy state
-  {{COMMAND}} .sign install            Create the My private-key certificate, Root trust copy, and mstsc trust entry
-  {{COMMAND}} .sign install --dry-run  List those ADD operations without changing stores or the registry
-  {{COMMAND}} .sign remove             Remove the dedicated certificates and their mstsc trust entry
-  {{COMMAND}} .sign open               Open Certificates - Current User
-
-# RDP property references:
-  Microsoft Learn: https://learn.microsoft.com/zh-cn/azure/virtual-desktop/rdp-properties
-  RDP file properties: https://www.cnblogs.com/Tuzki/p/4515279.html
-  RDP file security policy: https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remotepc/manage-rdp-file-security-settings-with-group-policy
-  Windows self-signed code-signing trust: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_signing
-  rdpsign: https://learn.microsoft.com/windows-server/administration/windows-commands/rdpsign
+  {{COMMAND}} .sign status                  Show My, Root, and mstsc trust-policy state
+  {{COMMAND}} .sign install                 Create the My private-key certificate, Root trust copy, and mstsc trust entry
+  {{COMMAND}} .sign install --dry-run       List those ADD operations without changing stores or the registry
+  {{COMMAND}} .sign remove                  Remove the dedicated certificates and their mstsc trust entry
+  {{COMMAND}} .sign open                    Open Certificates - Current User

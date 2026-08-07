@@ -51,8 +51,9 @@ function Invoke-HelpTestCommand {
 try {
     [IO.File]::Copy($TemplateEntry, $Entry)
     $EntryText = [IO.File]::ReadAllText($Entry, [Text.Encoding]::UTF8)
-    $EntryText = $EntryText.Replace(
-        ':: set "RDP_HELP_LANG=zh-CN"',
+    $EntryText = [regex]::Replace(
+        $EntryText,
+        '(?m)^set "RDP_HELP_LANG=.*"\r?$',
         'set "RDP_HELP_LANG=zh-CN"'
     )
     [IO.File]::WriteAllText(
@@ -82,14 +83,15 @@ try {
         foreach ($Expected in @(
             $HelpHeading,
             "$EntryCommand .help",
-            "$EntryCommand .h",
             "$EntryCommand .rdp create",
             "$EntryCommand .rdp create --force",
             "$EntryCommand .list",
-            'fSingleSessionPerUser=1',
+            "$EntryCommand .2",
+            'RDP_PEER_SSH_ENTRY',
             "$EntryCommand .shadow doctor",
             "$EntryCommand .shadow console",
-            "$EntryCommand .shadow",
+            "$EntryCommand .shadow 2",
+            "$EntryCommand .shadow 3 --control",
             "$EntryCommand .peer shadow enable",
             "$EntryCommand .peer shadow status",
             "$EntryCommand .peer shadow mode",
@@ -97,7 +99,7 @@ try {
             "$EntryCommand .peer psexec status",
             "$EntryCommand .peer psexec add",
             "$EntryCommand .peer psexec remove",
-            "$EntryCommand .peer psexec <",
+            "$EntryCommand .peer psexec 2 notepad.exe",
             "$EntryCommand .peer psexec --",
             '-accepteula',
             "$EntryCommand .hosts status",
@@ -112,11 +114,7 @@ try {
             "$EntryCommand .sign install",
             "$EntryCommand .sign install --dry-run",
             "$EntryCommand .sign remove",
-            "$EntryCommand .sign open",
-            'https://learn.microsoft.com/zh-cn/azure/virtual-desktop/rdp-properties',
-            'https://www.cnblogs.com/Tuzki/p/4515279.html',
-            'manage-rdp-file-security-settings-with-group-policy',
-            '/windows-commands/rdpsign'
+            "$EntryCommand .sign open"
         )) {
             if (-not $Output.Contains($Expected)) {
                 throw "Help output is missing '$Expected'.`n$Output"
@@ -153,7 +151,7 @@ try {
         -ExpectedExitCode 0
     if (-not $English.Contains($EnglishHelpHeading) -or
         $English.Contains($HelpHeading) -or
-        -not $English.Contains('Generate or reuse the RDP file') -or
+        -not $English.Contains('Start Remote Desktop') -or
         -not $English.Contains('Non-interactive install or repair')) {
         throw "An explicit English language should override the entry default.`n$English"
     }

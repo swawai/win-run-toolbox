@@ -43,14 +43,27 @@ function Get-ProjDevRustValidMetadata {
             [string]$Metadata.rustcVersion -cnotmatch '^\d+\.\d+\.\d+' -or
             [string]$Metadata.rustcCommit -cnotmatch '^[a-f0-9]{40}$' -or
             [string]$Metadata.cargoVersion -cnotmatch '^\d+\.\d+\.\d+' -or
+            [string]$Metadata.rustfmtVersion -cnotmatch '^\d+\.\d+\.\d+' -or
             [string]$Metadata.sourceVerification -cne
                 'rust-static-sha256') {
             return $null
         }
 
+        $MetadataComponents = [string[]]@($Metadata.components)
+        $RequiredComponents = [string[]]$Definition.RequiredComponents
+        if ($MetadataComponents.Count -ne $RequiredComponents.Count) {
+            return $null
+        }
+        for ($Index = 0; $Index -lt $RequiredComponents.Count; $Index++) {
+            if ($MetadataComponents[$Index] -cne $RequiredComponents[$Index]) {
+                return $null
+            }
+        }
+
         $RequiredPaths = Get-ProjDevRustRequiredPaths `
             -ToolchainName ([string]$Definition.ToolchainName) `
-            -HostTriple ([string]$Definition.Host)
+            -HostTriple ([string]$Definition.Host) `
+            -RequiredComponents $RequiredComponents
         $Records = @($Metadata.files)
         if ($Records.Count -le $RequiredPaths.Count) {
             return $null

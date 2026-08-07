@@ -83,7 +83,9 @@ try {
             -Condition (
                 [string]$Candidate.Toolchain -ceq $Selector -and
                 [string]$Candidate.ToolchainName -ceq
-                    "$Selector-x86_64-pc-windows-msvc"
+                    "$Selector-x86_64-pc-windows-msvc" -and
+                @($Candidate.RequiredComponents).Count -eq 1 -and
+                ([string[]]$Candidate.RequiredComponents)[0] -ceq 'rustfmt'
             ) `
             -Message "toolchain selector '$Selector' was not preserved"
     }
@@ -188,7 +190,8 @@ try {
     ) '.partial-fixture'
     foreach ($RelativePath in Get-ProjDevRustRequiredPaths `
         -ToolchainName ([string]$Definition.ToolchainName) `
-        -HostTriple ([string]$Definition.Host)) {
+        -HostTriple ([string]$Definition.Host) `
+        -RequiredComponents ([string[]]$Definition.RequiredComponents)) {
         $Path = Resolve-ProjDevChildPath `
             -Root $StageRoot `
             -RelativePath $RelativePath `
@@ -237,6 +240,7 @@ try {
         RustcVersion = '1.88.0'
         RustcCommit = 'a' * 40
         CargoVersion = '1.88.0'
+        RustfmtVersion = '1.8.0-stable'
         Host = [string]$Definition.Host
     }
     Write-ProjDevRustMetadata `
@@ -421,12 +425,15 @@ try {
         -Message 'an untracked Rust toolchain file was not detected'
     [IO.File]::Delete($ExtraPath)
 
-    [IO.File]::Delete((Join-Path $TargetRoot $DriverRelative))
+    $RustfmtRelative = (
+        "rustup\toolchains\$($Definition.ToolchainName)\bin\rustfmt.exe"
+    )
+    [IO.File]::Delete((Join-Path $TargetRoot $RustfmtRelative))
     Assert-ProjRustTest `
         -Condition (-not (Test-ProjDevRustInstalled `
             -Context $Context `
             -Definition $Definition)) `
-        -Message 'missing rustc driver was not detected'
+        -Message 'missing required rustfmt component was not detected'
 
     Write-Host '[PASS] Proj Rust module test' -ForegroundColor Green
 } finally {

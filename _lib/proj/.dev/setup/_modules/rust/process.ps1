@@ -147,7 +147,17 @@ function Get-ProjDevRustProbe {
         -Arguments @('run', $ToolchainName, 'cargo', '--version') `
         -WorkingDirectory $WorkingDirectory `
         -InstallRoot $InstallRoot
-    foreach ($Result in @($RustupResult, $RustcResult, $CargoResult)) {
+    $RustfmtResult = Invoke-ProjDevRustCapturedProcess `
+        -Executable $Rustup `
+        -Arguments @('run', $ToolchainName, 'rustfmt', '--version') `
+        -WorkingDirectory $WorkingDirectory `
+        -InstallRoot $InstallRoot
+    foreach ($Result in @(
+        $RustupResult,
+        $RustcResult,
+        $CargoResult,
+        $RustfmtResult
+    )) {
         if ($Result.ExitCode -ne 0) {
             throw "Rust installation probe failed: $($Result.Error)"
         }
@@ -173,11 +183,16 @@ function Get-ProjDevRustProbe {
         $CargoResult.Output,
         '(?m)^cargo\s+(\d+\.\d+\.\d+(?:\S*)?)'
     )
+    $RustfmtMatch = [regex]::Match(
+        $RustfmtResult.Output,
+        '(?m)^rustfmt\s+(\d+\.\d+\.\d+(?:\S*)?)'
+    )
     if (-not $RustupMatch.Success -or
         -not $ReleaseMatch.Success -or
         -not $CommitMatch.Success -or
         -not $HostMatch.Success -or
         -not $CargoMatch.Success -or
+        -not $RustfmtMatch.Success -or
         $HostMatch.Groups[1].Value -cne [string]$Definition.Host) {
         throw 'The installed Rust toolchain reported invalid identity data.'
     }
@@ -186,6 +201,7 @@ function Get-ProjDevRustProbe {
         RustcVersion = $ReleaseMatch.Groups[1].Value
         RustcCommit = $CommitMatch.Groups[1].Value
         CargoVersion = $CargoMatch.Groups[1].Value
+        RustfmtVersion = $RustfmtMatch.Groups[1].Value
         Host = $HostMatch.Groups[1].Value
     }
 }

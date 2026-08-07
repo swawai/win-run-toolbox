@@ -96,6 +96,8 @@ function Write-ProjBootstrapToolchainState {
         rust = [ordered]@{
             rustcVersion = [string]$Rust.rustcVersion
             cargoVersion = [string]$Rust.cargoVersion
+            rustfmtVersion = [string]$Rust.rustfmtVersion
+            components = [string[]]$Rust.components
             rustcCommit = [string]$Rust.rustcCommit
         }
         msvc = [ordered]@{

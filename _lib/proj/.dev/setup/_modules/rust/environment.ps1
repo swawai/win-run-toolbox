@@ -13,6 +13,8 @@ function Get-ProjDevRustRuntimeSignature {
         [string]$Metadata.rustcVersion
         [string]$Metadata.rustcCommit
         [string]$Metadata.cargoVersion
+        [string]$Metadata.rustfmtVersion
+        [string]::Join(',', [string[]]$Metadata.components)
     )))
 }
 
@@ -47,6 +49,8 @@ function Add-ProjDevRustEnvironment {
         SWAWKIT_PROJ_DEV_RUST_HOST = [string]$Definition.Host
         SWAWKIT_PROJ_DEV_RUST_RUSTC_VERSION = [string]$Metadata.rustcVersion
         SWAWKIT_PROJ_DEV_RUST_CARGO_VERSION = [string]$Metadata.cargoVersion
+        SWAWKIT_PROJ_DEV_RUST_RUSTFMT_VERSION = `
+            [string]$Metadata.rustfmtVersion
         SWAWKIT_PROJ_DEV_RUST_HOME = $InstallRoot
         SWAWKIT_PROJ_DEV_RUST_SIGNATURE = Get-ProjDevRustRuntimeSignature `
             -Definition $Definition `

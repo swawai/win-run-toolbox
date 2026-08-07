@@ -44,7 +44,7 @@ product manifest 以 channel 身份和实际内容哈希缓存；所有 VSIX、M
 不维护版本链接或 hash。
 
 Rust 通过 rustup 安装到隔离的 CARGO_HOME/RUSTUP_HOME，不修改用户 PATH。
-V0 只支持 minimal profile；toolchain 可声明 stable、beta、nightly、
+V0 使用 minimal profile，并默认安装 rustfmt；toolchain 可声明 stable、beta、nightly、
 带日期的 channel，或具体版本。移动 channel 只在首次安装时解析；
 重复 setup 不隐式升级健康工具链。
 SWAWKIT_PROJ_RUST_TOOLCHAIN 是受管命令的权威声明；项目目录中的

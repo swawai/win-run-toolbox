@@ -33,6 +33,7 @@ foreach ($File in @(
     'msvc\install.ps1',
     'msvc\environment.ps1',
     'rust\module.ps1',
+    'rust\metadata.ps1',
     'rust\state.ps1',
     'rust\release.ps1',
     'rust\process.ps1',

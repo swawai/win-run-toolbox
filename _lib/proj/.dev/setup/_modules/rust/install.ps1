@@ -40,9 +40,8 @@ function Invoke-ProjDevRustupInstaller {
         [Parameter(Mandatory = $true)][string]$InstallRoot
     )
 
-    $Info = [Diagnostics.ProcessStartInfo]::new()
-    $Info.FileName = $InstallerPath
-    $Info.Arguments = ConvertTo-ProjDevRustWindowsArguments -Arguments @(
+    $Arguments = [Collections.Generic.List[string]]::new()
+    foreach ($Argument in [string[]]@(
         '-y'
         '--default-host'
         [string]$Definition.Host
@@ -51,7 +50,18 @@ function Invoke-ProjDevRustupInstaller {
         [string]$Definition.Profile
         '--default-toolchain'
         [string]$Definition.Toolchain
-    )
+    )) {
+        $Arguments.Add($Argument)
+    }
+    foreach ($Component in [string[]]$Definition.RequiredComponents) {
+        $Arguments.Add('--component')
+        $Arguments.Add($Component)
+    }
+
+    $Info = [Diagnostics.ProcessStartInfo]::new()
+    $Info.FileName = $InstallerPath
+    $Info.Arguments = ConvertTo-ProjDevRustWindowsArguments `
+        -Arguments ([string[]]$Arguments.ToArray())
     $Info.WorkingDirectory = $InstallRoot
     $Info.UseShellExecute = $false
     $Info.CreateNoWindow = $false

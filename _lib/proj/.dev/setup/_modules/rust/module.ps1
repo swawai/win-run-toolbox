@@ -43,7 +43,7 @@ function Get-ProjDevRustManifest {
             'ToolchainVariable',
             'ProfileVariable', 'HostVariable', 'InstallMode',
             'RecipeVersion', 'SupportedProfiles', 'SupportedHost',
-            'RustupInit'
+            'RequiredComponents', 'RustupInit'
         ) `
         -Description 'Rust module manifest'
     if ($Manifest.RustupInit -isnot [Collections.IDictionary]) {
@@ -66,9 +66,26 @@ function Get-ProjDevRustManifest {
         [string]$Manifest.InstallMode -cne 'rustup' -or
         [string]$Manifest.SupportedHost -cne
             'x86_64-pc-windows-msvc' -or
-        @($Manifest.SupportedProfiles).Count -eq 0) {
+        @($Manifest.SupportedProfiles).Count -eq 0 -or
+        @($Manifest.RequiredComponents).Count -eq 0) {
         throw 'The Rust module manifest is invalid.'
     }
+    $Components = [string[]]@(
+        $Manifest.RequiredComponents | ForEach-Object {
+            ([string]$_).Trim().ToLowerInvariant()
+        }
+    )
+    $SeenComponents = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::Ordinal
+    )
+    foreach ($Component in $Components) {
+        if ($Component -cne 'rustfmt' -or
+            -not $SeenComponents.Add($Component)) {
+            throw "Unsupported or duplicate required Rust component '$Component'."
+        }
+    }
+    [Array]::Sort($Components, [StringComparer]::Ordinal)
+    $Manifest.RequiredComponents = $Components
     return $Manifest
 }
 
@@ -139,6 +156,7 @@ function Get-ProjDevRustDefinition {
         Profile = $Profile
         Host = $HostTriple
         ToolchainName = "$Toolchain-$HostTriple"
+        RequiredComponents = [string[]]$Manifest.RequiredComponents
         RecipeVersion = [string]$Manifest.RecipeVersion
         RustupInitUrl = [string]$Manifest.RustupInit.Url
         RustupInitChecksumUrl = [string]$Manifest.RustupInit.ChecksumUrl
@@ -154,6 +172,7 @@ function Get-ProjDevRustDefinitionSignature {
         [string]$Definition.Toolchain,
         [string]$Definition.Profile,
         [string]$Definition.Host,
+        [string]::Join(',', [string[]]$Definition.RequiredComponents),
         [string]$Definition.RecipeVersion,
         [string]$Definition.RustupInitUrl,
         [string]$Definition.RustupInitChecksumUrl
@@ -180,13 +199,17 @@ function Get-ProjDevRustMetadataPath {
 function Get-ProjDevRustRequiredPaths {
     param(
         [Parameter(Mandatory = $true)][string]$ToolchainName,
-        [Parameter(Mandatory = $true)][string]$HostTriple
+        [Parameter(Mandatory = $true)][string]$HostTriple,
+        [Parameter(Mandatory = $true)][string[]]$RequiredComponents
     )
 
-    return [string[]]@(
+    $Paths = [Collections.Generic.List[string]]::new()
+    foreach ($RelativePath in [string[]]@(
         'cargo\bin\rustup.exe'
         'cargo\bin\rustc.exe'
         'cargo\bin\cargo.exe'
+        'cargo\bin\rustfmt.exe'
+        'cargo\bin\cargo-fmt.exe'
         'rustup\settings.toml'
         "rustup\toolchains\$ToolchainName\bin\rustc.exe"
         "rustup\toolchains\$ToolchainName\bin\cargo.exe"
@@ -195,7 +218,21 @@ function Get-ProjDevRustRequiredPaths {
             "rustup\toolchains\$ToolchainName\lib\rustlib\" +
             "manifest-rust-std-$HostTriple"
         )
-    )
+    )) {
+        $Paths.Add($RelativePath)
+    }
+    foreach ($Component in $RequiredComponents) {
+        switch -CaseSensitive ($Component) {
+            'rustfmt' {
+                $Paths.Add("rustup\toolchains\$ToolchainName\bin\rustfmt.exe")
+                $Paths.Add("rustup\toolchains\$ToolchainName\bin\cargo-fmt.exe")
+            }
+            default {
+                throw "Unsupported required Rust component '$Component'."
+            }
+        }
+    }
+    return [string[]]$Paths.ToArray()
 }
 
 function Get-ProjDevRustInventoryPaths {
@@ -209,7 +246,8 @@ function Get-ProjDevRustInventoryPaths {
     )
     foreach ($RelativePath in Get-ProjDevRustRequiredPaths `
         -ToolchainName ([string]$Definition.ToolchainName) `
-        -HostTriple ([string]$Definition.Host)) {
+        -HostTriple ([string]$Definition.Host) `
+        -RequiredComponents ([string[]]$Definition.RequiredComponents)) {
         [void]$Paths.Add($RelativePath)
     }
     $ToolchainRelative = "rustup\toolchains\$($Definition.ToolchainName)"
@@ -267,7 +305,9 @@ function Get-ProjDevRustInstallFileShape {
     if ($IsReparsePoint) {
         $AllowedProxyLinks = @(
             'cargo\bin\rustc.exe',
-            'cargo\bin\cargo.exe'
+            'cargo\bin\cargo.exe',
+            'cargo\bin\rustfmt.exe',
+            'cargo\bin\cargo-fmt.exe'
         )
         $LinkTypeProperty = $Item.PSObject.Properties['LinkType']
         $TargetProperty = $Item.PSObject.Properties['Target']
@@ -318,45 +358,4 @@ function Get-ProjDevRustInstallFileRecords {
             sha256 = Get-ProjDevFileSha256 -Path $Path
         }
     }
-}
-
-function Write-ProjDevRustMetadata {
-    param(
-        [Parameter(Mandatory = $true)][object]$Definition,
-        [Parameter(Mandatory = $true)][object]$Probe,
-        [Parameter(Mandatory = $true)][string]$InstallRoot,
-        [Parameter(Mandatory = $true)][string]$RustupInitSha256
-    )
-
-    $InventoryPaths = Get-ProjDevRustInventoryPaths `
-        -InstallRoot $InstallRoot `
-        -Definition $Definition
-    $Metadata = [ordered]@{
-        schema = 'swawkit.proj-dev.rust-install.v0'
-        name = 'rust'
-        inventory = 'toolchain-files-v0'
-        declaredToolchain = [string]$Definition.Toolchain
-        toolchainName = [string]$Definition.ToolchainName
-        profile = [string]$Definition.Profile
-        host = [string]$Definition.Host
-        recipeVersion = [string]$Definition.RecipeVersion
-        definitionSignature = Get-ProjDevRustDefinitionSignature `
-            -Definition $Definition
-        rustupInitUrl = [string]$Definition.RustupInitUrl
-        rustupInitSha256 = $RustupInitSha256
-        rustupVersion = [string]$Probe.RustupVersion
-        rustcVersion = [string]$Probe.RustcVersion
-        rustcCommit = [string]$Probe.RustcCommit
-        cargoVersion = [string]$Probe.CargoVersion
-        sourceVerification = 'rust-static-sha256'
-        files = @(
-            Get-ProjDevRustInstallFileRecords `
-                -InstallRoot $InstallRoot `
-                -RelativePaths $InventoryPaths
-        )
-    }
-    Write-ProjDevTextAtomic `
-        -Path (Get-ProjDevRustMetadataPath -InstallRoot $InstallRoot) `
-        -Content (ConvertTo-ProjDevJsonText -Value $Metadata) `
-        -ControlledRoot $InstallRoot
 }

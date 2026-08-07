@@ -14,21 +14,32 @@ function Resolve-RdpClientHostAlias {
     return $Alias
 }
 
-function Resolve-RdpClientShadowSessionId {
-    param([AllowNull()][AllowEmptyString()][string]$Value)
+function Resolve-RdpClientSessionId {
+    param(
+        [AllowNull()][AllowEmptyString()][string]$Value,
+        [string]$Label = 'Session ID'
+    )
 
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return $null
     }
     if ($Value -notmatch '^[0-9]+$') {
-        throw 'Shadow session ID must contain decimal digits only.'
+        throw "$Label must contain decimal digits only."
     }
 
     $SessionId = [uint32]0
     if (-not [uint32]::TryParse($Value, [ref]$SessionId)) {
-        throw "Shadow session ID is outside the supported range: $Value"
+        throw "$Label is outside the supported range: $Value"
     }
     return $SessionId
+}
+
+function Resolve-RdpClientShadowSessionId {
+    param([AllowNull()][AllowEmptyString()][string]$Value)
+
+    return Resolve-RdpClientSessionId `
+        -Value $Value `
+        -Label 'Shadow session ID'
 }
 
 function New-RdpClientShadowMstscArgumentList {
@@ -254,7 +265,10 @@ function Resolve-RdpClientConnectionTarget {
 }
 
 function Assert-RdpClientHostAliasResolves {
-    param([AllowEmptyString()][string]$HostAlias)
+    param(
+        [AllowEmptyString()][string]$HostAlias,
+        [string]$CommandName = 'rdp'
+    )
 
     if ($HostAlias.Length -eq 0) {
         return
@@ -263,9 +277,15 @@ function Assert-RdpClientHostAliasResolves {
     try {
         $ResolvedAddresses = @([Net.Dns]::GetHostAddresses($HostAlias))
     } catch {
-        throw "RDP_HOST_ALIAS does not resolve: $HostAlias. Configure DNS or hosts before connecting."
+        throw (
+            "RDP_HOST_ALIAS does not resolve: $HostAlias.`n" +
+            "        Run `"$CommandName .hosts install --uac`"."
+        )
     }
     if ($ResolvedAddresses.Count -eq 0) {
-        throw "RDP_HOST_ALIAS does not resolve: $HostAlias. Configure DNS or hosts before connecting."
+        throw (
+            "RDP_HOST_ALIAS does not resolve: $HostAlias.`n" +
+            "        Run `"$CommandName .hosts install --uac`"."
+        )
     }
 }

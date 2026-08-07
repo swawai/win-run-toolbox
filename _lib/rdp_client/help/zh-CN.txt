@@ -2,19 +2,26 @@
 
 一个入口命令对应一个远程账号和一份生成的 .rdp 文件。请先复制并修改 Favorites\template.rdp1.cmd。
 
-# 当前命令：
-  {{COMMAND}} .help en                 Show English help
-  {{COMMAND}} .help zh                 显示中文帮助
+# 连接与会话查询：
   {{COMMAND}}                          生成或复用 RDP 文件并启动远程桌面
-  {{COMMAND}} .rdp create              只生成 RDP 文件；目标已存在时拒绝覆盖
-  {{COMMAND}} .rdp create --force      生成 RDP 文件并覆盖已有目标
+  {{COMMAND}} .<会话ID>                以普通 RDP 重新连接现有用户会话，例如 .2
+  {{COMMAND}} .list                   列出交互会话，包括空 console 与锁定状态
+  {{COMMAND}} .rdp create             只生成 RDP 文件；目标已存在时拒绝覆盖
+  {{COMMAND}} .rdp create --force     生成 RDP 文件并覆盖已有目标
+
+会话选择器只允许接入属于本入口账号的会话。普通 mstsc 没有会话 ID 参数，因此还要求该账号只有一个会话，且对端 fSingleSessionPerUser=1。
+
+# 帮助：
+  {{COMMAND}} .help en                显示英文帮助
+  {{COMMAND}} .help zh                显示中文帮助
 
 # Shadow 模式：
   {{COMMAND}} .shadow doctor                    检查当前客户端到对端的 Shadow 前置条件
-  {{COMMAND}} .shadow list                      通过 SSH 列出对端 RDP 会话
+  {{COMMAND}} .shadow console                   自动发现并查看对端已激活的 console 用户会话
   {{COMMAND}} .shadow <会话ID>                  查看会话；默认要求目标用户同意
   {{COMMAND}} .shadow <会话ID> --control        查看并控制目标键盘和鼠标
   {{COMMAND}} .shadow <会话ID> --no-consent     请求免同意查看；可与 --control 同时使用
+  console 支持相同的 --control 和 --no-consent 参数，且不会把目标会话从 console 终端搬走。
 
 # 通过 SSH 管理对端 Shadow：
   {{COMMAND}} .peer shadow status               查看对端 Shadow 状态及本工具可恢复的改动
@@ -36,14 +43,14 @@
   {{COMMAND}} .peer psexec -- <原生参数...>      调用对端 PsExec；自动补 -accepteula
   PsExec 会保留当前 SSH 账号的 EULA 接受记录；remove 只删除本工具托管的文件
 
-# 通过系统 hosts 管理别名（可按账号区分凭据）：
+# 通过系统 hosts 管理别名：
   {{COMMAND}} .hosts status            查看本入口别名的 hosts 托管状态
   {{COMMAND}} .hosts install           非交互安装或修复；权限不足时直接报错
   {{COMMAND}} .hosts install --uac     安装或修复托管映射；仅在需要提权时弹出 UAC
   {{COMMAND}} .hosts remove            非交互删除本入口映射；权限不足时直接报错
   {{COMMAND}} .hosts remove --uac      删除本入口创建的映射；仅在需要提权时弹出 UAC
   {{COMMAND}} .hosts cleanup --dry-run 显示可清理的托管映射，不修改 hosts
-  {{COMMAND}} .hosts cleanup           非交互清理失去入口的映射；权限不足时直接报错
+  {{COMMAND}} .hosts cleanup           非交互清理失去入口的托管映射；权限不足时直接报错
   {{COMMAND}} .hosts cleanup --uac     清理失去入口的托管映射；仅在需要提权时弹出 UAC
 
 # .rdp 文件自签名管理：
@@ -54,8 +61,8 @@
   {{COMMAND}} .sign open               打开“证书 - 当前用户”管理器
 
 # RDP 属性参考：
-  RDP 文件参数详解1：https://learn.microsoft.com/zh-cn/azure/virtual-desktop/rdp-properties
-  RDP 文件参数详解2：https://www.cnblogs.com/Tuzki/p/4515279.html
-  RDP 文件安全组策略：https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remotepc/manage-rdp-file-security-settings-with-group-policy
+  Microsoft Learn：https://learn.microsoft.com/zh-cn/azure/virtual-desktop/rdp-properties
+  RDP 文件参数：https://www.cnblogs.com/Tuzki/p/4515279.html
+  RDP 文件安全策略：https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remotepc/manage-rdp-file-security-settings-with-group-policy
   Windows 代码自签名：https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_signing
   rdpsign 命令：https://learn.microsoft.com/windows-server/administration/windows-commands/rdpsign

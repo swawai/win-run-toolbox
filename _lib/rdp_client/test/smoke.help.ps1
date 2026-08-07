@@ -85,8 +85,10 @@ try {
             "$EntryCommand .h",
             "$EntryCommand .rdp create",
             "$EntryCommand .rdp create --force",
+            "$EntryCommand .list",
+            'fSingleSessionPerUser=1',
             "$EntryCommand .shadow doctor",
-            "$EntryCommand .shadow list",
+            "$EntryCommand .shadow console",
             "$EntryCommand .shadow",
             "$EntryCommand .peer shadow enable",
             "$EntryCommand .peer shadow status",
@@ -131,6 +133,9 @@ try {
         }
         if ($Output.Contains("$EntryCommand .signing")) {
             throw "Help should not advertise the removed .signing command.`n$Output"
+        }
+        if ($Output.Contains("$EntryCommand .console")) {
+            throw "Help should not advertise ordinary-RDP .console.`n$Output"
         }
         foreach ($RemovedHelpName in @(
             'RDP_REMOTE_HOST',
@@ -273,7 +278,8 @@ try {
         [string[]]@('.shadow', 'enable', '--unexpected'),
         [string[]]@('.shadow', 'enable', '--dry-run', 'unexpected'),
         [string[]]@('.shadow', 'restore', '--unexpected'),
-        [string[]]@('.shadow', 'list', 'unexpected')
+        [string[]]@('.shadow', 'list'),
+        [string[]]@('.shadow', 'console', '--unexpected')
     )) {
         $InvalidShadow = Invoke-HelpTestCommand `
             -Arguments $InvalidShadowArguments `
@@ -282,6 +288,19 @@ try {
             "$EntryCommand .shadow <session-id>"
         )) {
             throw "Invalid Shadow arguments should show Shadow usage.`n$InvalidShadow"
+        }
+    }
+
+    foreach ($InvalidSessionArguments in @(
+        [string[]]@('.list', 'unexpected'),
+        [string[]]@('.2', 'unexpected')
+    )) {
+        $InvalidSession = Invoke-HelpTestCommand `
+            -Arguments $InvalidSessionArguments `
+            -ExpectedExitCode 1
+        if (-not $InvalidSession.Contains("$EntryCommand .list") -or
+            -not $InvalidSession.Contains("$EntryCommand .<session-id>")) {
+            throw "Invalid session arguments should show session usage.`n$InvalidSession"
         }
     }
 

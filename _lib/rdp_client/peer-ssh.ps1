@@ -1,5 +1,20 @@
 Set-StrictMode -Version 2.0
 
+. (Join-Path $PSScriptRoot 'process-job.ps1')
+
+function Get-RdpClientRemainingTimeoutMilliseconds {
+    param(
+        [Parameter(Mandatory = $true)][Diagnostics.Stopwatch]$Stopwatch,
+        [Parameter(Mandatory = $true)][int]$TimeoutSeconds
+    )
+
+    $Remaining = ([int64]$TimeoutSeconds * 1000) - $Stopwatch.ElapsedMilliseconds
+    if ($Remaining -le 0) {
+        return 0
+    }
+    return [int][Math]::Min($Remaining, [int]::MaxValue)
+}
+
 function Resolve-RdpClientPeerSshEntryPath {
     param([AllowNull()][AllowEmptyString()][string]$Value)
 
@@ -43,7 +58,8 @@ function Assert-RdpClientPeerSshEntryIsSeparate {
 function Invoke-RdpClientPeerSshPowerShell {
     param(
         [Parameter(Mandatory = $true)][string]$SshEntryPath,
-        [Parameter(Mandatory = $true)][string]$RemoteSource
+        [Parameter(Mandatory = $true)][string]$RemoteSource,
+        [ValidateRange(1, 1800)][int]$TimeoutSeconds = 120
     )
 
     $SourceBase64 = [Convert]::ToBase64String(
@@ -76,8 +92,10 @@ function Invoke-RdpClientPeerSshPowerShell {
     $Utf8 = New-Object Text.UTF8Encoding($false)
     $InputBytes = $Utf8.GetBytes($InputPayload)
     $Process = New-Object Diagnostics.Process
+    $ProcessJob = $null
     $StartInfo = New-Object Diagnostics.ProcessStartInfo
     $Started = $false
+    $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
     try {
         $StartInfo.FileName = $env:ComSpec
         $StartInfo.Arguments = (
@@ -102,36 +120,83 @@ function Invoke-RdpClientPeerSshPowerShell {
         $ChildEnvironment['RDP_CLIENT_PEER_SSH_ENTRY'] = $SshEntryPath
         $Process.StartInfo = $StartInfo
 
+        $ProcessJob = New-Object SwawKit.RdpClient.ProcessJob
         $Process.Start() | Out-Null
         $Started = $true
+        try {
+            $ProcessJob.Assign($Process)
+        } catch {
+            $ProcessJob.Dispose()
+            $ProcessJob = $null
+        }
         $StdOutTask = $Process.StandardOutput.ReadToEndAsync()
         $StdErrTask = $Process.StandardError.ReadToEndAsync()
         try {
-            $Process.StandardInput.BaseStream.Write(
+            $WriteTask = $Process.StandardInput.BaseStream.WriteAsync(
                 $InputBytes,
                 0,
                 $InputBytes.Length
             )
+            $Remaining = Get-RdpClientRemainingTimeoutMilliseconds `
+                -Stopwatch $Stopwatch `
+                -TimeoutSeconds $TimeoutSeconds
+            if ($Remaining -eq 0 -or -not $WriteTask.Wait($Remaining)) {
+                throw [TimeoutException]::new(
+                    "SSH peer command timed out after $TimeoutSeconds seconds while sending its payload."
+                )
+            }
         } catch {
+            $WriteError = $_.Exception
+            Stop-RdpClientProcessTree -Process $Process -Job $ProcessJob
             try { $Process.StandardInput.Close() } catch { }
-            $Process.WaitForExit()
-            $EarlyStdOut = $StdOutTask.Result.Trim()
-            $EarlyStdErr = $StdErrTask.Result.Trim()
+            $EarlyStdOut = if ($StdOutTask.IsCompleted) {
+                $StdOutTask.Result.Trim()
+            } else {
+                ''
+            }
+            $EarlyStdErr = if ($StdErrTask.IsCompleted) {
+                $StdErrTask.Result.Trim()
+            } else {
+                ''
+            }
+            if ($WriteError -is [TimeoutException]) {
+                throw $WriteError
+            }
             throw (
                 'SSH entry closed standard input before receiving the payload. ' +
                 "stdout=[$EarlyStdOut] stderr=[$EarlyStdErr]"
             )
         }
         $Process.StandardInput.Close()
-        $Process.WaitForExit()
+
+        $Remaining = Get-RdpClientRemainingTimeoutMilliseconds `
+            -Stopwatch $Stopwatch `
+            -TimeoutSeconds $TimeoutSeconds
+        if ($Remaining -eq 0 -or -not $Process.WaitForExit($Remaining)) {
+            Stop-RdpClientProcessTree -Process $Process -Job $ProcessJob
+            throw "SSH peer command timed out after $TimeoutSeconds seconds."
+        }
+
+        foreach ($ReadTask in @($StdOutTask, $StdErrTask)) {
+            $Remaining = Get-RdpClientRemainingTimeoutMilliseconds `
+                -Stopwatch $Stopwatch `
+                -TimeoutSeconds $TimeoutSeconds
+            if ($Remaining -eq 0 -or -not $ReadTask.Wait($Remaining)) {
+                Stop-RdpClientProcessTree -Process $Process -Job $ProcessJob
+                throw "SSH peer command timed out after $TimeoutSeconds seconds while collecting output."
+            }
+        }
         $StdOut = $StdOutTask.Result
         $StdErr = $StdErrTask.Result
         $ExitCode = $Process.ExitCode
     } finally {
-        if ($Started -and -not $Process.HasExited) {
+        if ($Started) {
             try { $Process.StandardInput.Close() } catch { }
-            try { $Process.Kill() } catch { }
+            Stop-RdpClientProcessTree -Process $Process -Job $ProcessJob
+        } elseif ($null -ne $ProcessJob) {
+            try { $ProcessJob.Dispose() } catch { }
         }
+        $Stopwatch.Stop()
         $Process.Dispose()
     }
 

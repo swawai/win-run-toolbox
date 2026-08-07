@@ -155,6 +155,10 @@ try {
     $UnresolvedOutput = Invoke-RdpEntry -Arguments @() -ExpectedExitCode 1
     if (
         -not $UnresolvedOutput.Contains('RDP_HOST_ALIAS does not resolve:') -or
+        -not $UnresolvedOutput.Contains(
+            "Run `"$EntryName .hosts install --uac`"."
+        ) -or
+        $UnresolvedOutput.Contains('Configure DNS') -or
         -not $UnresolvedOutput.Contains('full address:s:rdp-client-test.invalid:3389') -or
         -not $UnresolvedOutput.Contains("[RDP] Generated: $OutputPath")
     ) {

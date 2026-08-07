@@ -140,7 +140,9 @@ try {
     $Target = Resolve-RdpClientConnectionTarget `
         -Document $Document `
         -HostAlias $HostAlias
-    Assert-RdpClientHostAliasResolves -HostAlias $HostAlias
+    Assert-RdpClientHostAliasResolves `
+        -HostAlias $HostAlias `
+        -CommandName $CommandName
 
     $TargetHost = if ($HostAlias.Length -gt 0) {
         $HostAlias

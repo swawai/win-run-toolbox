@@ -2,19 +2,26 @@
 
 One entry command represents one remote account and one generated .rdp file. Start by copying and editing Favorites\template.rdp1.cmd.
 
-# Commands:
-  {{COMMAND}} .help en                 Show English help
-  {{COMMAND}} .help zh                 Show Chinese help
+# Connect and inspect sessions:
   {{COMMAND}}                          Generate or reuse the RDP file and start Remote Desktop
-  {{COMMAND}} .rdp create              Generate only; refuse to overwrite an existing target
-  {{COMMAND}} .rdp create --force      Generate and overwrite an existing target
+  {{COMMAND}} .<session-id>            Reconnect an existing user session through ordinary RDP (for example, .2)
+  {{COMMAND}} .list                   List interactive peer sessions, including an empty console and lock state
+  {{COMMAND}} .rdp create             Generate only; refuse to overwrite an existing target
+  {{COMMAND}} .rdp create --force     Generate and overwrite an existing target
+
+Session selectors require the selected session to belong to this entry's account. Ordinary mstsc has no session-ID argument, so selection also requires exactly one session for that account and fSingleSessionPerUser=1.
+
+# Help:
+  {{COMMAND}} .help en                Show English help
+  {{COMMAND}} .help zh                Show Chinese help
 
 # Shadow:
   {{COMMAND}} .shadow doctor                    Check Shadow prerequisites from this client to the peer
-  {{COMMAND}} .shadow list                      List peer RDP sessions through SSH
+  {{COMMAND}} .shadow console                   Discover and view the active peer console user session
   {{COMMAND}} .shadow <session-id>              View a session; request target-user consent by default
   {{COMMAND}} .shadow <session-id> --control    View and control the target keyboard and mouse
   {{COMMAND}} .shadow <session-id> --no-consent Request no-consent viewing; can be combined with --control
+  console accepts the same --control and --no-consent options and does not move the target session away from its console terminal.
 
 # Manage peer Shadow through SSH:
   {{COMMAND}} .peer shadow status               Show peer Shadow state and restorable tool changes
@@ -54,7 +61,7 @@ One entry command represents one remote account and one generated .rdp file. Sta
   {{COMMAND}} .sign open               Open Certificates - Current User
 
 # RDP property references:
-  Microsoft Learn: https://learn.microsoft.com/en-us/azure/virtual-desktop/rdp-properties
+  Microsoft Learn: https://learn.microsoft.com/zh-cn/azure/virtual-desktop/rdp-properties
   RDP file properties: https://www.cnblogs.com/Tuzki/p/4515279.html
   RDP file security policy: https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remotepc/manage-rdp-file-security-settings-with-group-policy
   Windows self-signed code-signing trust: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_signing

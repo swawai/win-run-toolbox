@@ -4,6 +4,7 @@ setlocal DisableDelayedExpansion
 
 if not "%RDP_CLIENT_PROTOCOL%"=="1" goto :InvalidEntryProtocol
 if not defined RDP_ENTRY_COMMAND set "RDP_ENTRY_COMMAND=rdp"
+set "RDP_CLIENT_SESSION_PARAMETER="
 
 if "%~1"=="" goto :Connect
 if /i "%~1"==".help" goto :ShowHelp
@@ -11,10 +12,13 @@ if /i "%~1"==".h" goto :ShowHelp
 if "%~1"=="-h" goto :ShowHelp
 if /i "%~1"=="--help" goto :ShowHelp
 if /i "%~1"==".rdp" goto :GenerateRdp
+if /i "%~1"==".list" goto :SessionList
 if /i "%~1"==".shadow" goto :Shadow
 if /i "%~1"==".peer" goto :Peer
 if /i "%~1"==".hosts" goto :Hosts
 if /i "%~1"==".sign" goto :Signing
+set "RDP_CLIENT_SELECTOR=%~1"
+if "%RDP_CLIENT_SELECTOR:~0,1%"=="." goto :SessionIdConnect
 goto :UnknownCommand
 
 :Connect
@@ -32,12 +36,36 @@ if not "%~4"=="" goto :InvalidRdpCommand
 set "RDP_CLIENT_FORCE=-Force"
 goto :RunRdp
 
+:SessionIdConnect
+set "RDP_CLIENT_SESSION_ID=%RDP_CLIENT_SELECTOR:~1%"
+if "%RDP_CLIENT_SESSION_ID%"=="" goto :UnknownCommand
+for /f "delims=0123456789" %%I in ("%RDP_CLIENT_SESSION_ID%") do goto :UnknownCommand
+if not "%~2"=="" goto :InvalidSessionCommand
+set "RDP_CLIENT_LAUNCH=-Launch"
+set "RDP_CLIENT_FORCE="
+set "RDP_CLIENT_SESSION_PARAMETER=-SessionId %RDP_CLIENT_SESSION_ID%"
+goto :RunRdp
+
+:SessionList
+if not "%~2"=="" goto :InvalidSessionCommand
+if not defined RDP_ENTRY_FILE goto :InvalidEntryFile
+set "RDP_SESSION_LIST_SCRIPT=%~dp0session-list.ps1"
+if not exist "%RDP_SESSION_LIST_SCRIPT%" (
+    echo [ERROR] RDP session list script not found:
+    echo   "%RDP_SESSION_LIST_SCRIPT%"
+    exit /b 1
+)
+
+PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_SESSION_LIST_SCRIPT%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -RdpEntryFile "%RDP_ENTRY_FILE%" -CommandName "%RDP_ENTRY_COMMAND%"
+exit /b %ERRORLEVEL%
+
 :Shadow
 if /i "%~2"=="doctor" goto :ShadowDoctor
-if /i "%~2"=="list" goto :ShadowList
 if "%~2"=="" goto :InvalidShadowCommand
 set "RDP_SHADOW_SESSION_ID=%~2"
+if /i "%RDP_SHADOW_SESSION_ID%"=="console" goto :ParseShadowOptions
 for /f "delims=0123456789" %%I in ("%RDP_SHADOW_SESSION_ID%") do goto :InvalidShadowCommand
+:ParseShadowOptions
 set "RDP_SHADOW_CONTROL="
 set "RDP_SHADOW_NO_CONSENT="
 if not "%~5"=="" goto :InvalidShadowCommand
@@ -61,20 +89,7 @@ if not exist "%RDP_SHADOW_START_SCRIPT%" (
     exit /b 1
 )
 
-PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_SHADOW_START_SCRIPT%" -EntryFile "%RDP_ENTRY_FILE%" -SessionId "%RDP_SHADOW_SESSION_ID%" %RDP_SHADOW_CONTROL% %RDP_SHADOW_NO_CONSENT%
-exit /b %ERRORLEVEL%
-
-:ShadowList
-if not "%~3"=="" goto :InvalidShadowCommand
-if not defined RDP_ENTRY_FILE goto :InvalidEntryFile
-set "RDP_SHADOW_LIST_SCRIPT=%~dp0shadow-list.ps1"
-if not exist "%RDP_SHADOW_LIST_SCRIPT%" (
-    echo [ERROR] RDP Shadow list script not found:
-    echo   "%RDP_SHADOW_LIST_SCRIPT%"
-    exit /b 1
-)
-
-PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_SHADOW_LIST_SCRIPT%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -RdpEntryFile "%RDP_ENTRY_FILE%" -CommandName "%RDP_ENTRY_COMMAND%"
+PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_SHADOW_START_SCRIPT%" -EntryFile "%RDP_ENTRY_FILE%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -SessionId "%RDP_SHADOW_SESSION_ID%" -CommandName "%RDP_ENTRY_COMMAND%" %RDP_SHADOW_CONTROL% %RDP_SHADOW_NO_CONSENT%
 exit /b %ERRORLEVEL%
 
 :ShadowDoctor
@@ -203,7 +218,7 @@ if not exist "%RDP_CONNECT_SCRIPT%" (
     exit /b 1
 )
 
-PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_CONNECT_SCRIPT%" -EntryFile "%RDP_ENTRY_FILE%" -CommandName "%RDP_ENTRY_COMMAND%" %RDP_CLIENT_LAUNCH% %RDP_CLIENT_FORCE%
+PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_CONNECT_SCRIPT%" -EntryFile "%RDP_ENTRY_FILE%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -CommandName "%RDP_ENTRY_COMMAND%" %RDP_CLIENT_LAUNCH% %RDP_CLIENT_FORCE% %RDP_CLIENT_SESSION_PARAMETER%
 exit /b %ERRORLEVEL%
 
 :Signing
@@ -322,8 +337,14 @@ exit /b 1
 :InvalidShadowCommand
 echo [ERROR] Shadow usage:
 echo   "%RDP_ENTRY_COMMAND% .shadow doctor"
-echo   "%RDP_ENTRY_COMMAND% .shadow list"
 echo   "%RDP_ENTRY_COMMAND% .shadow <session-id> [--control] [--no-consent]"
+echo   "%RDP_ENTRY_COMMAND% .shadow console [--control] [--no-consent]"
+exit /b 1
+
+:InvalidSessionCommand
+echo [ERROR] Session usage:
+echo   "%RDP_ENTRY_COMMAND% .list"
+echo   "%RDP_ENTRY_COMMAND% .<session-id>"
 exit /b 1
 
 :InvalidPeerCommand

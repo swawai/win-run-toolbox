@@ -7,7 +7,13 @@ param(
 
     [switch]$Launch,
 
-    [switch]$Force
+    [switch]$Force,
+
+    [AllowEmptyString()]
+    [string]$SshEntryFile = '',
+
+    [AllowNull()][AllowEmptyString()]
+    [string]$SessionId
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +21,8 @@ Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'entry.ps1')
 . (Join-Path $PSScriptRoot 'signing-core.ps1')
 . (Join-Path $PSScriptRoot 'connect-cache.ps1')
+. (Join-Path $PSScriptRoot 'peer-ssh.ps1')
+. (Join-Path $PSScriptRoot 'session.ps1')
 
 function Resolve-RdpClientOutputPath {
     param(
@@ -56,6 +64,29 @@ try {
     $ResolvedEntry = [IO.Path]::GetFullPath($EntryFile)
     $HostAlias = Resolve-RdpClientHostAlias -Value $env:RDP_HOST_ALIAS
     $Document = Read-RdpClientEntryDocument -Path $ResolvedEntry
+    $HasSessionId = $PSBoundParameters.ContainsKey('SessionId')
+    if ($HasSessionId -and -not $Launch) {
+        throw 'Session selectors can only be used when launching Remote Desktop.'
+    }
+
+    $SelectedSession = $null
+    if ($Launch -and $HasSessionId) {
+        $ResolvedSshEntry = Resolve-RdpClientPeerSshEntryPath -Value $SshEntryFile
+        Assert-RdpClientPeerSshEntryIsSeparate `
+            -SshEntryPath $ResolvedSshEntry `
+            -RdpEntryPath $ResolvedEntry
+        $SessionState = Get-RdpClientPeerSessionState `
+            -SshEntryPath $ResolvedSshEntry
+        $ResolvedSessionId = Resolve-RdpClientSessionId `
+            -Value $SessionId
+        if ($null -eq $ResolvedSessionId) {
+            throw 'Session ID is required.'
+        }
+        $SelectedSession = Resolve-RdpClientSessionSelection `
+            -State $SessionState `
+            -EntryUserName $Document.Username `
+            -SessionId $ResolvedSessionId
+    }
     $RdpLines = ConvertTo-RdpClientOutputLines `
         -Document $Document `
         -HostAlias $HostAlias
@@ -118,9 +149,22 @@ try {
     }
 
     Write-Host "[RDP] Target:    $($RdpLines | Where-Object { $_ -like 'full address:*' } | Select-Object -First 1)"
+    if ($null -ne $SelectedSession) {
+        $SelectedUser = Get-RdpClientSessionDisplayUserName `
+            -Session $SelectedSession
+        Write-Host (
+            '[RDP] Session:   {0} ({1}; {2}; {3})' -f `
+                $SelectedSession.Id,
+                $SelectedUser,
+                $SelectedSession.State,
+                $SelectedSession.Terminal
+        )
+    }
 
     if ($Launch) {
-        Assert-RdpClientHostAliasResolves -HostAlias $HostAlias
+        Assert-RdpClientHostAliasResolves `
+            -HostAlias $HostAlias `
+            -CommandName $CommandName
 
         $Mstsc = Get-Command 'mstsc.exe' -ErrorAction Stop
         Start-Process -FilePath $Mstsc.Source -ArgumentList ('"{0}"' -f $OutputPath) | Out-Null

@@ -9,7 +9,7 @@ $OutputEncoding = New-Object Text.UTF8Encoding($false)
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $TemplateEntry = Join-Path $RepoRoot 'Favorites\template.rdp1.cmd'
 $ScratchRoot = Join-Path (Join-Path $RepoRoot 'data\rdp-client') (
-    '.shadow-list-test-' + [Guid]::NewGuid().ToString('N')
+    '.shadow-test-' + [Guid]::NewGuid().ToString('N')
 )
 $Entry = Join-Path $ScratchRoot 'account.rdp.cmd'
 $FakeSshEntry = Join-Path $ScratchRoot 'windows-admin.ssh.cmd'
@@ -137,7 +137,7 @@ try {
 
     [IO.Directory]::CreateDirectory($Runtime) | Out-Null
     [IO.File]::Copy($TemplateEntry, $Entry)
-    foreach ($RuntimeFile in @('client.cmd', 'shadow-list.ps1', 'peer-ssh.ps1')) {
+    foreach ($RuntimeFile in @('client.cmd')) {
         [IO.File]::Copy(
             (Join-Path (Join-Path $PSScriptRoot '..') $RuntimeFile),
             (Join-Path $Runtime $RuntimeFile)
@@ -158,13 +158,17 @@ try {
     $FakeStartSource = @'
 param(
     [string]$EntryFile,
+    [string]$SshEntryFile,
     [string]$SessionId,
+    [string]$CommandName,
     [switch]$Control,
     [switch]$NoConsentPrompt
 )
 [IO.File]::WriteAllLines($env:RDP_SHADOW_START_CAPTURE, @(
     "EntryFile=$EntryFile",
+    "SshEntryFile=$SshEntryFile",
     "SessionId=$SessionId",
+    "CommandName=$CommandName",
     "Control=$($Control.IsPresent)",
     "NoConsentPrompt=$($NoConsentPrompt.IsPresent)"
 ))
@@ -233,8 +237,26 @@ exit 0
     if ($StartState -notcontains 'SessionId=2' -or
         $StartState -notcontains 'Control=True' -or
         $StartState -notcontains 'NoConsentPrompt=True' -or
+        $StartState -notcontains 'CommandName=account.rdp' -or
+        -not ($StartState | Where-Object { $_ -like 'SshEntryFile=*windows-admin.ssh.cmd' }) -or
         -not ($StartState | Where-Object { $_ -like 'EntryFile=*account.rdp.cmd' })) {
         throw "Unexpected Shadow start dispatch: $($StartState -join '; ')"
+    }
+
+    $env:RDP_SHADOW_START_CAPTURE = $StartCapturePath
+    try {
+        Invoke-ShadowTestEntry `
+            -Arguments @('.shadow', 'console', '--control', '--no-consent') `
+            -ExpectedExitCode 0 |
+            Out-Null
+    } finally {
+        Remove-Item Env:RDP_SHADOW_START_CAPTURE -ErrorAction SilentlyContinue
+    }
+    $ConsoleStartState = @([IO.File]::ReadAllLines($StartCapturePath))
+    if ($ConsoleStartState -notcontains 'SessionId=console' -or
+        $ConsoleStartState -notcontains 'Control=True' -or
+        $ConsoleStartState -notcontains 'NoConsentPrompt=True') {
+        throw "Unexpected console Shadow dispatch: $($ConsoleStartState -join '; ')"
     }
 
     $env:RDP_SHADOW_DOCTOR_CAPTURE = $DoctorCapturePath
@@ -496,73 +518,6 @@ exit 0
         Remove-Item Env:RDP_SHADOW_TEST_CAPTURE -ErrorAction SilentlyContinue
         Remove-Item Env:RDP_SHADOW_TEST_SOURCE -ErrorAction SilentlyContinue
         Remove-Item Env:RDP_SHADOW_FAKE_MANAGE_STATE -ErrorAction SilentlyContinue
-    }
-
-    if ([IO.File]::Exists($CapturePath)) {
-        [IO.File]::Delete($CapturePath)
-    }
-    if ([IO.File]::Exists($SourceCapturePath)) {
-        [IO.File]::Delete($SourceCapturePath)
-    }
-    $env:RDP_SHADOW_TEST_CAPTURE = $CapturePath
-    $env:RDP_SHADOW_TEST_SOURCE = $SourceCapturePath
-    try {
-        $Output = Invoke-ShadowTestEntry `
-            -Arguments @('.shadow', 'list') `
-            -ExpectedExitCode 0
-    } finally {
-        Remove-Item Env:RDP_SHADOW_TEST_CAPTURE -ErrorAction SilentlyContinue
-        Remove-Item Env:RDP_SHADOW_TEST_SOURCE -ErrorAction SilentlyContinue
-    }
-    if (-not $Output.Contains('Administrator') -or
-        -not $Output.Contains('Active')) {
-        throw "Shadow list did not pass through SSH output.`n$Output"
-    }
-
-    $CapturedArguments = [IO.File]::ReadAllText($CapturePath).Trim()
-    $RemotePrefix = (
-        ' -- powershell.exe -NoLogo -NoProfile -NonInteractive ' +
-        '-OutputFormat Text -EncodedCommand '
-    )
-    if (-not $CapturedArguments.StartsWith('stdin -- ') -or
-        -not $CapturedArguments.Contains($RemotePrefix)) {
-        throw "Unexpected SSH entry arguments: $CapturedArguments"
-    }
-    $BootstrapBase64 = ($CapturedArguments -split ' ')[-1]
-    if ($BootstrapBase64.EndsWith('=') -or $BootstrapBase64.Length -gt 1500) {
-        throw 'The fixed Shadow stdin bootstrap is unsafe for the SSH .cmd chain.'
-    }
-    $Bootstrap = [Text.Encoding]::Unicode.GetString(
-        [Convert]::FromBase64String($BootstrapBase64)
-    )
-    if (-not $Bootstrap.Contains('RDP_CLIENT_PAYLOAD_V1:')) {
-        throw 'The Shadow stdin bootstrap does not validate its payload marker.'
-    }
-    $CapturedSource = [IO.File]::ReadAllText(
-        $SourceCapturePath,
-        [Text.Encoding]::ASCII
-    )
-    $SourceBase64 = @(
-        $CapturedSource -split '(?m)^__RDP_CLIENT_SOURCE__\r?\n' |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    )[0].Trim()
-    if ($SourceBase64 -notmatch
-        'RDP_CLIENT_PAYLOAD_V1:(?<Payload>[A-Za-z0-9+/=]+)') {
-        throw 'The Shadow stdin payload marker was not captured.'
-    }
-    $RemoteSource = [Text.Encoding]::UTF8.GetString(
-        [Convert]::FromBase64String($Matches.Payload)
-    )
-    foreach ($ExpectedRemoteSource in @(
-        'SilentlyContinue',
-        'UTF8Encoding',
-        'Is64BitOperatingSystem',
-        'Sysnative',
-        "Join-Path `$NativeSystemDirectory 'quser.exe'"
-    )) {
-        if (-not $RemoteSource.Contains($ExpectedRemoteSource)) {
-            throw "Remote query is missing '$ExpectedRemoteSource'."
-        }
     }
 
     Write-Host 'rdp client Shadow tests: PASS' -ForegroundColor Green

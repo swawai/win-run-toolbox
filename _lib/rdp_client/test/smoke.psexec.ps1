@@ -130,6 +130,7 @@ try {
         'client.cmd',
         'entry.ps1',
         'peer-ssh.ps1',
+        'process-job.ps1',
         'psexec.ps1',
         'psexec.remote.ps1',
         'helper.ps1'

@@ -17,7 +17,7 @@ set "RDP_OUTPUT_PATH="
 :: 可选：供 Shadow 功能和 .peer psexec 使用的 template.vps1.cmd 实例:
 :: Example / 示例: set "RDP_PEER_SSH_ENTRY=D:\swaw-kit\Favorites\server-admin.ssh.cmd"
 :::::::::::::::::::::::::::::::::::::::::::::::::::
-set "RDP_PEER_SSH_ENTRY=D:\2026.7\__use\swaw-kit\rdp1.cmd"
+set "RDP_PEER_SSH_ENTRY=D:\2026.7\swaw-kit\rdp1.ssh.cmd"
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Optional: force help language zh-CN / en; empty selects the system language automatically:

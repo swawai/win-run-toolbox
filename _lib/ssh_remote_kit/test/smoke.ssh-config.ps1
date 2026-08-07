@@ -57,7 +57,9 @@ function New-SmokeEntryFile {
     param(
         [Parameter(Mandatory=$true)] [string]$Root,
         [string]$Name = "vps1.cmd",
-        [string]$HostName = "A.example.invalid"
+        [string]$HostName = "A.example.invalid",
+        [AllowEmptyString()] [string]$RemoteShell = '',
+        [string]$RemoteShellMacro = '___RemoteShell___'
     )
 
     if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
@@ -65,6 +67,11 @@ function New-SmokeEntryFile {
     }
 
     $entry = Join-Path $Root $Name
+    $shellLine = if ($RemoteShell.Length -gt 0) {
+        "  $RemoteShellMacro $RemoteShell # smoke profile"
+    } else {
+        ''
+    }
     $content = @"
 @echo off & chcp 65001 >nul & setlocal & goto :REMOTE_KIT_AFTER_SSH_CONFIG
 :::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -74,6 +81,7 @@ rem ignored cmd comment
 
 # preserved OpenSSH comment
 Host ___self___ # managed entry identity
+$shellLine
   HostName $HostName
   User userA
   Port 2222
@@ -89,6 +97,87 @@ REM ignored lower comment
 
     [System.IO.File]::WriteAllText($entry, $content, [System.Text.UTF8Encoding]::new($false))
     return $entry
+}
+
+function Test-RemoteShellMacro {
+    $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("remote-kit-shell-" + [guid]::NewGuid().ToString("N"))
+    try {
+        $defaultEntry = New-SmokeEntryFile $tempRoot -Name 'default.cmd'
+        $defaultDocument = Read-RemoteKitEmbeddedSshConfigDocument $defaultEntry
+        Assert-True `
+            ($defaultDocument.RemoteShell -eq 'posix') `
+            'missing remote-shell macro should default to posix.'
+
+        $cmdEntry = New-SmokeEntryFile `
+            $tempRoot `
+            -Name 'cmd.cmd' `
+            -RemoteShell 'WIN.CMD' `
+            -RemoteShellMacro '___REMOTESHELL___'
+        $cmdDocument = Read-RemoteKitEmbeddedSshConfigDocument $cmdEntry
+        Assert-True `
+            ($cmdDocument.RemoteShell -eq 'win.cmd') `
+            'remote-shell profiles should be case-insensitive and canonicalized.'
+        Assert-True ($cmdDocument.ConfigText -notmatch '___RemoteShell___') `
+            'active remote-shell macros should be removed from generated OpenSSH config.'
+
+        $reservedEntry = New-SmokeEntryFile `
+            $tempRoot `
+            -Name 'reserved.cmd' `
+            -RemoteShell 'win.powershell'
+        $reservedDocument = Read-RemoteKitEmbeddedSshConfigDocument $reservedEntry
+        Assert-True `
+            ($reservedDocument.RemoteShell -eq 'win.powershell') `
+            'reserved remote-shell profiles should be recognized before implementation.'
+
+        $unknownEntry = New-SmokeEntryFile `
+            $tempRoot `
+            -Name 'unknown.cmd' `
+            -RemoteShell 'linux.bash'
+        Assert-ThrowsLike {
+            Read-RemoteKitEmbeddedSshConfigDocument $unknownEntry
+        } "*Unknown remote shell profile 'linux.bash'*" `
+            'unknown remote-shell profiles should fail clearly.'
+
+        $duplicateEntry = New-InvalidSmokeEntryFile `
+            (Join-Path $tempRoot 'duplicate') `
+            @(
+                'Host ___self___'
+                '  ___RemoteShell___ posix'
+                '  ___RemoteShell___ win.cmd'
+                '  HostName A.example.invalid'
+            )
+        Assert-ThrowsLike {
+            Read-RemoteKitEmbeddedSshConfigDocument $duplicateEntry
+        } '*at most one active ___RemoteShell___ directive*' `
+            'duplicate active remote-shell macros should fail clearly.'
+
+        $disabledEntry = New-InvalidSmokeEntryFile `
+            (Join-Path $tempRoot 'disabled') `
+            @(
+                'Host ___self___'
+                '  # ___RemoteShell___ win.cmd'
+                '  HostName A.example.invalid'
+            )
+        $disabledDocument = Read-RemoteKitEmbeddedSshConfigDocument $disabledEntry
+        Assert-True ($disabledDocument.RemoteShell -eq 'posix') `
+            'commented remote-shell macros should be disabled.'
+        Assert-NotContains $disabledDocument.ConfigText '___RemoteShell___' `
+            'commented remote-shell macros should be removed from generated config.'
+
+        $malformedEntry = New-InvalidSmokeEntryFile `
+            (Join-Path $tempRoot 'malformed') `
+            @(
+                'Host ___self___'
+                '  ___RemoteShell___'
+                '  HostName A.example.invalid'
+            )
+        Assert-ThrowsLike {
+            Read-RemoteKitEmbeddedSshConfigDocument $malformedEntry
+        } '*Malformed ___RemoteShell___ directive*' `
+            'malformed remote-shell macros should fail clearly.'
+    } finally {
+        Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function New-InvalidSmokeEntryFile {
@@ -189,13 +278,18 @@ function Test-SelfTokenValidation {
 function Test-RepoTemplateUsesSelfContract {
     $entry = Join-Path $script:SmokeRepoRoot "Favorites\template.vps1.cmd"
     $source = [System.IO.File]::ReadAllText($entry)
-    $generated = Get-RemoteKitEmbeddedSshConfigText $entry
+    $document = Read-RemoteKitEmbeddedSshConfigDocument $entry
+    $generated = $document.ConfigText
     $alias = Get-RemoteKitEntryHostAlias $entry
 
     Assert-Contains $source "Host ___self___" "vps1 template should expose the self token instead of a user-managed alias."
     Assert-NotContains $source "%HOST%" "vps1 template should not maintain a second host identity."
     Assert-NotContains $source "remote-kit ssh-config begin" "vps1 template should not require visual parser markers."
     Assert-NotContains $source "remote-kit ssh-config end" "vps1 template should not require visual parser markers."
+    Assert-NotContains $source 'REMOTE_KIT_REMOTE_COMMAND_PREFIX' "vps1 template should not expose a CMD environment prefix."
+    Assert-Contains $source '___RemoteShell___ posix' "vps1 template should expose the default remote-shell macro."
+    Assert-True ($document.RemoteShell -eq 'posix') "vps1 template should resolve to the posix shell."
+    Assert-NotContains $generated '___RemoteShell___' "generated OpenSSH config should not retain private macros."
     Assert-Contains $generated "Host $alias" "the real vps1 template should be parseable."
     Assert-Contains $generated "IdentityFile ~/.ssh/id_rsa" "vps1 template should keep IdentityFile inside ssh_config."
 }
@@ -212,6 +306,7 @@ function Test-WriteEmbeddedConfigDoesNotInstallManagedInclude {
         Assert-True (Test-Path -LiteralPath $first.ConfigPath -PathType Leaf) "generated config should exist."
         Assert-True ($first.ConfigPath -eq $second.ConfigPath) "write should be idempotent for config path."
         Assert-True ([System.IO.Path]::GetFileName($first.ConfigPath) -eq "$($first.HostAlias).config") "config filename should carry the derived alias."
+        Assert-True ($first.RemoteShell -eq 'posix') "write result should expose the resolved remote shell."
 
         $generated = [System.IO.File]::ReadAllText($first.ConfigPath)
         Assert-Contains $generated "Host $($first.HostAlias)" "generated config should contain the derived alias."
@@ -275,6 +370,7 @@ function Test-RemoveEmbeddedConfigRemovesManagedState {
 Test-EntryIdentityIsStableAndPathScoped
 Test-ExtractPrettyEmbeddedConfig
 Test-SelfTokenValidation
+Test-RemoteShellMacro
 Test-RepoTemplateUsesSelfContract
 Test-WriteEmbeddedConfigDoesNotInstallManagedInclude
 Test-InstallEmbeddedConfigIsExactAndIdempotent

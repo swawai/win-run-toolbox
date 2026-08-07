@@ -4,6 +4,7 @@
 
 
 # 远程命令:
+  入口宏: ___RemoteShell___ posix          # Windows cmd.exe 对端请改为 win.cmd。
   {{COMMAND}}  -- ls -la /tmp             # 执行ls，普通非交互式命令
   {{COMMAND}}  tty -- top                 # 执行top，交互式命令(分配TTY)
   {{COMMAND}}  script local.sh arg1 arg2  # 上传本机的local.sh脚本到远端机临时目录, 执行，然后清理

@@ -4,6 +4,7 @@
 
 
 # Remote commands:
+  Entry macro: ___RemoteShell___ posix      # Use win.cmd for a Windows cmd.exe target.
   {{COMMAND}}  -- ls -la /tmp             # Run a normal non-interactive command.
   {{COMMAND}}  tty -- top                 # Run an interactive command with TTY.
   {{COMMAND}}  script local.sh arg1 arg2  # Upload local.sh to a remote temp dir, run it, then clean up.

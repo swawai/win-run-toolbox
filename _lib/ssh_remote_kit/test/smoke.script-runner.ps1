@@ -124,12 +124,20 @@ function Test-GenericStdinRunnerContract {
         'kit.cmd must keep chcp from consuming redirected standard input.'
     Assert-Contains $kit 'REMOTE_KIT_STDIN_ARG_COUNT' `
         'kit.cmd should forward stdin remote arguments explicitly.'
+    Assert-Contains $kit '-RemoteShell "%remoteShell%"' `
+        'kit.cmd should pass resolved shell metadata to the stdin runner.'
+    Assert-Contains $kit 'is recognized but not implemented for remote commands' `
+        'reserved remote-shell profiles should fail explicitly before SSH execution.'
     Assert-Contains $runner 'RedirectStandardInput = $false' `
         'stdin runner should let OpenSSH inherit the raw standard-input handle.'
     Assert-Contains $runner "`$_ -ne '-n'" `
         'stdin runner must remove the SSH option that closes stdin.'
     Assert-Contains $runner '$RemoteArguments -join '' ''' `
         'stdin runner should build one explicit remote command.'
+    Assert-Contains $runner 'if ($RemoteShell -eq ''win.cmd'')' `
+        'stdin runner should apply cmd-specific initialization.'
+    Assert-Contains $runner 'is recognized but not implemented for stdin commands' `
+        'stdin runner should reject reserved profiles without an implementation.'
     Assert-Contains $help 'stdin -- command < file' `
         'SSH help should advertise the generic stdin command.'
     Assert-True (-not $runner.Contains('PayloadPath')) `

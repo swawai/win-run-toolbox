@@ -10,7 +10,15 @@ param(
     [AllowEmptyString()]
     [Parameter(Mandatory = $true)][string]$SshKeyPath,
     [Parameter(Mandatory = $true)]
-    [ValidateRange(1, 32767)][int]$RemoteArgumentCount
+    [ValidateRange(1, 32767)][int]$RemoteArgumentCount,
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+        'posix',
+        'win.cmd',
+        'win.powershell',
+        'win.pwsh',
+        'win.git-bash'
+    )][string]$RemoteShell
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,6 +49,11 @@ try {
         throw 'stdin remote arguments cannot contain line breaks.'
     }
     $RemoteCommand = $RemoteArguments -join ' '
+    if ($RemoteShell -eq 'win.cmd') {
+        $RemoteCommand = "chcp 65001>nul & $RemoteCommand"
+    } elseif ($RemoteShell -ne 'posix') {
+        throw "Remote shell profile '$RemoteShell' is recognized but not implemented for stdin commands."
+    }
 
     $Context = Initialize-RemoteKitContext `
         -Port $Port `

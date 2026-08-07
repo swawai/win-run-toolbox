@@ -28,6 +28,7 @@ set "verb=%~5"
 set "arg1=%~6"
 set "arg2=%~7"
 set "arg3=%~8"
+set "remoteShell=posix"
 if /i "%verb%"=="code" if not "%REMOTE_KIT_PROTOCOL%"=="2" goto :EditorEntryProtocolRequired
 if /i "%verb%"=="cursor" if not "%REMOTE_KIT_PROTOCOL%"=="2" goto :EditorEntryProtocolRequired
 set "useSshConfigHost="
@@ -56,9 +57,17 @@ if not defined REMOTE_KIT_ENTRY_FILE (
     exit /b 1
 )
 set "REMOTE_KIT_SSH_CONFIG_PATH="
-for /f "delims=" %%a in ('PowerShell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ssh_config.ps1" -Action write -EntryFile "%REMOTE_KIT_ENTRY_FILE%" -RepoRoot "%~dp0..\.." -UserProfile "%USERPROFILE%"') do set "REMOTE_KIT_SSH_CONFIG_PATH=%%a"
+set "remoteShell="
+for /f "tokens=1,* delims=|" %%a in ('PowerShell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ssh_config.ps1" -Action write -EntryFile "%REMOTE_KIT_ENTRY_FILE%" -RepoRoot "%~dp0..\.." -UserProfile "%USERPROFILE%"') do (
+    if /i "%%a"=="config" set "REMOTE_KIT_SSH_CONFIG_PATH=%%b"
+    if /i "%%a"=="shell" set "remoteShell=%%b"
+)
 if not defined REMOTE_KIT_SSH_CONFIG_PATH (
     echo Failed to generate embedded SSH config.
+    exit /b 1
+)
+if not defined remoteShell (
+    echo Failed to resolve embedded remote shell metadata.
     exit /b 1
 )
 for %%a in ("%REMOTE_KIT_SSH_CONFIG_PATH%") do set "REMOTE_SSH_HOST=%%~na"
@@ -209,6 +218,11 @@ shift /5
 goto :RemoteCommandArgLoop
 :RunRemoteCommand
 if not defined remoteCommand goto :InvalidArgs
+if /i not "%remoteShell%"=="posix" if /i not "%remoteShell%"=="win.cmd" (
+    echo [ERROR] Remote shell profile "%remoteShell%" is recognized but not implemented for remote commands.
+    exit /b 1
+)
+if /i "%remoteShell%"=="win.cmd" set "remoteCommand=chcp 65001>nul & %remoteCommand%"
 if defined REMOTE_KIT_VERBOSE_FLAG echo ssh %SSH_COMMON_OPTS% %remoteCommandSshOpts% %SSH_CONNECT_OPTS% "%REMOTE_TARGET%" "%remoteCommand%"
 ssh %SSH_COMMON_OPTS% %remoteCommandSshOpts% %SSH_CONNECT_OPTS% "%REMOTE_TARGET%" "%remoteCommand%"
 exit /b %ERRORLEVEL%
@@ -237,7 +251,7 @@ shift /6
 goto :StdinCommandArgLoop
 :RunStdinCommand
 if "%REMOTE_KIT_STDIN_ARG_COUNT%"=="0" goto :InvalidArgs
-PowerShell -NoLogo -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -File "%~dp0stdin_runner.ps1" -Port "%port%" -RemoteHost "%host%" -RemoteUser "%remoteUser%" -SshKeyPath "%sshKeyPath%" -RemoteArgumentCount %REMOTE_KIT_STDIN_ARG_COUNT%
+PowerShell -NoLogo -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -File "%~dp0stdin_runner.ps1" -Port "%port%" -RemoteHost "%host%" -RemoteUser "%remoteUser%" -SshKeyPath "%sshKeyPath%" -RemoteArgumentCount %REMOTE_KIT_STDIN_ARG_COUNT% -RemoteShell "%remoteShell%"
 exit /b %ERRORLEVEL%
 :OpenRemotePath
 set "editorExe=%~1"
@@ -257,9 +271,17 @@ if not defined REMOTE_KIT_ENTRY_FILE (
     exit /b 1
 )
 set "REMOTE_KIT_SSH_CONFIG_PATH="
-for /f "delims=" %%a in ('PowerShell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ssh_config.ps1" -Action install -EntryFile "%REMOTE_KIT_ENTRY_FILE%" -RepoRoot "%~dp0..\.." -UserProfile "%USERPROFILE%"') do set "REMOTE_KIT_SSH_CONFIG_PATH=%%a"
+set "remoteShell="
+for /f "tokens=1,* delims=|" %%a in ('PowerShell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ssh_config.ps1" -Action install -EntryFile "%REMOTE_KIT_ENTRY_FILE%" -RepoRoot "%~dp0..\.." -UserProfile "%USERPROFILE%"') do (
+    if /i "%%a"=="config" set "REMOTE_KIT_SSH_CONFIG_PATH=%%b"
+    if /i "%%a"=="shell" set "remoteShell=%%b"
+)
 if not defined REMOTE_KIT_SSH_CONFIG_PATH (
     echo Failed to install embedded SSH config.
+    exit /b 1
+)
+if not defined remoteShell (
+    echo Failed to resolve embedded remote shell metadata.
     exit /b 1
 )
 set "SSH_CONNECT_OPTS=-F "%REMOTE_KIT_SSH_CONFIG_PATH%""

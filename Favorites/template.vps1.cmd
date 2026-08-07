@@ -7,6 +7,7 @@ set "REMOTE_KIT_PROTOCOL=2" & goto :REMOTE_KIT_AFTER_SSH_CONFIG
 :::::::::::::::::::::::::::::::::::::::::::::::::::
 
 Host ___self___                     # 这一行不要改(Don't change this line)
+  ___RemoteShell___ posix           # 可选(optional): posix, win.cmd, win.powershell, win.pwsh, win.git-bash
   HostName myvps1.example.com       # 必填(are required)
   User root                         # 必填(are required)
   Port 22                           # 必填(are required)

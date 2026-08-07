@@ -14,6 +14,7 @@ param(
 $script:RemoteKitSshConfigIncludeId = "8f6a9d72-4a7e-4b42-95cb-8bc20d9f5c31"
 $script:RemoteKitSshConfigAfterLabel = "REMOTE_KIT_AFTER_SSH_CONFIG"
 $script:RemoteKitSelfHostToken = "___self___"
+. (Join-Path $PSScriptRoot 'remote-shell.ps1')
 
 function ConvertTo-RemoteKitLfText {
     param([AllowNull()] [string]$Text)
@@ -88,7 +89,7 @@ function Protect-RemoteKitSshConfigFile {
     }
 }
 
-function Get-RemoteKitEmbeddedSshConfigText {
+function Read-RemoteKitEmbeddedSshConfigDocument {
     param([Parameter(Mandatory=$true)] [string]$EntryFile)
 
     if (-not (Test-Path -LiteralPath $EntryFile -PathType Leaf)) {
@@ -139,7 +140,12 @@ function Get-RemoteKitEmbeddedSshConfigText {
         $selected.Add($line)
     }
 
-    $configText = ($selected.ToArray() -join "`n")
+    $selectedLines = $selected.ToArray()
+    $remoteShell = Get-RemoteKitRemoteShell -Lines $selectedLines
+    $configLines = @($selectedLines | Where-Object {
+        -not (Test-RemoteKitRemoteShellDirectiveLine -Line $_)
+    })
+    $configText = ($configLines -join "`n")
     $tokenCount = ([regex]::Matches($configText, [regex]::Escape($script:RemoteKitSelfHostToken))).Count
     if ($tokenCount -ne 1) {
         throw "Embedded ssh_config must contain exactly one '$script:RemoteKitSelfHostToken' token: $EntryFile"
@@ -161,7 +167,16 @@ function Get-RemoteKitEmbeddedSshConfigText {
         ('${1}' + $hostAlias + '${2}'),
         1
     )
-    return (ConvertTo-RemoteKitLfText $configText)
+    return [pscustomobject]@{
+        ConfigText  = ConvertTo-RemoteKitLfText $configText
+        RemoteShell = $remoteShell
+    }
+}
+
+function Get-RemoteKitEmbeddedSshConfigText {
+    param([Parameter(Mandatory=$true)] [string]$EntryFile)
+
+    return (Read-RemoteKitEmbeddedSshConfigDocument -EntryFile $EntryFile).ConfigText
 }
 
 function Get-RemoteKitGeneratedSshConfigPath {
@@ -268,7 +283,8 @@ function Write-RemoteKitEmbeddedSshConfig {
     )
 
     $hostAlias = Get-RemoteKitEntryHostAlias -EntryFile $EntryFile
-    $configText = Get-RemoteKitEmbeddedSshConfigText -EntryFile $EntryFile
+    $document = Read-RemoteKitEmbeddedSshConfigDocument -EntryFile $EntryFile
+    $configText = $document.ConfigText
     $configPath = Get-RemoteKitGeneratedSshConfigPath -RepoRoot $RepoRoot -HostAlias $HostAlias
     $configDir = Split-Path -Parent $configPath
     if (-not (Test-Path -LiteralPath $configDir -PathType Container)) {
@@ -284,6 +300,7 @@ function Write-RemoteKitEmbeddedSshConfig {
     return [pscustomobject]@{
         HostAlias      = $HostAlias
         ConfigPath     = $configPath
+        RemoteShell    = $document.RemoteShell
         UserConfigPath = $userConfigPath
         IncludeLine    = $includeLine
     }
@@ -371,7 +388,8 @@ function Invoke-RemoteKitSshConfigCli {
             -UserProfile $UserProfile
     }
 
-    Write-Output $result.ConfigPath
+    Write-Output "config|$($result.ConfigPath)"
+    Write-Output "shell|$($result.RemoteShell)"
 }
 
 if ($MyInvocation.InvocationName -ne ".") {

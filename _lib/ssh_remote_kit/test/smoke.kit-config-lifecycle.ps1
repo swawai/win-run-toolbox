@@ -105,6 +105,39 @@ function Invoke-Entry {
     }
 }
 
+function Test-CmdShellInitializationIsAppliedOnce {
+    $scenario = New-Scenario
+    $originalEntryText = [System.IO.File]::ReadAllText($script:Entry)
+    try {
+        $cmdEntryText = $originalEntryText.Replace(
+            '___RemoteShell___ posix',
+            '___RemoteShell___ win.cmd'
+        )
+        Assert-True `
+            ($cmdEntryText -ne $originalEntryText) `
+            'test entry should expose the default posix remote-shell macro.'
+        [System.IO.File]::WriteAllText(
+            $script:Entry,
+            $cmdEntryText,
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        Invoke-Entry $scenario.FakeBin $scenario.Profile $scenario.Log "-- qwinsta"
+
+        $logText = [System.IO.File]::ReadAllText($scenario.Log)
+        Assert-Contains `
+            $logText `
+            '"chcp 65001>nul & qwinsta"' `
+            "win.cmd profile should initialize UTF-8 inside the SSH command."
+    } finally {
+        [System.IO.File]::WriteAllText(
+            $script:Entry,
+            $originalEntryText,
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        Remove-Item -LiteralPath $scenario.Root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function New-Scenario {
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ("remote-kit-lifecycle-" + [guid]::NewGuid().ToString("N"))
     $fakeBin = Join-Path $root "bin"
@@ -130,6 +163,11 @@ function Test-DefaultCommandWritesGeneratedConfigOnly {
 
         Assert-True (Test-Path -LiteralPath $script:GeneratedConfig -PathType Leaf) "default command should generate repo-local ssh config."
         Assert-ManagedIncludeState $scenario.Profile $false "default command should not install user ssh Include."
+        $logText = [System.IO.File]::ReadAllText($scenario.Log)
+        Assert-Contains $logText '"echo OK"' "posix shell metadata should preserve the remote command."
+        Assert-True `
+            (-not $logText.Contains('chcp 65001')) `
+            "posix shell metadata should not add Windows initialization."
     } finally {
         Remove-Item -LiteralPath $scenario.Root -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -177,6 +215,7 @@ $generatedConfigText = if ($hadGeneratedConfig) {
     $null
 }
 try {
+    Test-CmdShellInitializationIsAppliedOnce
     Test-DefaultCommandWritesGeneratedConfigOnly
     Test-ExplicitInstallAndRemoveManageUserInclude
     Test-RemoteSshEditorInstallsIncludeButSftpModeDoesNot

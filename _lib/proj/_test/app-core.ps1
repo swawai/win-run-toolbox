@@ -5,8 +5,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$BootstrapRoot = Join-Path $ProjRoot '_bootstrap'
-. (Join-Path $BootstrapRoot 'toolchains\runtime.ps1')
+. (Join-Path $ProjRoot '_toolchain\bootstrap.ps1')
 
 $Toolchain = Initialize-ProjBootstrapToolchain
 $TargetRoot = Assert-ProjDevPathInsideDataRoot `

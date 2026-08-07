@@ -80,21 +80,22 @@ function Test-ProjLauncherBuildFileUnchanged {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$BootstrapRoot = Join-Path $RepoRoot '_lib\proj\_bootstrap'
-. (Join-Path $BootstrapRoot '_lib\layout.ps1')
+. (Join-Path $RepoRoot '_lib\proj\_toolchain\bootstrap-layout.ps1')
 $Layout = Get-ProjBootstrapLayout
-$BuildPath = Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1'
+$BuildPath = Join-Path $RepoRoot '_lib\proj\build.ps1'
 $CandidatePath = $Layout.LauncherCandidatePath
 $TemplatePath = $Layout.LauncherTemplatePath
 $RootEntryPath = Join-Path $RepoRoot 'swawkit.exe'
+$RuntimePath = $Layout.RuntimePath
 $TemplateBefore = Get-ProjLauncherBuildFileState -Path $TemplatePath
 $RootBefore = Get-ProjLauncherBuildFileState -Path $RootEntryPath
+$RuntimeBefore = Get-ProjLauncherBuildFileState -Path $RuntimePath
 $EnvironmentBefore = Get-ProjLauncherBuildTestEnvironment
 
 & $BuildPath | Out-Host
 Assert-ProjLauncherBuildTest `
     -Condition ($LASTEXITCODE -eq 0) `
-    -Message "the standalone Launcher build failed with exit code $LASTEXITCODE"
+    -Message "the source-tree build failed with exit code $LASTEXITCODE"
 
 $EnvironmentAfter = Get-ProjLauncherBuildTestEnvironment
 Assert-ProjLauncherBuildTest `
@@ -121,6 +122,11 @@ foreach ($Protected in @(
         Path = $RootEntryPath
         Before = $RootBefore
     }
+    [pscustomobject]@{
+        Name = 'published Core runtime'
+        Path = $RuntimePath
+        Before = $RuntimeBefore
+    }
 )) {
     Assert-ProjLauncherBuildTest `
         -Condition (Test-ProjLauncherBuildFileUnchanged `
@@ -129,5 +135,5 @@ foreach ($Protected in @(
         -Message "the Launcher build modified the $($Protected.Name)"
 }
 
-Write-Host '[PASS] Proj standalone Launcher build' -ForegroundColor Green
+Write-Host '[PASS] Proj source-tree build' -ForegroundColor Green
 $global:LASTEXITCODE = 0

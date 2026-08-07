@@ -37,8 +37,7 @@ function Invoke-ProjEntrySmoke {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$BootstrapRoot = Join-Path $RepoRoot '_lib\proj\_bootstrap'
-. (Join-Path $BootstrapRoot '_lib\layout.ps1')
+. (Join-Path $RepoRoot '_lib\proj\_toolchain\bootstrap-layout.ps1')
 $SourceEntry = (Get-ProjBootstrapLayout).LauncherCandidatePath
 $EntryName = "test-native-entry-$([Guid]::NewGuid().ToString('N'))"
 $EntryPath = Join-Path $RepoRoot "$EntryName.exe"
@@ -59,7 +58,7 @@ $PoisonedEnvironment = [ordered]@{
 $SavedEnvironment = @{}
 
 if (-not [IO.File]::Exists($SourceEntry)) {
-    & (Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1')
+    & (Join-Path $RepoRoot '_lib\proj\build.ps1')
 }
 [IO.File]::Copy($SourceEntry, $EntryPath, $false)
 try {

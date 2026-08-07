@@ -6,7 +6,7 @@ if (@($args).Count -gt 0) {
     throw '.dev.setup does not accept dynamic arguments.'
 }
 
-. (Join-Path $PSScriptRoot '_lib\bootstrap.ps1')
+. (Join-Path $PSScriptRoot '..\..\_toolchain\setup.ps1')
 
 $Context = New-ProjDevContextFromEnvironment
 $BunDefinition = Get-ProjDevBunDefinition

@@ -5,8 +5,8 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $ProjRoot '.dev\setup\_lib\bootstrap.ps1')
-. (Join-Path $ProjRoot '.dev\setup\_modules\msvc\command.ps1')
+. (Join-Path $ProjRoot '_toolchain\setup.ps1')
+. (Join-Path $ProjRoot '_toolchain\_modules\msvc\command.ps1')
 
 function Assert-ProjMsvcCommandTest {
     param(

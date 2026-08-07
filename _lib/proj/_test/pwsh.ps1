@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $ProjRoot '.dev\setup\_lib\bootstrap.ps1')
+. (Join-Path $ProjRoot '_toolchain\setup.ps1')
 
 function Assert-ProjPwshTest {
     param(

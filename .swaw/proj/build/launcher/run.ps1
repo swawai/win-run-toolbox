@@ -9,9 +9,30 @@ if ($args.Count -ne 0) {
 $KernelRoot = [IO.Path]::GetFullPath(
     (Join-Path ([string]$env:SWAWKIT_HOME) '_lib\proj')
 )
-$BuildScript = Join-Path $KernelRoot '_launcher\build.ps1'
-if (-not [IO.File]::Exists($BuildScript)) {
-    throw "Launcher build script not found: $BuildScript"
-}
+. (Join-Path $KernelRoot '_toolchain\bootstrap.ps1')
 
-& $BuildScript
+Invoke-ProjBootstrapToolchain -Action {
+    param($Toolchain, $Layout)
+
+    $BuildRoot = Assert-ProjDevPathInsideDataRoot `
+        -Path $Layout.LauncherBuildRoot `
+        -DataRoot $Toolchain.Context.DataRoot `
+        -Activity 'building the Proj Launcher'
+    $CandidatePath = Assert-ProjDevPathInsideDataRoot `
+        -Path $Layout.LauncherCandidatePath `
+        -DataRoot $Toolchain.Context.DataRoot `
+        -Activity 'publishing the Proj Launcher build candidate'
+    $BuildLock = Enter-ProjDevFileLock `
+        -Path (Join-Path $Layout.LockRoot 'launcher-build.lock') `
+        -ControlledRoot $Toolchain.Context.DataRoot `
+        -TimeoutSeconds 1800
+    try {
+        & $Layout.LauncherBuildPath `
+            -CompilerPath ([string]$Toolchain.CompilerPath) `
+            -LinkerPath ([string]$Toolchain.LinkerPath) `
+            -BuildRoot $BuildRoot `
+            -CandidatePath $CandidatePath | Out-Host
+    } finally {
+        $BuildLock.Dispose()
+    }
+}

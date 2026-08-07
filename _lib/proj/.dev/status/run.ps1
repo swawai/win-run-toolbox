@@ -6,7 +6,7 @@ if (@($args).Count -gt 0) {
     throw '.dev.status does not accept dynamic arguments.'
 }
 
-. (Join-Path $PSScriptRoot '..\setup\_lib\bootstrap.ps1')
+. (Join-Path $PSScriptRoot '..\..\_toolchain\setup.ps1')
 
 $Context = New-ProjDevContextFromEnvironment
 try {

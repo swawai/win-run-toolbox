@@ -37,8 +37,7 @@ function Invoke-ProjClaimEntry {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$BootstrapRoot = Join-Path $RepoRoot '_lib\proj\_bootstrap'
-. (Join-Path $BootstrapRoot '_lib\layout.ps1')
+. (Join-Path $RepoRoot '_lib\proj\_toolchain\bootstrap-layout.ps1')
 $Template = (Get-ProjBootstrapLayout).LauncherCandidatePath
 $EntryName = "test-claim-$([Guid]::NewGuid().ToString('N'))"
 $EntryPath = Join-Path $RepoRoot "$EntryName.exe"
@@ -46,7 +45,7 @@ $DataRoot = Join-Path $RepoRoot "data\proj.$EntryName"
 $RecordPath = Join-Path $DataRoot '_entry.json'
 
 if (-not [IO.File]::Exists($Template)) {
-    & (Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1')
+    & (Join-Path $RepoRoot '_lib\proj\build.ps1')
 }
 [IO.File]::Copy($Template, $EntryPath, $false)
 try {

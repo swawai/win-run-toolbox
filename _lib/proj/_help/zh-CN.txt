@@ -12,8 +12,8 @@ Core 固定按 _global → 命令 _guard → 命令 run.* 执行；Guard 不接�
 每个项目入口都是同一模板的独立副本：共享 Core 缺失时调用 Bootstrap，
 随后把参数原样交给 Rust；入口自身不声明项目配置，也不承担公开命令路由。
 根 swawkit.exe 和 Launcher 模板是随仓库发布的必备制品；需要从源码生成候选时，
-直接运行 _lib\proj\_launcher\build.ps1，它会准备固定 Bootstrap 工具链，并只写入
-data/proj_cache/bootstrap/build/launcher/release/template.proj1.exe，不替换发布制品。
+直接运行 _lib\proj\build.ps1，它会准备固定 Bootstrap 工具链并构建 App 与 Launcher
+候选；只写入 data/proj_cache/bootstrap/build，不替换任何发布制品。
 
 以两个点开头的地址属于 Rust Control Plane，例如 {{COMMAND}} ..entry、
 {{COMMAND}} ..entry.claim 与 {{COMMAND}} ..web；它们管理 Entry 自身生命周期，

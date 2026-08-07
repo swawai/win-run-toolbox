@@ -106,8 +106,7 @@ static BOOL is_file(const WCHAR *path)
 static BOOL try_layout(DWORD home_length)
 {
     static const WCHAR core_suffix[] = L"\\_lib\\proj\\_bin\\swawkit-proj.exe";
-    static const WCHAR bootstrap_suffix[] =
-        L"\\_lib\\proj\\_bootstrap\\run.ps1";
+    static const WCHAR bootstrap_suffix[] = L"\\_lib\\proj\\bootstrap.ps1";
 
     return copy_path_with_suffix(
             entry_path,

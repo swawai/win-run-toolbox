@@ -1,0 +1,13 @@
+在当前项目环境中执行一条 Windows CMD 命令。
+
+用法:
+  {{INVOCATION}} <command...>
+
+命令以项目根目录为当前目录，并继承由 Proj Core 验证和激活的
+SWAWKIT_PROJ_*、SWAWKIT_PROJ_DEV_* 与开发工具 PATH。
+
+固定使用系统 cmd.exe /d /s /v:off /c；PATH 会临时加入当前 Proj
+内核的 _bin 目录，但不会修改用户或系统 PATH。
+
+命令地址后的参数会以空格重组为 CMD 命令文本；包含 Shell 元字符时，
+应按当前终端的规则引用。该命令不提供交互模式。

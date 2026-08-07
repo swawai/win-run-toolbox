@@ -7,7 +7,7 @@ if (@($args).Count -ne 0) {
 $KernelRoot = [IO.Path]::GetFullPath(
     (Join-Path ([string]$env:SWAWKIT_HOME) '_lib\proj')
 )
-. (Join-Path $KernelRoot '.dev\setup\_modules\msvc\runtime.ps1')
+. (Join-Path $KernelRoot '_toolchain\_modules\msvc\runtime.ps1')
 [void](Assert-ProjDevMsvcCommandReady)
 
 $global:LASTEXITCODE = 0

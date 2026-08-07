@@ -4,9 +4,11 @@ param()
 $ErrorActionPreference = 'Stop'
 
 & (Join-Path $PSScriptRoot 'launcher-build.ps1')
+& (Join-Path $PSScriptRoot 'launcher-runtime.ps1')
 & (Join-Path $PSScriptRoot 'smoke-entry.ps1')
 & (Join-Path $PSScriptRoot 'claim-entry.ps1')
 & (Join-Path $PSScriptRoot 'development-declaration.ps1')
+& (Join-Path $PSScriptRoot 'development-command-layout.ps1')
 & (Join-Path $PSScriptRoot 'app-build.ps1')
 & (Join-Path $PSScriptRoot 'app-core.ps1')
 & (Join-Path $PSScriptRoot 'web.ps1')

@@ -1,9 +1,0 @@
-使用 Swaw Kit Proj 内部锁定的 Bootstrap 工具链构建主程序候选文件。
-
-用法：
-  {{INVOCATION}}
-
-该命令执行与首次启动相同的固定版本工具链准备和 Cargo 构建，但不发布正式程序。
-
-构建结果保存在：
-  data/proj_cache/bootstrap/build/app/release/swawkit-proj.exe

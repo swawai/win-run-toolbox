@@ -48,7 +48,7 @@ V0 使用 minimal profile，并默认安装 rustfmt；toolchain 可声明 stable
 带日期的 channel，或具体版本。移动 channel 只在首次安装时解析；
 重复 setup 不隐式升级健康工具链。
 SWAWKIT_PROJ_RUST_TOOLCHAIN 是受管命令的权威声明；项目目录中的
-rust-toolchain.toml 不会改变 .cargo/.rustc 选用的编译器，
+rust-toolchain.toml 不会改变 .dev.cargo/.dev.rustc 选用的编译器，
 并拒绝 cargo/rustc 的 +toolchain 临时覆盖。
 
 setup 会识别上次中断遗留的 partial/backup：优先恢复有效备份；

@@ -6,7 +6,7 @@ Set-StrictMode -Version 2.0
 Add-Type -AssemblyName System.IO.Compression
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $ProjRoot '.dev\setup\_lib\bootstrap.ps1')
+. (Join-Path $ProjRoot '_toolchain\setup.ps1')
 
 function Assert-ProjMsvcTest {
     param(
@@ -414,7 +414,7 @@ try {
         }
     }
     $env:SWAWKIT_PROJ_BUN_VERSION = '2.0.0'
-    . (Join-Path $ProjRoot '.dev\setup\_modules\msvc\runtime.ps1')
+    . (Join-Path $ProjRoot '_toolchain\_modules\msvc\runtime.ps1')
     $RuntimeRequirement = Import-ProjDevMsvcCommandEnvironment
     Assert-ProjMsvcTest `
         -Condition (

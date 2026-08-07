@@ -1,0 +1,20 @@
+在当前项目环境中执行 PowerShell 脚本文件或脚本文本。
+
+用法:
+  {{INVOCATION}} -File <path.ps1> [arguments...]
+  {{INVOCATION}} -Command <script...>
+
+.dev.ps 固定启动 Windows 自带的 Windows PowerShell 5.1，不通过 PATH
+选择 pwsh.exe。未来的 .dev.pwsh 将作为独立命令提供。
+
+脚本以项目根目录为当前目录，并继承由 Proj Core 验证和激活的
+SWAWKIT_PROJ_*、SWAWKIT_PROJ_DEV_* 与开发工具 PATH。
+
+相对脚本路径从项目根目录解析。PowerShell 固定使用 -NoProfile、
+-NonInteractive 和进程级 ExecutionPolicy Bypass；不会修改系统策略。
+
+-Command 会把选择器之后的命令行参数以空格重组为脚本文本；包含 Shell
+元字符时，应按当前终端的规则引用完整脚本。
+
+PATH 会临时加入当前 Proj 内核的 _bin 目录，但不会修改用户或系统
+PATH。该入口不会绕过 WDAC、AppLocker 等 Windows 安全策略。

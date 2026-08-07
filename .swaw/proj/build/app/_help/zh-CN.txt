@@ -9,5 +9,5 @@
 该命令只构建候选文件，不会替换正在运行的：
   _lib/proj/_bin/swawkit-proj.exe
 
-如需验证固定版本的首次 Bootstrap 构建，请使用：
-  {{INVOCATION}}.bootstrap
+固定 Bootstrap 工具链属于源码树维护入口，不作为项目 Action 暴露：
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File _lib\proj\build.ps1

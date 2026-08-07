@@ -6,7 +6,7 @@ if (@($args).Count -ne 0) {
 }
 
 $KernelRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $KernelRoot '.dev\setup\_lib\runtime.ps1')
+. (Join-Path $KernelRoot '_toolchain\runtime.ps1')
 
 $Context = New-ProjDevContextFromEnvironment
 # Global policy only protects process identity: a shell may not mix projects

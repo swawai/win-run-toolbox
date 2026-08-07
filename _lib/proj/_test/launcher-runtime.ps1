@@ -52,15 +52,19 @@ function Invoke-ProjLauncherRuntimeProcess {
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 if ([string]::IsNullOrWhiteSpace($LauncherPath)) {
-    $BootstrapRoot = Join-Path $RepoRoot '_lib\proj\_bootstrap'
-    . (Join-Path $BootstrapRoot '_lib\layout.ps1')
+    . (Join-Path $RepoRoot (
+        '_lib\proj\_toolchain\bootstrap-layout.ps1'
+    ))
     $LauncherPath = (Get-ProjBootstrapLayout).LauncherCandidatePath
     if (-not [IO.File]::Exists($LauncherPath)) {
-        & (Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1')
+        & (Join-Path $RepoRoot '_lib\proj\build.ps1')
     }
 }
 $LauncherPath = [IO.Path]::GetFullPath($LauncherPath)
 $CorePath = Join-Path $RepoRoot '_lib\proj\_bin\swawkit-proj.exe'
+if (-not [IO.File]::Exists($CorePath)) {
+    & (Join-Path $RepoRoot '_lib\proj\bootstrap.ps1')
+}
 foreach ($RequiredFile in @($LauncherPath, $CorePath)) {
     if (-not [IO.File]::Exists($RequiredFile)) {
         throw "Required built executable does not exist: $RequiredFile"
@@ -85,9 +89,7 @@ $NestedRoot = Join-Path $TemporaryRoot 'nested\level'
 $NestedEntry = Join-Path $NestedRoot 'outside-supported-layout.exe'
 $BootstrapHome = Join-Path $TemporaryRoot 'bootstrap-home'
 $BootstrapEntry = Join-Path $BootstrapHome 'bootstrap-entry.exe'
-$BootstrapScript = Join-Path $BootstrapHome (
-    '_lib\proj\_bootstrap\run.ps1'
-)
+$BootstrapScript = Join-Path $BootstrapHome '_lib\proj\bootstrap.ps1'
 $BootstrapCore = Join-Path $BootstrapHome (
     '_lib\proj\_bin\swawkit-proj.exe'
 )
@@ -140,7 +142,7 @@ try {
 
     $BootstrapFixture = @'
 $ErrorActionPreference = 'Stop'
-$HomeRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+$HomeRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $RuntimePath = Join-Path $HomeRoot '_lib\proj\_bin\swawkit-proj.exe'
 [void][IO.Directory]::CreateDirectory((Split-Path -Path $RuntimePath -Parent))
 [IO.File]::Copy($env:ComSpec, $RuntimePath, $false)
@@ -168,7 +170,11 @@ $RuntimePath = Join-Path $HomeRoot '_lib\proj\_bin\swawkit-proj.exe'
         ) `
         -Message (
             'Launcher did not Bootstrap a missing shared Core: ' +
-            $Bootstrapped.StandardError
+            "exit=$($Bootstrapped.ExitCode); " +
+            "core=$([IO.File]::Exists($BootstrapCore)); " +
+            "marker=$([IO.File]::Exists($BootstrapMarker)); " +
+            "stdout=$($Bootstrapped.StandardOutput); " +
+            "stderr=$($Bootstrapped.StandardError)"
         )
 
     $Help = Invoke-ProjLauncherRuntimeProcess `

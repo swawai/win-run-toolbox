@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $ProjRoot '.dev\setup\_lib\bootstrap.ps1')
+. (Join-Path $ProjRoot '_toolchain\setup.ps1')
 . (Join-Path $PSScriptRoot '_lib\bun-fixture.ps1')
 
 $EnvironmentNames = @(
@@ -145,12 +145,12 @@ try {
         SWAWKIT_PROJ_INVOCATION_DIR = $ConsumerContext.InvocationDirectory
         SWAWKIT_PROJ_COMMAND_PROTOCOL = '1'
         SWAWKIT_PROJ_COMMAND_PHASE = 'run'
-        SWAWKIT_PROJ_COMMAND_ADDRESS = '.bun'
-        SWAWKIT_PROJ_COMMAND_DIR = (Join-Path $ProjRoot '.bun')
+        SWAWKIT_PROJ_COMMAND_ADDRESS = '.dev.bun'
+        SWAWKIT_PROJ_COMMAND_DIR = (Join-Path $ProjRoot '.dev\bun')
         SWAWKIT_PROJ_BUN_MODE = 'managed'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }
-    $BunEntry = Join-Path $ProjRoot '.bun\run.ps1'
+    $BunEntry = Join-Path $ProjRoot '.dev\bun\run.ps1'
     $MissingResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
         -EntryPath $BunEntry `
@@ -160,7 +160,7 @@ try {
             -not [IO.Directory]::Exists(
                 (Join-Path $ConsumerDataRoot 'dev_env')
             )) `
-        -Message '.bun implicitly created development state before setup'
+        -Message '.dev.bun implicitly created development state before setup'
 
     $env:SWAWKIT_PROJ_BUN_MODE = 'disabled'
     $DisabledResult = Invoke-ProjBunEntryFixture `
@@ -172,7 +172,7 @@ try {
             -not [IO.Directory]::Exists(
                 (Join-Path $ConsumerDataRoot 'dev_env')
             )) `
-        -Message 'disabled .bun wrote development state'
+        -Message 'disabled .dev.bun wrote development state'
     $env:SWAWKIT_PROJ_BUN_MODE = 'managed'
 
     $Definition = Get-ProjDevBunDefinition
@@ -203,7 +203,7 @@ try {
         -Condition ($MissingEnvironmentResult.ExitCode -eq 1 -and
             -not [IO.File]::Exists($ConsumerContext.EnvCmdPath) -and
             -not [IO.File]::Exists($ConsumerContext.EnvPs1Path)) `
-        -Message '.bun did not require the generated project environment'
+        -Message '.dev.bun did not require the generated project environment'
 
     $Plan = New-ProjDevEnvironmentPlan -Context $ConsumerContext
     Add-ProjDevBunEnvironment `
@@ -242,12 +242,12 @@ try {
             -Condition ($BunHelp.ExitCode -eq 0 -and
                 $BunHelpCapture.Count -eq 5 -and
                 $BunHelpCapture[4] -ceq '--help' -and
-                $BunHelpCapture[2] -ceq '.bun' -and
+                $BunHelpCapture[2] -ceq '.dev.bun' -and
                 (Get-ProjDevCanonicalPath -Path $BunHelpCapture[3]) -ceq
                 (Get-ProjDevCanonicalPath -Path (
-                    Join-Path $ProjRoot '.bun'
+                    Join-Path $ProjRoot '.dev\bun'
                 ))) `
-            -Message '.bun --help was intercepted instead of reaching Bun'
+            -Message '.dev.bun --help was intercepted instead of reaching Bun'
 
         [string[]]$ExpectedArguments = @(
             'hello world',
@@ -269,13 +269,13 @@ try {
                     "`n",
                     $Captured[4..($Captured.Count - 1)]
                 ) -ceq [string]::Join("`n", $ExpectedArguments)) `
-            -Message '.bun did not preserve public dynamic argv and exit code'
+            -Message '.dev.bun did not preserve public dynamic argv and exit code'
         Assert-ProjBunTest `
             -Condition (
                 (Get-ProjDevCanonicalPath -Path $Captured[1]) -ceq
                 (Get-ProjDevCanonicalPath -Path $InvocationRoot)
             ) `
-            -Message '.bun lost the public invocation directory'
+            -Message '.dev.bun lost the public invocation directory'
 
         $Separator = Invoke-ProjBunEntryFixture `
             -PowerShell $SystemPowerShell `
@@ -286,7 +286,7 @@ try {
             -Condition ($Separator.ExitCode -eq 0 -and
                 $SeparatorCapture[4] -ceq '--' -and
                 $SeparatorCapture[5] -ceq '--help') `
-            -Message '.bun changed the explicit option separator'
+            -Message '.dev.bun changed the explicit option separator'
     } finally {
         Pop-Location
     }
@@ -301,7 +301,7 @@ try {
         -InstallRoot $InstallRoot
     $WorkingDirectoryResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
-        -EntryPath (Join-Path $ProjRoot '.bun\run.ps1') `
+        -EntryPath (Join-Path $ProjRoot '.dev\bun\run.ps1') `
         -Arguments @('/d', '/c', 'cd')
     Assert-ProjBunTest `
         -Condition ($WorkingDirectoryResult.ExitCode -eq 0 -and
@@ -309,7 +309,7 @@ try {
                 $WorkingDirectoryResult.Output.Trim()
             )) -ceq
             (Get-ProjDevCanonicalPath -Path $InvocationRoot)) `
-        -Message '.bun native process did not use the caller directory'
+        -Message '.dev.bun native process did not use the caller directory'
 
     Assert-ProjBunTest `
         -Condition (

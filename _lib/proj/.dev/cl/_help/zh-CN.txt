@@ -1,0 +1,14 @@
+使用项目受管 MSVC 的 cl.exe 编译 C 或 C++。
+
+用法:
+  {{INVOCATION}} [cl 参数...]
+
+参数原样传递给 cl.exe；工作目录保持为调用 swawkit 的目录，退出码保持不变。
+.c 源文件按 C 编译，.cpp 源文件按 C++ 编译；可用 /TC 或 /TP 显式覆盖语言。
+
+示例:
+  {{COMMAND}} .dev.cl /nologo hello.c
+  {{COMMAND}} .dev.cl /nologo /std:c++20 /EHsc hello.cpp
+  {{COMMAND}} .dev.cl /?
+
+该命令只执行项目受管的 cl.exe，不会回退到系统 PATH 中的编译器。

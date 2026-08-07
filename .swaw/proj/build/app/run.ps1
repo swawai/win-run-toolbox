@@ -13,7 +13,7 @@ if ([string]::IsNullOrWhiteSpace($ProjHome) -or
     throw 'The project runtime context is incomplete.'
 }
 $KernelRoot = Join-Path $ProjHome '_lib\proj'
-. (Join-Path $KernelRoot '.dev\setup\_modules\rust\runtime.ps1')
+. (Join-Path $KernelRoot '_toolchain\_modules\rust\runtime.ps1')
 
 $Cargo = Resolve-ProjDevRustCommand -ExecutableName 'cargo.exe'
 $BuildPath = Join-Path $KernelRoot '_app\build.ps1'

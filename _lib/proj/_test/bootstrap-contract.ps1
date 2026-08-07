@@ -15,8 +15,8 @@ function Assert-ProjBootstrapContractTest {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$BootstrapRoot = Join-Path $RepoRoot '_lib\proj\_bootstrap'
-. (Join-Path $BootstrapRoot '_lib\layout.ps1')
+$ProjRoot = Join-Path $RepoRoot '_lib\proj'
+. (Join-Path $ProjRoot '_toolchain\bootstrap-layout.ps1')
 
 $Layout = Get-ProjBootstrapLayout
 $Contract = Read-ProjBootstrapContract
@@ -55,6 +55,14 @@ Assert-ProjBootstrapContractTest `
         [IO.Path]::GetFullPath($Layout.LauncherBuildPath).Equals(
             (Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1'),
             [StringComparison]::OrdinalIgnoreCase
+        ) -and
+        [IO.Path]::GetFullPath($Layout.ContractPath).Equals(
+            (Join-Path $RepoRoot '_lib\proj\bootstrap.json'),
+            [StringComparison]::OrdinalIgnoreCase
+        ) -and
+        [IO.Path]::GetFullPath($Layout.BootstrapEntryPath).Equals(
+            (Join-Path $RepoRoot '_lib\proj\bootstrap.ps1'),
+            [StringComparison]::OrdinalIgnoreCase
         )
     ) `
     -Message 'the Bootstrap generated state escaped the shared Proj cache'
@@ -68,6 +76,38 @@ Assert-ProjBootstrapContractTest `
         -not $AppBuild.Contains('[IO.File]::Replace')
     ) `
     -Message 'the App build primitive still owns runtime publication'
+
+$LauncherBuild = [IO.File]::ReadAllText($Layout.LauncherBuildPath)
+Assert-ProjBootstrapContractTest `
+    -Condition (
+        -not $LauncherBuild.Contains('_toolchain') -and
+        -not $LauncherBuild.Contains('bootstrap.ps1') -and
+        -not $LauncherBuild.Contains('launcher-runtime.ps1')
+    ) `
+    -Message 'the Launcher build primitive still owns orchestration'
+
+$BootstrapEntry = [IO.File]::ReadAllText($Layout.BootstrapEntryPath)
+Assert-ProjBootstrapContractTest `
+    -Condition (-not $BootstrapEntry.Contains('LauncherBuild')) `
+    -Message 'the cold Bootstrap entry still builds the Launcher'
+
+$BootstrapToolchain = [IO.File]::ReadAllText(
+    (Join-Path $ProjRoot '_toolchain\bootstrap.ps1')
+)
+Assert-ProjBootstrapContractTest `
+    -Condition (
+        -not $BootstrapToolchain.Contains('.dev\setup') -and
+        -not $BootstrapToolchain.Contains(
+            'Set-ProjBootstrapToolchainDeclarations'
+        )
+    ) `
+    -Message 'the Bootstrap toolchain still depends on development setup'
+
+Assert-ProjBootstrapContractTest `
+    -Condition (-not [IO.Directory]::Exists((Join-Path $RepoRoot (
+        '.swaw\proj\build\app\bootstrap'
+    )))) `
+    -Message 'the internal Bootstrap build is still exposed as an Action'
 
 Write-Host '[PASS] Proj Bootstrap contract' -ForegroundColor Green
 $global:LASTEXITCODE = 0

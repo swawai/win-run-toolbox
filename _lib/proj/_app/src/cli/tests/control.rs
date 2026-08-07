@@ -25,7 +25,11 @@ fn control_web_command_launches_the_entry_before_profile_gating() {
 
     assert_eq!(exit_code, 0);
     assert!(launched);
-    assert!(read_entry_record(&fixture.data_root()).valid_record().is_none());
+    assert!(
+        read_entry_record(&fixture.data_root())
+            .valid_record()
+            .is_none()
+    );
     assert!(!fixture.data_root().join("_profile.json").exists());
 }
 
@@ -37,13 +41,9 @@ fn host_process_uses_the_shared_core_with_a_clean_launch_envelope() {
         .swawkit_home
         .join("_lib/proj/_bin/swawkit-proj.exe");
     let inherited_names = [
-        "SWAWKIT_PROJ_ARGV_PROTOCOL",
-        "SWAWKIT_PROJ_ARGV_COUNT",
-        "SWAWKIT_PROJ_ARGV_47",
         "SWAWKIT_PROJ_INTERNAL_PS_ARG_8",
         "SWAWKIT_PROJ_INTERNAL_PS_ARGC",
         "SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH",
-        "swawkit_proj_argv_48",
         "SWAWKIT_PROJ_BUN_VERSION",
     ]
     .map(OsString::from);
@@ -64,13 +64,9 @@ fn host_process_uses_the_shared_core_with_a_clean_launch_envelope() {
         "SWAWKIT_HOME",
         "SWAWKIT_PROJ_DATA_ROOT",
         "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
-        "SWAWKIT_PROJ_ARGV_PROTOCOL",
-        "SWAWKIT_PROJ_ARGV_COUNT",
-        "SWAWKIT_PROJ_ARGV_47",
         "SWAWKIT_PROJ_INTERNAL_PS_ARG_8",
         "SWAWKIT_PROJ_INTERNAL_PS_ARGC",
         "SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH",
-        "swawkit_proj_argv_48",
     ] {
         assert_eq!(environment.get(std::ffi::OsStr::new(name)), Some(&None));
     }
@@ -89,10 +85,7 @@ fn host_process_uses_the_shared_core_with_a_clean_launch_envelope() {
 fn entry_env_variables_are_independent_catalog_commands() {
     let fixture = Fixture::new();
     for (group, name) in EntryProfileRecord::environment_variable_commands() {
-        fixture.core_command(
-            &format!("..entry.env.{group}.{name}"),
-            "entry.profile.set",
-        );
+        fixture.core_command(&format!("..entry.env.{group}.{name}"), "entry.profile.set");
     }
 
     let snapshot = CatalogSnapshot::discover(&fixture.context, None).unwrap();
@@ -125,13 +118,7 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
         "entry.profile.set",
     );
     fixture.core_command("..entry.apply", "entry.profile.apply");
-    fs::create_dir_all(
-        fixture
-            .context
-            .kernel_root()
-            .join("..entry/env/_help"),
-    )
-    .unwrap();
+    fs::create_dir_all(fixture.context.kernel_root().join("..entry/env/_help")).unwrap();
     fs::write(
         fixture
             .context
@@ -179,10 +166,7 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
     assert_eq!(
         run_with_approver(
             &fixture.context,
-            &argv(&[
-                "..entry.env.git.SWAWKIT_PROJ_GIT_ID_NAME",
-                "Fixture User",
-            ]),
+            &argv(&["..entry.env.git.SWAWKIT_PROJ_GIT_ID_NAME", "Fixture User",]),
             None,
             None,
             &mut unexpected_claim,

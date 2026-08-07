@@ -2,9 +2,7 @@ Set-StrictMode -Version 2.0
 
 $SetupRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 foreach ($RelativePath in @(
-    '_lib\foundation.ps1',
-    '_lib\state.ps1',
-    '_lib\activation.ps1',
+    '_lib\runtime.ps1',
     '_modules\msvc\module.ps1',
     '_modules\msvc\environment.ps1',
     '_modules\msvc\command.ps1'

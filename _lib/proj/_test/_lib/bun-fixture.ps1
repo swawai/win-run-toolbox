@@ -1,12 +1,34 @@
 Set-StrictMode -Version 2.0
 
 $script:ProjBunFixtureRoot = $PSScriptRoot
+. (Join-Path $PSScriptRoot 'argument-payload.ps1')
 
 function Enter-ProjBunIsolatedEnvironment {
     param([Parameter(Mandatory = $true)][string[]]$ProjectVariableNames)
 
-    $ProjectValues = @{}
+    $ProcessEnvironment = [Environment]::GetEnvironmentVariables(
+        [EnvironmentVariableTarget]::Process
+    )
+    $OwnedProjectNames = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase
+    )
     foreach ($Name in $ProjectVariableNames) {
+        [void]$OwnedProjectNames.Add($Name)
+    }
+    foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
+        if ($Name.StartsWith(
+            'SWAWKIT_PROJ_',
+            [StringComparison]::OrdinalIgnoreCase
+        ) -and -not $Name.StartsWith(
+            'SWAWKIT_PROJ_DEV_',
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+            [void]$OwnedProjectNames.Add($Name)
+        }
+    }
+
+    $ProjectValues = @{}
+    foreach ($Name in $OwnedProjectNames) {
         $ProjectValues[$Name] = [Environment]::GetEnvironmentVariable(
             $Name,
             [EnvironmentVariableTarget]::Process
@@ -15,9 +37,6 @@ function Enter-ProjBunIsolatedEnvironment {
     }
 
     $DevelopmentValues = @{}
-    $ProcessEnvironment = [Environment]::GetEnvironmentVariables(
-        [EnvironmentVariableTarget]::Process
-    )
     foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
         if ($Name.StartsWith(
             'SWAWKIT_PROJ_DEV_',
@@ -194,7 +213,7 @@ function Invoke-ProjBunEntryFixture {
     )
 
     $Payload = ConvertTo-ProjArgumentPayload -Arguments $Arguments
-    $Runner = Join-Path $ProjRoot '_core\powershell-runner.ps1'
+    $Runner = Join-Path $script:ProjBunFixtureRoot 'powershell-runner.ps1'
     $PreviousErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
@@ -215,39 +234,6 @@ function Invoke-ProjBunEntryFixture {
     }
 }
 
-function Invoke-ProjBunMainFixture {
-    param(
-        [Parameter(Mandatory = $true)][string]$PowerShell,
-        [Parameter(Mandatory = $true)][string]$KernelRoot,
-        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyCollection()]
-        [AllowEmptyString()]
-        [string[]]$Arguments
-    )
-
-    $Payload = ConvertTo-ProjArgumentPayload -Arguments $Arguments
-    $Runner = Join-Path $script:ProjBunFixtureRoot 'bun-main-runner.ps1'
-    $PreviousErrorActionPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $Output = @(& $PowerShell `
-            -NoLogo `
-            -NoProfile `
-            -ExecutionPolicy Bypass `
-            -File $Runner `
-            -KernelRoot $KernelRoot `
-            -WorkingDirectory $WorkingDirectory `
-            -ArgumentPayload $Payload 2>&1)
-        $ExitCode = [int]$LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $PreviousErrorActionPreference
-    }
-    return [pscustomobject][ordered]@{
-        ExitCode = $ExitCode
-        Output = [string]::Join("`n", [string[]]$Output)
-    }
-}
 
 function Assert-ProjBunEnvironmentScriptsUsable {
     param(

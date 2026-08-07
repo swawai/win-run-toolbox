@@ -6,7 +6,6 @@ Set-StrictMode -Version 2.0
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $ProjRoot '.dev\setup\_lib\bootstrap.ps1')
-. (Join-Path $ProjRoot '_core\engine.ps1')
 . (Join-Path $PSScriptRoot '_lib\bun-fixture.ps1')
 
 $EnvironmentNames = @(
@@ -18,6 +17,10 @@ $EnvironmentNames = @(
     'SWAWKIT_PROJ_ENTRY_COMMAND',
     'SWAWKIT_PROJ_ENTRY_FILE',
     'SWAWKIT_PROJ_INVOCATION_DIR',
+    'SWAWKIT_PROJ_COMMAND_PROTOCOL',
+    'SWAWKIT_PROJ_COMMAND_PHASE',
+    'SWAWKIT_PROJ_COMMAND_ADDRESS',
+    'SWAWKIT_PROJ_COMMAND_DIR',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256',
@@ -51,19 +54,9 @@ try {
     foreach ($Directory in @($ProjectRoot, $InvocationRoot, $ActionRoot)) {
         [void][IO.Directory]::CreateDirectory($Directory)
     }
+    [void][IO.Directory]::CreateDirectory($ConsumerDataRoot)
     $EntryFile = Join-Path $ProjectRoot "$EntryName.cmd"
     [IO.File]::WriteAllText($EntryFile, '@echo off')
-
-    [Environment]::SetEnvironmentVariable(
-        'SWAWKIT_PROJ_DATA_ROOT',
-        $null,
-        [EnvironmentVariableTarget]::Process
-    )
-    [void](Resolve-ProjProjectDataRoot `
-        -ProjHome $ControlHome `
-        -ProjectRoot $ProjectRoot `
-        -ActionRoot $ActionRoot `
-        -EntryFile $EntryFile)
     $ConsumerContext = New-ProjDevContext `
         -ProjectRoot $ProjectRoot `
         -DataRoot $ConsumerDataRoot `
@@ -150,14 +143,18 @@ try {
         SWAWKIT_PROJ_ENTRY_COMMAND = $ConsumerContext.EntryCommand
         SWAWKIT_PROJ_ENTRY_FILE = $EntryFile
         SWAWKIT_PROJ_INVOCATION_DIR = $ConsumerContext.InvocationDirectory
+        SWAWKIT_PROJ_COMMAND_PROTOCOL = '1'
+        SWAWKIT_PROJ_COMMAND_PHASE = 'run'
+        SWAWKIT_PROJ_COMMAND_ADDRESS = '.bun'
+        SWAWKIT_PROJ_COMMAND_DIR = (Join-Path $ProjRoot '.bun')
         SWAWKIT_PROJ_BUN_MODE = 'managed'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }
-    $MissingResult = Invoke-ProjBunMainFixture `
+    $BunEntry = Join-Path $ProjRoot '.bun\run.ps1'
+    $MissingResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
-        -KernelRoot $ProjRoot `
-        -WorkingDirectory $InvocationRoot `
-        -Arguments @('.bun', '--version')
+        -EntryPath $BunEntry `
+        -Arguments @('--version')
     Assert-ProjBunTest `
         -Condition ($MissingResult.ExitCode -eq 1 -and
             -not [IO.Directory]::Exists(
@@ -166,11 +163,10 @@ try {
         -Message '.bun implicitly created development state before setup'
 
     $env:SWAWKIT_PROJ_BUN_MODE = 'disabled'
-    $DisabledResult = Invoke-ProjBunMainFixture `
+    $DisabledResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
-        -KernelRoot $ProjRoot `
-        -WorkingDirectory $InvocationRoot `
-        -Arguments @('.bun', '--version')
+        -EntryPath $BunEntry `
+        -Arguments @('--version')
     Assert-ProjBunTest `
         -Condition ($DisabledResult.ExitCode -eq 1 -and
             -not [IO.Directory]::Exists(
@@ -199,11 +195,10 @@ try {
         -Definition $Definition `
         -InstallRoot $InstallRoot
 
-    $MissingEnvironmentResult = Invoke-ProjBunMainFixture `
+    $MissingEnvironmentResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
-        -KernelRoot $ProjRoot `
-        -WorkingDirectory $InvocationRoot `
-        -Arguments @('.bun', '--version')
+        -EntryPath $BunEntry `
+        -Arguments @('--version')
     Assert-ProjBunTest `
         -Condition ($MissingEnvironmentResult.ExitCode -eq 1 -and
             -not [IO.File]::Exists($ConsumerContext.EnvCmdPath) -and
@@ -226,23 +221,25 @@ try {
     $env:SWAWKIT_PROJ_PWSH_MODE = 'managed'
     $env:SWAWKIT_PROJ_PWSH_VERSION = '7.6.4'
     $env:SWAWKIT_PROJ_PWSH_SHA256 = ''
-    $UnrelatedDeclarationExitCode = Invoke-ProjMain `
-        -KernelRoot $ProjRoot `
-        -Arguments @('.bun', 'unrelated-declaration-probe')
+    $UnrelatedDeclaration = Invoke-ProjBunEntryFixture `
+        -PowerShell $SystemPowerShell `
+        -EntryPath $BunEntry `
+        -Arguments @('unrelated-declaration-probe')
     Assert-ProjBunTest `
-        -Condition ($UnrelatedDeclarationExitCode -eq 0) `
+        -Condition ($UnrelatedDeclaration.ExitCode -eq 0) `
         -Message 'an unrelated PowerShell declaration change blocked Bun'
 
     $CapturePath = Join-Path $TemporaryRoot 'bun-capture.txt'
     $env:SWAWKIT_PROJ_TEST_BUN_CAPTURE = $CapturePath
     Push-Location $InvocationRoot
     try {
-        $BunHelpExitCode = Invoke-ProjMain `
-            -KernelRoot $ProjRoot `
-            -Arguments @('.bun', '--help')
+        $BunHelp = Invoke-ProjBunEntryFixture `
+            -PowerShell $SystemPowerShell `
+            -EntryPath $BunEntry `
+            -Arguments @('--help')
         $BunHelpCapture = [IO.File]::ReadAllLines($CapturePath)
         Assert-ProjBunTest `
-            -Condition ($BunHelpExitCode -eq 0 -and
+            -Condition ($BunHelp.ExitCode -eq 0 -and
                 $BunHelpCapture.Count -eq 5 -and
                 $BunHelpCapture[4] -ceq '--help' -and
                 $BunHelpCapture[2] -ceq '.bun' -and
@@ -261,12 +258,13 @@ try {
             '%PATH%',
             'exit:23'
         )
-        $InvokeExitCode = Invoke-ProjMain `
-            -KernelRoot $ProjRoot `
-            -Arguments ([string[]]@('.bun') + $ExpectedArguments)
+        $Invocation = Invoke-ProjBunEntryFixture `
+            -PowerShell $SystemPowerShell `
+            -EntryPath $BunEntry `
+            -Arguments $ExpectedArguments
         $Captured = [IO.File]::ReadAllLines($CapturePath)
         Assert-ProjBunTest `
-            -Condition ($InvokeExitCode -eq 23 -and
+            -Condition ($Invocation.ExitCode -eq 23 -and
                 [string]::Join(
                     "`n",
                     $Captured[4..($Captured.Count - 1)]
@@ -279,37 +277,16 @@ try {
             ) `
             -Message '.bun lost the public invocation directory'
 
-        $SeparatorExitCode = Invoke-ProjMain `
-            -KernelRoot $ProjRoot `
-            -Arguments @('.bun', '--', '--help')
+        $Separator = Invoke-ProjBunEntryFixture `
+            -PowerShell $SystemPowerShell `
+            -EntryPath $BunEntry `
+            -Arguments @('--', '--help')
         $SeparatorCapture = [IO.File]::ReadAllLines($CapturePath)
         Assert-ProjBunTest `
-            -Condition ($SeparatorExitCode -eq 0 -and
+            -Condition ($Separator.ExitCode -eq 0 -and
                 $SeparatorCapture[4] -ceq '--' -and
                 $SeparatorCapture[5] -ceq '--help') `
             -Message '.bun changed the explicit option separator'
-
-        $DemoDirectory = Join-Path $ActionRoot 'demo'
-        [void][IO.Directory]::CreateDirectory($DemoDirectory)
-        $DemoEntry = Join-Path $DemoDirectory 'run.ts'
-        [IO.File]::WriteAllText($DemoEntry, '')
-        $RunTsExitCode = Invoke-ProjMain `
-            -KernelRoot $ProjRoot `
-            -Arguments @('demo', 'alpha')
-        $RunTsCapture = [IO.File]::ReadAllLines($CapturePath)
-        Assert-ProjBunTest `
-            -Condition ($RunTsExitCode -eq 0 -and
-                (Get-ProjDevCanonicalPath -Path $RunTsCapture[0]) -ceq
-                (Get-ProjDevCanonicalPath -Path $ProjectRoot) -and
-                (Get-ProjDevCanonicalPath -Path $RunTsCapture[1]) -ceq
-                (Get-ProjDevCanonicalPath -Path $InvocationRoot) -and
-                (Get-ProjDevCanonicalPath -Path $RunTsCapture[4]) -ceq
-                (Get-ProjDevCanonicalPath -Path $DemoEntry) -and
-                $RunTsCapture[5] -ceq 'alpha' -and
-                $RunTsCapture[2] -ceq 'demo' -and
-                (Get-ProjDevCanonicalPath -Path $RunTsCapture[3]) -ceq
-                (Get-ProjDevCanonicalPath -Path $DemoDirectory)) `
-            -Message 'run.ts did not use the managed .bun runtime bridge'
     } finally {
         Pop-Location
     }

@@ -6,7 +6,6 @@ Set-StrictMode -Version 2.0
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $ProjRoot '.dev\setup\_lib\bootstrap.ps1')
-. (Join-Path $ProjRoot '_core\engine.ps1')
 . (Join-Path $PSScriptRoot '_lib\bun-fixture.ps1')
 
 $EnvironmentNames = @(
@@ -42,8 +41,7 @@ $TemporaryRoot = Join-Path $TestTemporaryBase (
     "swawkit-proj-bun-$([Guid]::NewGuid().ToString('N'))"
 )
 $ControlHome = [IO.Path]::GetFullPath((Join-Path $ProjRoot '..\..'))
-$HelpEntryName = "test-bun-help-$([Guid]::NewGuid().ToString('N'))"
-$HelpDataRoot = Join-Path $ControlHome "data\proj.$HelpEntryName"
+$SetupEntryName = "test-bun-setup-$([Guid]::NewGuid().ToString('N'))"
 $SystemPowerShell = Join-Path $env:SystemRoot (
     'System32\WindowsPowerShell\v1.0\powershell.exe'
 )
@@ -297,7 +295,7 @@ try {
 
     $ActionRoot = Join-Path $ProjectRoot '.swaw'
     [void][IO.Directory]::CreateDirectory($ActionRoot)
-    $EntryFile = Join-Path $ProjectRoot "$HelpEntryName.cmd"
+    $EntryFile = Join-Path $ProjectRoot "$SetupEntryName.cmd"
     [IO.File]::WriteAllText($EntryFile, '@echo off')
     Set-ProjBunProcessEnvironment -Values @{
         SWAWKIT_PROJ_PROTOCOL = '1'
@@ -311,17 +309,6 @@ try {
         SWAWKIT_PROJ_BUN_MODE = 'disabled'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }
-    $HelpExitCode = Invoke-ProjMain `
-        -KernelRoot $ProjRoot `
-        -Arguments @('.dev.setup', '--help')
-    Assert-ProjBunTest `
-        -Condition ($HelpExitCode -eq 0 -and
-            [IO.File]::Exists((Join-Path $HelpDataRoot '_entry.json')) -and
-            -not [IO.Directory]::Exists(
-                (Join-Path $HelpDataRoot 'dev_env')
-            )) `
-        -Message '.dev.setup --help created development state'
-
     $SetupDataRoot = Join-Path $TemporaryRoot 'setup entry data'
     $env:SWAWKIT_PROJ_DATA_ROOT = $SetupDataRoot
     $SetupEntry = Join-Path $ProjRoot '.dev\setup\run.ps1'
@@ -396,11 +383,6 @@ try {
     Write-Host '[PASS] Proj Bun installation test' -ForegroundColor Green
 } finally {
     Exit-ProjBunIsolatedEnvironment -Snapshot $EnvironmentSnapshot
-    if ([IO.Directory]::Exists($HelpDataRoot) -and
-        [IO.Path]::GetFileName($HelpDataRoot) -ceq
-            "proj.$HelpEntryName") {
-        Remove-Item -LiteralPath $HelpDataRoot -Recurse -Force
-    }
     $ResolvedTemporaryRoot = [IO.Path]::GetFullPath($TemporaryRoot)
     $SystemTemporaryRoot = [IO.Path]::GetFullPath(
         $TestTemporaryBase

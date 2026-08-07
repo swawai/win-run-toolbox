@@ -7,10 +7,6 @@ use std::path::PathBuf;
 pub const ENTRY_FILE_ENV: &str = "SWAWKIT_PROJ_ENTRY_FILE";
 pub const LAUNCH_MODE_ENV: &str = "SWAWKIT_PROJ_LAUNCH_MODE";
 
-const ARGV_PROTOCOL_ENV: &str = "SWAWKIT_PROJ_ARGV_PROTOCOL";
-const ARGV_COUNT_ENV: &str = "SWAWKIT_PROJ_ARGV_COUNT";
-const ARGV_ITEM_PREFIX: &str = "SWAWKIT_PROJ_ARGV_";
-
 /// Selects the composition root without consuming a user argument.
 ///
 /// A native launcher passes user arguments directly and selects `cli` or
@@ -62,7 +58,7 @@ impl LaunchRequest {
     ) -> Result<Self, LaunchError> {
         let mode = read_mode(&mut lookup)?;
         let entry_file = read_entry_file(&mut lookup)?;
-        let argv = read_argv(direct_argv, &mut lookup)?;
+        let argv = direct_argv.into_iter().collect();
 
         Ok(Self {
             mode,
@@ -115,57 +111,6 @@ fn read_entry_file(
     Ok(path)
 }
 
-fn read_argv(
-    direct_argv: impl IntoIterator<Item = OsString>,
-    lookup: &mut impl FnMut(&str) -> Option<OsString>,
-) -> Result<Vec<OsString>, LaunchError> {
-    let Some(protocol) = lookup(ARGV_PROTOCOL_ENV) else {
-        return Ok(direct_argv.into_iter().collect());
-    };
-    if protocol != OsStr::new("1") {
-        return Err(LaunchError::new(format!(
-            "unsupported {ARGV_PROTOCOL_ENV} value '{}'",
-            protocol.to_string_lossy()
-        )));
-    }
-
-    let count_value = lookup(ARGV_COUNT_ENV).ok_or_else(|| {
-        LaunchError::new(format!(
-            "invalid project argv relay count: {ARGV_COUNT_ENV} is missing"
-        ))
-    })?;
-    let count = parse_argv_count(&count_value)?;
-    let mut argv = Vec::with_capacity(count);
-    for index in 1..=count {
-        let name = format!("{ARGV_ITEM_PREFIX}{index}");
-        // CMD represents an explicit empty argument by removing the variable.
-        // The declared count therefore makes a missing slot an empty OsString.
-        argv.push(lookup(&name).unwrap_or_default());
-    }
-    Ok(argv)
-}
-
-fn parse_argv_count(value: &OsStr) -> Result<usize, LaunchError> {
-    let text = value.to_str().ok_or_else(|| invalid_argv_count(value))?;
-    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(invalid_argv_count(value));
-    }
-
-    // Match the legacy PowerShell protocol, whose count is a non-negative Int32.
-    text.parse::<i32>()
-        .ok()
-        .filter(|count| *count >= 0)
-        .map(|count| count as usize)
-        .ok_or_else(|| invalid_argv_count(value))
-}
-
-fn invalid_argv_count(value: &OsStr) -> LaunchError {
-    LaunchError::new(format!(
-        "invalid project argv relay count '{}'",
-        value.to_string_lossy()
-    ))
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchError {
     message: String,
@@ -207,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn native_launcher_arguments_are_preserved_without_a_relay_envelope() {
+    fn native_launcher_arguments_are_preserved() {
         let result = request(
             &[".demo", "", "a&b|c", "带 空格"],
             &[(ENTRY_FILE_ENV, r"C:\swaw\Favorites\项目.exe")],
@@ -220,43 +165,6 @@ mod tests {
             [".demo", "", "a&b|c", "带 空格"].map(OsString::from)
         );
         assert_eq!(result.invocation_dir, PathBuf::from(r"C:\work\project"));
-    }
-
-    #[test]
-    fn legacy_envelope_takes_precedence_and_preserves_empty_arguments() {
-        let result = request(
-            &["this direct argument must be ignored"],
-            &[
-                (ENTRY_FILE_ENV, r"C:\swaw\swawkit.cmd"),
-                (ARGV_PROTOCOL_ENV, "1"),
-                (ARGV_COUNT_ENV, "4"),
-                ("SWAWKIT_PROJ_ARGV_1", ".demo"),
-                // Slot 2 is absent because CMD cannot retain an empty value.
-                ("SWAWKIT_PROJ_ARGV_3", "%PATH%"),
-                ("SWAWKIT_PROJ_ARGV_4", "你好 & goodbye"),
-            ],
-        )
-        .unwrap();
-
-        assert_eq!(
-            result.argv,
-            [".demo", "", "%PATH%", "你好 & goodbye"].map(OsString::from)
-        );
-    }
-
-    #[test]
-    fn zero_count_envelope_yields_no_arguments() {
-        let result = request(
-            &["ignored"],
-            &[
-                (ENTRY_FILE_ENV, r"C:\swaw\swawkit.cmd"),
-                (ARGV_PROTOCOL_ENV, "1"),
-                (ARGV_COUNT_ENV, "0"),
-            ],
-        )
-        .unwrap();
-
-        assert!(result.argv.is_empty());
     }
 
     #[test]
@@ -316,37 +224,5 @@ mod tests {
 
         let relative = request(&[], &[(ENTRY_FILE_ENV, "project.exe")]).unwrap_err();
         assert!(relative.to_string().contains("must be absolute"));
-    }
-
-    #[test]
-    fn invalid_legacy_protocol_and_count_fail_closed() {
-        let protocol = request(
-            &[],
-            &[
-                (ENTRY_FILE_ENV, r"C:\swaw\swawkit.cmd"),
-                (ARGV_PROTOCOL_ENV, "2"),
-                (ARGV_COUNT_ENV, "0"),
-            ],
-        )
-        .unwrap_err();
-        assert!(protocol.to_string().contains(ARGV_PROTOCOL_ENV));
-
-        for invalid_count in ["", "-1", "+1", " 1", "2147483648"] {
-            let error = request(
-                &[],
-                &[
-                    (ENTRY_FILE_ENV, r"C:\swaw\swawkit.cmd"),
-                    (ARGV_PROTOCOL_ENV, "1"),
-                    (ARGV_COUNT_ENV, invalid_count),
-                ],
-            )
-            .unwrap_err();
-            assert!(
-                error
-                    .to_string()
-                    .contains("invalid project argv relay count"),
-                "unexpected error for {invalid_count:?}: {error}"
-            );
-        }
     }
 }

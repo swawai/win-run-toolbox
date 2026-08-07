@@ -37,12 +37,23 @@ Assert-ProjBootstrapContractTest `
             (Join-Path $RepoRoot 'data\proj_cache\bootstrap\build\app'),
             [StringComparison]::OrdinalIgnoreCase
         ) -and
+        [IO.Path]::GetFullPath($Layout.LauncherBuildRoot).Equals(
+            (Join-Path $RepoRoot 'data\proj_cache\bootstrap\build\launcher'),
+            [StringComparison]::OrdinalIgnoreCase
+        ) -and
+        [IO.Path]::GetFullPath($Layout.LauncherCandidatePath).Equals(
+            (Join-Path $RepoRoot (
+                'data\proj_cache\bootstrap\build\launcher\release\' +
+                'template.proj1.exe'
+            )),
+            [StringComparison]::OrdinalIgnoreCase
+        ) -and
         [IO.Path]::GetFullPath($Layout.LauncherTemplatePath).Equals(
             (Join-Path $RepoRoot 'Favorites\template.proj1.exe'),
             [StringComparison]::OrdinalIgnoreCase
         ) -and
-        [IO.Path]::GetFullPath($Layout.RootEntryPath).Equals(
-            (Join-Path $RepoRoot 'swawkit.exe'),
+        [IO.Path]::GetFullPath($Layout.LauncherBuildPath).Equals(
+            (Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1'),
             [StringComparison]::OrdinalIgnoreCase
         )
     ) `

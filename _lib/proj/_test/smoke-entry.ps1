@@ -37,7 +37,9 @@ function Invoke-ProjEntrySmoke {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$SourceEntry = Join-Path $RepoRoot 'Favorites\template.proj1.exe'
+$BootstrapRoot = Join-Path $RepoRoot '_lib\proj\_bootstrap'
+. (Join-Path $BootstrapRoot '_lib\layout.ps1')
+$SourceEntry = (Get-ProjBootstrapLayout).LauncherCandidatePath
 $EntryName = "test-native-entry-$([Guid]::NewGuid().ToString('N'))"
 $EntryPath = Join-Path $RepoRoot "$EntryName.exe"
 $DataRoot = Join-Path $RepoRoot "data\proj.$EntryName"
@@ -50,16 +52,15 @@ $PoisonedEnvironment = [ordered]@{
     SWAWKIT_PROJ_ENTRY_COMMAND = 'foreign-entry'
     SWAWKIT_PROJ_ENTRY_FILE = 'C:\foreign-entry.cmd'
     SWAWKIT_PROJ_LAUNCH_MODE = 'internal-host'
-    SWAWKIT_PROJ_ARGV_PROTOCOL = '2'
-    SWAWKIT_PROJ_ARGV_COUNT = '99'
-    SWAWKIT_PROJ_ARGV_47 = 'foreign-argument'
     SWAWKIT_PROJ_INTERNAL_PS_ARGC = '99'
     SWAWKIT_PROJ_INTERNAL_PS_ARG_47 = 'foreign-argument'
     SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH = 'C:\foreign-run.cmd'
 }
 $SavedEnvironment = @{}
 
-& (Join-Path $RepoRoot '_lib\proj\_bootstrap\launcher.ps1')
+if (-not [IO.File]::Exists($SourceEntry)) {
+    & (Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1')
+}
 [IO.File]::Copy($SourceEntry, $EntryPath, $false)
 try {
     foreach ($Name in $PoisonedEnvironment.Keys) {
@@ -112,6 +113,16 @@ try {
             $Help.Text.Contains("$EntryName ..entry")
         ) `
         -Message "root help did not expose Control Plane: $($Help.Text)"
+
+    $DotHelp = Invoke-ProjEntrySmoke `
+        -EntryPath $EntryPath `
+        -Arguments @('.help')
+    Assert-ProjEntrySmoke `
+        -Condition (
+            $DotHelp.ExitCode -eq 0 -and
+            $DotHelp.Text.Contains('Control Plane:')
+        ) `
+        -Message ".help leaked into its fail-closed adapter: $($DotHelp.Text)"
 
     $LegacyWeb = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `

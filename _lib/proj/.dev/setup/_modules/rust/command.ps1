@@ -84,7 +84,7 @@ function Invoke-ProjDevRustCommand {
     }
     $Command = Resolve-ProjDevRustCommand `
         -ExecutableName $ExecutableName
-    return Invoke-ProjConsoleProcess `
+    return Invoke-ProjDevConsoleProcess `
         -Executable ([string]$Command.Executable) `
         -Arguments $Arguments `
         -WorkingDirectory ([string]$Command.Context.InvocationDirectory)

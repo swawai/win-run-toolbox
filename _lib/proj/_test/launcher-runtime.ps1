@@ -52,9 +52,12 @@ function Invoke-ProjLauncherRuntimeProcess {
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 if ([string]::IsNullOrWhiteSpace($LauncherPath)) {
-    & (Join-Path $RepoRoot '_lib\proj\_bootstrap\launcher.ps1')
-    & (Join-Path $RepoRoot '_lib\proj\_bootstrap\run.ps1')
-    $LauncherPath = Join-Path $RepoRoot 'Favorites\template.proj1.exe'
+    $BootstrapRoot = Join-Path $RepoRoot '_lib\proj\_bootstrap'
+    . (Join-Path $BootstrapRoot '_lib\layout.ps1')
+    $LauncherPath = (Get-ProjBootstrapLayout).LauncherCandidatePath
+    if (-not [IO.File]::Exists($LauncherPath)) {
+        & (Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1')
+    }
 }
 $LauncherPath = [IO.Path]::GetFullPath($LauncherPath)
 $CorePath = Join-Path $RepoRoot '_lib\proj\_bin\swawkit-proj.exe'
@@ -98,8 +101,6 @@ $PoisonedVariables = @(
     'SWAWKIT_PROJ_DATA_ROOT',
     'SWAWKIT_PROJ_ENTRY_COMMAND',
     'SWAWKIT_PROJ_LAUNCH_MODE',
-    'SWAWKIT_PROJ_ARGV_PROTOCOL',
-    'SWAWKIT_PROJ_ARGV_COUNT',
     'SWAWKIT_PROJ_TEST_LAUNCHER_CAPTURE'
 )
 $SavedEnvironment = @{}
@@ -251,7 +252,6 @@ $Payload = [ordered]@{
     dataRoot = [string]$env:SWAWKIT_PROJ_DATA_ROOT
     invocationDirectory = [string]$env:SWAWKIT_PROJ_INVOCATION_DIR
     launchMode = [string]$env:SWAWKIT_PROJ_LAUNCH_MODE
-    legacyArgvProtocol = [string]$env:SWAWKIT_PROJ_ARGV_PROTOCOL
     bunVersion = [string]$env:SWAWKIT_PROJ_BUN_VERSION
 }
 [IO.File]::WriteAllText(
@@ -271,8 +271,6 @@ exit 37
     $env:SWAWKIT_PROJ_DATA_ROOT = 'C:\foreign-data'
     $env:SWAWKIT_PROJ_ENTRY_COMMAND = 'foreign-entry'
     $env:SWAWKIT_PROJ_LAUNCH_MODE = 'internal-host'
-    $env:SWAWKIT_PROJ_ARGV_PROTOCOL = '1'
-    $env:SWAWKIT_PROJ_ARGV_COUNT = '99'
     $env:SWAWKIT_PROJ_TEST_LAUNCHER_CAPTURE = $CapturePath
 
     $Run = Invoke-ProjLauncherRuntimeProcess `
@@ -301,7 +299,6 @@ exit 37
         dataRoot = $DataRoot
         invocationDirectory = $InvocationRoot
         launchMode = 'cli'
-        legacyArgvProtocol = ''
         bunVersion = '1.2.15'
     }
     foreach ($Expectation in $Expectations.GetEnumerator()) {

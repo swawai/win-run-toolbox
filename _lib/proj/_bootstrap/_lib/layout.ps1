@@ -11,6 +11,7 @@ function Get-ProjBootstrapLayout {
     $ProjHome = [IO.Path]::GetFullPath((Join-Path $KernelRoot '..\..'))
     $CacheRoot = Join-Path $ProjHome 'data\proj_cache'
     $BootstrapDataRoot = Join-Path $CacheRoot 'bootstrap'
+    $LauncherBuildRoot = Join-Path $BootstrapDataRoot 'build\launcher'
     return [pscustomobject][ordered]@{
         BootstrapRoot = $script:ProjBootstrapRoot
         ContractPath = Join-Path $script:ProjBootstrapRoot 'bootstrap.json'
@@ -20,10 +21,13 @@ function Get-ProjBootstrapLayout {
         AppBuildPath = Join-Path $KernelRoot '_app\build.ps1'
         RuntimePath = Join-Path $KernelRoot '_bin\swawkit-proj.exe'
         LauncherBuildPath = Join-Path $KernelRoot '_launcher\build.ps1'
+        LauncherBuildRoot = $LauncherBuildRoot
+        LauncherCandidatePath = Join-Path $LauncherBuildRoot (
+            'release\template.proj1.exe'
+        )
         LauncherTemplatePath = Join-Path $ProjHome (
             'Favorites\template.proj1.exe'
         )
-        RootEntryPath = Join-Path $ProjHome 'swawkit.exe'
         CacheRoot = $CacheRoot
         BootstrapDataRoot = $BootstrapDataRoot
         ToolchainRoot = Join-Path $BootstrapDataRoot 'toolchains'

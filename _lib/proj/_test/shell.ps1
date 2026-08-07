@@ -22,6 +22,20 @@ function Invoke-ProjShellTest {
         [string[]]$InputLines
     )
 
+    $OwnedEnvironment = @{}
+    $ProcessEnvironment = [Environment]::GetEnvironmentVariables(
+        [EnvironmentVariableTarget]::Process
+    )
+    foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
+        if ($Name.StartsWith(
+            'SWAWKIT_PROJ_DEV_',
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+            $OwnedEnvironment[$Name] = [string]$ProcessEnvironment[$Name]
+            [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
+        }
+    }
+
     $PreviousErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
@@ -29,6 +43,13 @@ function Invoke-ProjShellTest {
         $ExitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $PreviousErrorActionPreference
+        foreach ($Pair in $OwnedEnvironment.GetEnumerator()) {
+            [Environment]::SetEnvironmentVariable(
+                [string]$Pair.Key,
+                [string]$Pair.Value,
+                [EnvironmentVariableTarget]::Process
+            )
+        }
     }
     return [pscustomobject]@{
         ExitCode = [int]$ExitCode
@@ -40,14 +61,18 @@ function Invoke-ProjShellTest {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$SourceEntry = Join-Path $RepoRoot 'Favorites\template.proj1.exe'
+$BootstrapRoot = Join-Path $RepoRoot '_lib\proj\_bootstrap'
+. (Join-Path $BootstrapRoot '_lib\layout.ps1')
+$SourceEntry = (Get-ProjBootstrapLayout).LauncherCandidatePath
 $EntryName = "test-shell-$([Guid]::NewGuid().ToString('N'))"
 $script:ProjShellEntry = Join-Path $RepoRoot "$EntryName.exe"
 $RuntimeBin = Join-Path $RepoRoot '_lib\proj\_bin'
 $DataRoot = Join-Path $RepoRoot "data\proj.$EntryName"
 $UserPathBefore = [Environment]::GetEnvironmentVariable('PATH', 'User')
 $MachinePathBefore = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
-& (Join-Path $RepoRoot '_lib\proj\_bootstrap\launcher.ps1')
+if (-not [IO.File]::Exists($SourceEntry)) {
+    & (Join-Path $RepoRoot '_lib\proj\_launcher\build.ps1')
+}
 [IO.File]::Copy($SourceEntry, $script:ProjShellEntry, $false)
 
 try {

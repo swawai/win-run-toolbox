@@ -95,3 +95,64 @@ function Import-ProjDevGeneratedEnvironment {
         EnvironmentRoot = [string]$env:SWAWKIT_PROJ_DEV_ENV_ROOT
     }
 }
+
+function Assert-ProjDevActiveEnvironmentPublished {
+    param([Parameter(Mandatory = $true)][object]$Context)
+
+    if (-not (Assert-ProjDevActiveEnvironmentCompatible -Context $Context)) {
+        return $false
+    }
+    $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
+        -EnvironmentRoot $Context.EnvironmentRoot `
+        -EntryCommand $Context.EntryCommand
+    if ($null -eq $GenerationId) {
+        throw (
+            'A project development environment is active, but no environment ' +
+            'is published. Exit this shell and run ' +
+            "'$($Context.EntryCommand) .dev.setup'."
+        )
+    }
+    Assert-ProjDevActivatedEnvironmentIdentity `
+        -Context $Context `
+        -GenerationId $GenerationId
+    return $true
+}
+
+function Import-ProjDevOptionalGeneratedEnvironment {
+    param([Parameter(Mandatory = $true)][object]$Context)
+
+    $AlreadyActive = Assert-ProjDevActiveEnvironmentCompatible `
+        -Context $Context
+    $GenerationId = Get-ProjDevelopmentEnvironmentGeneration `
+        -EnvironmentRoot $Context.EnvironmentRoot `
+        -EntryCommand $Context.EntryCommand
+    if ($null -eq $GenerationId) {
+        if ($AlreadyActive) {
+            throw (
+                'A managed development environment is active, but this ' +
+                'project has no published environment. Exit this shell.'
+            )
+        }
+        $Enabled = @(
+            Get-ProjEnabledDevelopmentDeclarationNames `
+                -Declarations (Get-ProjDevelopmentDeclarationSnapshot)
+        )
+        if ($Enabled.Count -gt 0) {
+            throw (
+                'The project declares managed development tools, but no ' +
+                'environment has been published. Enabled: ' +
+                [string]::Join(', ', $Enabled) + '. Run ' +
+                "'$($Context.EntryCommand) .dev.setup'."
+            )
+        }
+        return $false
+    }
+    if (-not $AlreadyActive) {
+        Clear-ProjDevProcessEnvironmentVariables
+        . $Context.EnvPs1Path
+    }
+    Assert-ProjDevActivatedEnvironmentIdentity `
+        -Context $Context `
+        -GenerationId $GenerationId
+    return $true
+}

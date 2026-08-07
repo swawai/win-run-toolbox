@@ -2,7 +2,6 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
-. (Join-Path $PSScriptRoot '..\_core\engine.ps1')
 . (Join-Path $PSScriptRoot (
     '..\.dev\setup\_modules\msvc\runtime.ps1'
 ))

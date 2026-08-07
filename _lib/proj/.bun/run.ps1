@@ -2,7 +2,6 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
-. (Join-Path $PSScriptRoot '..\_core\engine.ps1')
 . (Join-Path $PSScriptRoot '_lib\runtime.ps1')
 
 $Context = New-ProjDevContextFromEnvironment
@@ -61,7 +60,7 @@ if (-not [string]::IsNullOrWhiteSpace($RuntimeWorkingDirectory)) {
     }
     $BunWorkingDirectory = $RuntimeWorkingDirectory
 }
-$ExitCode = Invoke-ProjConsoleProcess `
+$ExitCode = Invoke-ProjDevConsoleProcess `
     -Executable $BunExecutable `
     -Arguments $BunArguments `
     -WorkingDirectory $BunWorkingDirectory

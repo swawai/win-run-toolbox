@@ -57,7 +57,7 @@ function Get-ProjDevMsvcValidMetadata {
     return [pscustomobject]@{ toolVersion = $ToolVersion }
 }
 
-function Invoke-ProjConsoleProcess {
+function Invoke-ProjDevConsoleProcess {
     param(
         [Parameter(Mandatory = $true)][string]$Executable,
         [Parameter(Mandatory = $true)]

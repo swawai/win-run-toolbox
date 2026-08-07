@@ -6,7 +6,6 @@ Set-StrictMode -Version 2.0
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $ProjRoot '.dev\setup\_lib\bootstrap.ps1')
-. (Join-Path $ProjRoot '_core\engine.ps1')
 . (Join-Path $PSScriptRoot '_lib\bun-fixture.ps1')
 
 $EnvironmentNames = @(
@@ -46,12 +45,13 @@ try {
     [void][IO.Directory]::CreateDirectory($ActionRoot)
     $EntryFile = Join-Path $ProjectRoot "$EntryName.cmd"
     [IO.File]::WriteAllText($EntryFile, '@echo off')
+    [void][IO.Directory]::CreateDirectory($DataRoot)
     Set-ProjBunProcessEnvironment -Values @{
         SWAWKIT_PROJ_PROTOCOL = '1'
         SWAWKIT_HOME = $ControlHome
         SWAWKIT_PROJ_TARGET_PROJECT_ROOT = $ProjectRoot
         SWAWKIT_PROJ_ACTION_ROOT = $ActionRoot
-        SWAWKIT_PROJ_DATA_ROOT = $null
+        SWAWKIT_PROJ_DATA_ROOT = $DataRoot
         SWAWKIT_PROJ_ENTRY_COMMAND = 'swawkit'
         SWAWKIT_PROJ_ENTRY_FILE = $EntryFile
         SWAWKIT_PROJ_INVOCATION_DIR = $ProjectRoot
@@ -59,12 +59,6 @@ try {
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
         SWAWKIT_PROJ_BUN_SHA256 = ''
     }
-    [void](Resolve-ProjProjectDataRoot `
-        -ProjHome $ControlHome `
-        -ProjectRoot $ProjectRoot `
-        -ActionRoot $ActionRoot `
-        -EntryFile $EntryFile)
-
     $Context = New-ProjDevContextFromEnvironment
     Assert-ProjBunTest `
         -Condition ($Context.CacheDataRoot.Equals(
@@ -91,11 +85,10 @@ try {
         -Definition $Definition `
         -InstallRoot $InstallRoot
 
-    $StatusResult = Invoke-ProjBunMainFixture `
+    $StatusResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
-        -KernelRoot $ProjRoot `
-        -WorkingDirectory $ProjectRoot `
-        -Arguments @('.dev.status')
+        -EntryPath (Join-Path $ProjRoot '.dev\status\run.ps1') `
+        -Arguments @()
     Assert-ProjBunTest `
         -Condition (
             $StatusResult.ExitCode -eq 0 -and
@@ -105,11 +98,10 @@ try {
         ) `
         -Message ".dev.status did not report upstream trust: $($StatusResult.Output)"
 
-    $SetupResult = Invoke-ProjBunMainFixture `
+    $SetupResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
-        -KernelRoot $ProjRoot `
-        -WorkingDirectory $ProjectRoot `
-        -Arguments @('.dev.setup')
+        -EntryPath (Join-Path $ProjRoot '.dev\setup\run.ps1') `
+        -Arguments @()
     Assert-ProjBunTest `
         -Condition (
             $SetupResult.ExitCode -eq 0 -and
@@ -122,19 +114,13 @@ try {
 
     $PinnedEntryFile = Join-Path $ProjectRoot "$PinnedEntryName.cmd"
     [IO.File]::WriteAllText($PinnedEntryFile, '@echo off')
-    $env:SWAWKIT_PROJ_DATA_ROOT = $null
-    $PinnedDataRoot = Resolve-ProjProjectDataRoot `
-        -ProjHome $ControlHome `
-        -ProjectRoot $ProjectRoot `
-        -ActionRoot $ActionRoot `
-        -EntryFile $PinnedEntryFile
+    $env:SWAWKIT_PROJ_DATA_ROOT = $PinnedDataRoot
     $env:SWAWKIT_PROJ_ENTRY_FILE = $PinnedEntryFile
     $env:SWAWKIT_PROJ_BUN_SHA256 = 'e' * 64
-    $PinnedStatus = Invoke-ProjBunMainFixture `
+    $PinnedStatus = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
-        -KernelRoot $ProjRoot `
-        -WorkingDirectory $ProjectRoot `
-        -Arguments @('.dev.status')
+        -EntryPath (Join-Path $ProjRoot '.dev\status\run.ps1') `
+        -Arguments @()
     Assert-ProjBunTest `
         -Condition (
             $PinnedStatus.ExitCode -eq 0 -and

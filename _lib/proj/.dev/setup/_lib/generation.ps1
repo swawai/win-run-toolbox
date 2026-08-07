@@ -1,7 +1,5 @@
 Set-StrictMode -Version 2.0
 
-$script:ProjDevelopmentEnvironmentSchema =
-    'swawkit.proj-dev.environment.v0'
 $script:ProjDevelopmentEnvironmentGenerationPlaceholder =
     '__SWAWKIT_PROJ_DEV_GENERATION_ID__'
 
@@ -67,76 +65,6 @@ function Restore-ProjDevelopmentEnvironmentGenerationPlaceholder {
     return $Content.Substring(0, $GenerationGroup.Index) +
         (Get-ProjDevelopmentEnvironmentGenerationPlaceholder) +
         $Content.Substring($GenerationGroup.Index + $GenerationGroup.Length)
-}
-
-function Test-ProjDevelopmentEnvironmentActive {
-    $Environment = [Environment]::GetEnvironmentVariables(
-        [EnvironmentVariableTarget]::Process
-    )
-    foreach ($Name in [string[]]@($Environment.Keys)) {
-        if ($Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
-            [StringComparison]::OrdinalIgnoreCase
-        ) -and -not [string]::IsNullOrEmpty([string]$Environment[$Name])) {
-            return $true
-        }
-    }
-    return $false
-}
-
-function Assert-ProjActiveDevelopmentEnvironmentOwner {
-    param([Parameter(Mandatory = $true)][object]$ProjectContext)
-
-    if (-not (Test-ProjDevelopmentEnvironmentActive)) {
-        return $false
-    }
-
-    foreach ($Name in @(
-        'SWAWKIT_PROJ_DEV_ENV_SCHEMA',
-        'SWAWKIT_PROJ_DEV_PROJECT_ROOT',
-        'SWAWKIT_PROJ_DEV_ENV_ROOT'
-    )) {
-        if ([string]::IsNullOrWhiteSpace(
-            [Environment]::GetEnvironmentVariable($Name, 'Process')
-        )) {
-            throw (
-                'An incomplete Swaw Kit development environment is already ' +
-                'active. Start a clean shell before invoking this project.'
-            )
-        }
-    }
-    if ([string]$env:SWAWKIT_PROJ_DEV_ENV_SCHEMA -cne
-        $script:ProjDevelopmentEnvironmentSchema) {
-        throw (
-            'An unsupported Swaw Kit development environment is already ' +
-            'active. Start a clean shell before invoking this project.'
-        )
-    }
-
-    $ExpectedEnvironmentRoot = Get-ProjDeclaredFullPath `
-        -Value (Join-Path $ProjectContext.DataRoot 'dev_env') `
-        -Name 'development environment root'
-    $ActiveProjectRoot = Get-ProjDeclaredFullPath `
-        -Value ([string]$env:SWAWKIT_PROJ_DEV_PROJECT_ROOT) `
-        -Name 'SWAWKIT_PROJ_DEV_PROJECT_ROOT'
-    $ActiveEnvironmentRoot = Get-ProjDeclaredFullPath `
-        -Value ([string]$env:SWAWKIT_PROJ_DEV_ENV_ROOT) `
-        -Name 'SWAWKIT_PROJ_DEV_ENV_ROOT'
-    if (-not $ActiveProjectRoot.Equals(
-            [string]$ProjectContext.ProjectRoot,
-            [StringComparison]::OrdinalIgnoreCase
-        ) -or
-        -not $ActiveEnvironmentRoot.Equals(
-            $ExpectedEnvironmentRoot,
-            [StringComparison]::OrdinalIgnoreCase
-        )) {
-        throw (
-            "Another project's development environment is already active: " +
-            "$([string]$env:SWAWKIT_PROJ_DEV_PROJECT_ROOT). Start a clean shell " +
-            'before invoking this project.'
-        )
-    }
-    return $true
 }
 
 function Get-ProjPublishedDevelopmentEnvironmentGeneration {
@@ -249,89 +177,4 @@ function Get-ProjDevelopmentEnvironmentGeneration {
         throw [string]::Join([Environment]::NewLine, $Lines)
     }
     return $GenerationId
-}
-
-function Assert-ProjDevelopmentEnvironmentIdentity {
-    param(
-        [Parameter(Mandatory = $true)][object]$ProjectContext,
-        [Parameter(Mandatory = $true)][string]$GenerationId
-    )
-
-    if ([string]$env:SWAWKIT_PROJ_DEV_GENERATION_ID -cne $GenerationId) {
-        throw (
-            'The active development environment generation no longer matches ' +
-            'the published environment. Start a clean project shell before ' +
-            'continuing.'
-        )
-    }
-    [void](Assert-ProjActiveDevelopmentEnvironmentOwner `
-        -ProjectContext $ProjectContext)
-}
-
-function Assert-ProjActiveDevelopmentEnvironmentPublishedGeneration {
-    param([Parameter(Mandatory = $true)][object]$ProjectContext)
-
-    if (-not (Assert-ProjActiveDevelopmentEnvironmentOwner `
-        -ProjectContext $ProjectContext)) {
-        return $false
-    }
-    $EnvironmentRoot = Get-ProjDeclaredFullPath `
-        -Value (Join-Path $ProjectContext.DataRoot 'dev_env') `
-        -Name 'development environment root'
-    $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
-        -EnvironmentRoot $EnvironmentRoot `
-        -EntryCommand $ProjectContext.EntryName
-    if ($null -eq $GenerationId) {
-        throw (
-            'A project development environment is active, but no environment ' +
-            'is published. Start a clean shell and run ' +
-            "'$($ProjectContext.EntryName) .dev.setup'."
-        )
-    }
-    Assert-ProjDevelopmentEnvironmentIdentity `
-        -ProjectContext $ProjectContext `
-        -GenerationId $GenerationId
-    return $true
-}
-
-function Import-ProjDevelopmentEnvironment {
-    param([Parameter(Mandatory = $true)][object]$ProjectContext)
-
-    $EnvironmentRoot = Get-ProjDeclaredFullPath `
-        -Value (Join-Path $ProjectContext.DataRoot 'dev_env') `
-        -Name 'development environment root'
-    $AlreadyActive = Test-ProjDevelopmentEnvironmentActive
-    $GenerationId = Get-ProjDevelopmentEnvironmentGeneration `
-        -EnvironmentRoot $EnvironmentRoot `
-        -EntryCommand $ProjectContext.EntryName
-
-    if ($null -eq $GenerationId) {
-        if ($AlreadyActive) {
-            throw (
-                'A managed development environment is active, but this ' +
-                'project has no published environment. Start a clean shell.'
-            )
-        }
-        $EnabledDeclarations = @(
-            Get-ProjEnabledDevelopmentDeclarationNames `
-                -Declarations (Get-ProjDevelopmentDeclarationSnapshot)
-        )
-        if ($EnabledDeclarations.Count -gt 0) {
-            throw (
-                'The project declares managed development tools, but no ' +
-                'environment has been published. Enabled: ' +
-                [string]::Join(', ', $EnabledDeclarations) + '. Run ' +
-                "'$($ProjectContext.EntryName) .dev.setup'."
-            )
-        }
-        return $false
-    }
-
-    if (-not $AlreadyActive) {
-        . (Join-Path $EnvironmentRoot 'env.ps1')
-    }
-    Assert-ProjDevelopmentEnvironmentIdentity `
-        -ProjectContext $ProjectContext `
-        -GenerationId $GenerationId
-    return $true
 }

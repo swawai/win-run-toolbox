@@ -29,9 +29,8 @@ pub fn run(context: &EntryContext, argv: &[OsString]) -> Result<i32, CliError> {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .map(|path| path.join("data"));
-    let mut approver = |pending: &swawkit_proj::data_root::DataRootClaim| {
-        Err(claim::rejection(context, pending))
-    };
+    let mut approver =
+        |pending: &swawkit_proj::data_root::DataRootClaim| Err(claim::rejection(context, pending));
     run_with_approver(
         context,
         argv,
@@ -176,11 +175,8 @@ fn host_process_command(
         "SWAWKIT_PROJ_INVOCATION_DIR",
         "SWAWKIT_PROJ_INTERNAL_RUNTIME_WORKING_DIR",
     ];
-    const INTERNAL_PREFIXES: [&str; 3] = [
-        "SWAWKIT_PROJ_ARGV_",
-        "SWAWKIT_PROJ_INTERNAL_PS_",
-        "SWAWKIT_PROJ_INTERNAL_CMD_",
-    ];
+    const INTERNAL_PREFIXES: [&str; 2] =
+        ["SWAWKIT_PROJ_INTERNAL_PS_", "SWAWKIT_PROJ_INTERNAL_CMD_"];
 
     let mut command = Command::new(executable);
     command

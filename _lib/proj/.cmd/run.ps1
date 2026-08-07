@@ -6,13 +6,11 @@ if ($args.Count -ne 0) {
 }
 
 $KernelRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $KernelRoot '_core\engine.ps1')
+. (Join-Path $KernelRoot '.dev\setup\_lib\runtime.ps1')
 . (Join-Path $KernelRoot '_shell\session.ps1')
 
-$ProjectContext = Get-ProjProjectContext `
-    -ProjHome ([string]$env:SWAWKIT_HOME)
-[void](Import-ProjDevelopmentEnvironment `
-    -ProjectContext $ProjectContext)
+$Context = New-ProjDevContextFromEnvironment
+[void](Import-ProjDevOptionalGeneratedEnvironment -Context $Context)
 [void](Enter-ProjInteractiveShellEnvironment -KernelRoot $KernelRoot)
 $CmdPath = Get-ProjSystemCmdPath
 & $CmdPath /d

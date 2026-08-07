@@ -1,16 +1,12 @@
 Set-StrictMode -Version 2.0
 
-. (Join-Path $PSScriptRoot '..\..\..\_core\development-declaration.ps1')
-. (Join-Path $PSScriptRoot '..\..\..\_core\development-environment.ps1')
+. (Join-Path $PSScriptRoot 'runtime.ps1')
 
 foreach ($File in @(
-    'foundation.ps1',
-    'state.ps1',
     'artifact.ps1',
     'recovery.ps1',
     'install.ps1',
-    'environment.ps1',
-    'activation.ps1'
+    'environment.ps1'
 )) {
     . (Join-Path $PSScriptRoot $File)
 }

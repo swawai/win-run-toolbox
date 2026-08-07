@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $ProjRoot '_core\development-declaration.ps1')
+. (Join-Path $ProjRoot '.dev\setup\_lib\declaration.ps1')
 
 function Assert-ProjDevelopmentDeclarationTest {
     param(

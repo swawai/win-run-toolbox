@@ -39,7 +39,7 @@ function ConvertFrom-ProjArgumentPayload {
         -not [int]::TryParse($Parts[1], [ref]$ArgumentCount) -or
         $ArgumentCount -lt 0 -or
         $Parts.Count -ne $ArgumentCount + 2) {
-        throw 'The internal Proj argument payload is invalid.'
+        throw 'The internal test argument payload is invalid.'
     }
 
     $Arguments = [Collections.Generic.List[string]]::new()
@@ -49,7 +49,7 @@ function ConvertFrom-ProjArgumentPayload {
                 [Convert]::FromBase64String($Parts[$Index + 2])
             )
         } catch {
-            throw 'The internal Proj argument payload is invalid.'
+            throw 'The internal test argument payload is invalid.'
         }
         [void]$Arguments.Add($Value)
     }

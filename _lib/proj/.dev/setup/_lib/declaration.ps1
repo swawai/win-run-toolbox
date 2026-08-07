@@ -4,7 +4,7 @@ $script:ProjDevelopmentEnvironmentStateSchema =
     'swawkit.proj-dev.environment-state.v0'
 
 $script:ProjDevelopmentModuleRoot = [IO.Path]::GetFullPath(
-    (Join-Path $PSScriptRoot '..\.dev\setup\_modules')
+    (Join-Path $PSScriptRoot '..\_modules')
 )
 
 function Get-ProjDevelopmentModuleDeclarationDescriptors {

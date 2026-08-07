@@ -33,7 +33,7 @@ function Invoke-ProjDevMsvcCommand {
         throw "The managed MSVC command executable is missing: $Executable"
     }
 
-    return Invoke-ProjConsoleProcess `
+    return Invoke-ProjDevConsoleProcess `
         -Executable $Executable `
         -Arguments $Arguments `
         -WorkingDirectory $Requirement.Context.InvocationDirectory

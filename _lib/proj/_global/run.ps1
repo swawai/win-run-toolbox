@@ -6,15 +6,13 @@ if (@($args).Count -ne 0) {
 }
 
 $KernelRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $KernelRoot '_core\engine.ps1')
+. (Join-Path $KernelRoot '.dev\setup\_lib\runtime.ps1')
 
-$ProjectContext = Get-ProjProjectContext `
-    -ProjHome ([string]$env:SWAWKIT_HOME)
+$Context = New-ProjDevContextFromEnvironment
 # Global policy only protects process identity: a shell may not mix projects
 # or keep using an environment after another process publishes a new generation.
 # Declaration freshness remains command-owned, so .dev.setup can repair changes
 # without a Core whitelist and environment-agnostic commands remain independent.
-[void](Assert-ProjActiveDevelopmentEnvironmentPublishedGeneration `
-    -ProjectContext $ProjectContext)
+[void](Assert-ProjDevActiveEnvironmentPublished -Context $Context)
 
 $global:LASTEXITCODE = 0

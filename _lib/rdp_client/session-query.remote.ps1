@@ -177,8 +177,11 @@ namespace SwawKit.RdpClient
             }
         }
 
-        internal static int QuerySessionFlags(int sessionId)
+        internal static bool TryQuerySessionInfo(
+            int sessionId,
+            out WtsInfoExLevel1 data)
         {
+            data = new WtsInfoExLevel1();
             IntPtr buffer;
             int bytesReturned;
             if (!WTSQuerySessionInformation(
@@ -188,7 +191,7 @@ namespace SwawKit.RdpClient
                 out buffer,
                 out bytesReturned))
             {
-                return -1;
+                return false;
             }
 
             try
@@ -196,16 +199,17 @@ namespace SwawKit.RdpClient
                 if (buffer == IntPtr.Zero ||
                     bytesReturned < Marshal.SizeOf(typeof(WtsInfoEx)))
                 {
-                    return -1;
+                    return false;
                 }
                 WtsInfoEx info = (WtsInfoEx)Marshal.PtrToStructure(
                     buffer,
                     typeof(WtsInfoEx));
                 if (info.Level != 1)
                 {
-                    return -1;
+                    return false;
                 }
-                return info.Data.SessionFlags;
+                data = info.Data;
+                return true;
             }
             finally
             {
@@ -225,6 +229,7 @@ namespace SwawKit.RdpClient
         public int ProtocolType { get; set; }
         public bool IsConsole { get; set; }
         public int SessionFlags { get; set; }
+        public long ConnectTime { get; set; }
     }
 
     public static class SessionQuery
@@ -262,6 +267,10 @@ namespace SwawKit.RdpClient
                         (SessionNative.WtsSessionInfo)Marshal.PtrToStructure(
                             new IntPtr(address + (index * size)),
                             typeof(SessionNative.WtsSessionInfo));
+                    SessionNative.WtsInfoExLevel1 extended;
+                    bool hasExtended = SessionNative.TryQuerySessionInfo(
+                        native.SessionId,
+                        out extended);
                     sessions[index] = new SessionSnapshot
                     {
                         Id = native.SessionId,
@@ -281,8 +290,8 @@ namespace SwawKit.RdpClient
                             native.SessionId),
                         IsConsole = consoleId != UInt32.MaxValue &&
                             native.SessionId == consoleId,
-                        SessionFlags = SessionNative.QuerySessionFlags(
-                            native.SessionId)
+                        SessionFlags = hasExtended ? extended.SessionFlags : -1,
+                        ConnectTime = hasExtended ? extended.ConnectTime : 0
                     };
                 }
                 return sessions;
@@ -335,30 +344,16 @@ $Sessions = @(
             Terminal    = $Terminal
             IsConsole   = $Session.IsConsole
             ClientName  = $Session.ClientName
+            ConnectTime = $Session.ConnectTime
         }
     }
 )
 
-$PolicyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
-$SystemPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'
-$SingleSessionPerUser = $null
-foreach ($Path in @($PolicyPath, $SystemPath)) {
-    try {
-        $SingleSessionPerUser = [int](Get-ItemPropertyValue `
-            -Path $Path `
-            -Name 'fSingleSessionPerUser' `
-            -ErrorAction Stop)
-        break
-    } catch {
-    }
-}
-
 $State = [ordered]@{
-    Version              = 1
-    ComputerName         = $env:COMPUTERNAME
-    ConsoleSessionId     = [uint64]$ConsoleSessionId
-    SingleSessionPerUser = $SingleSessionPerUser
-    Sessions             = $Sessions
+    Version          = 1
+    ComputerName     = $env:COMPUTERNAME
+    ConsoleSessionId = [uint64]$ConsoleSessionId
+    Sessions         = $Sessions
 }
 $Json = ConvertTo-Json -InputObject $State -Depth 5 -Compress
 $Payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Json))

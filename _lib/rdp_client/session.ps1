@@ -42,7 +42,6 @@ function Get-RdpClientPeerSessionState {
         $null -eq $State.PSObject.Properties['Version'] -or
         [int]$State.Version -ne 1 -or
         $null -eq $State.PSObject.Properties['ConsoleSessionId'] -or
-        $null -eq $State.PSObject.Properties['SingleSessionPerUser'] -or
         $null -eq $State.PSObject.Properties['Sessions']) {
         throw 'The peer returned an unsupported RDP session state document.'
     }
@@ -122,34 +121,6 @@ function Resolve-RdpClientSessionSelection {
             "Selected session $TargetId belongs to $ActualUser, but this RDP " +
             "entry authenticates as $EntryUserName. Use that user's entry or " +
             ".shadow $TargetId."
-        )
-    }
-
-    $MatchingSessions = @($Sessions | Where-Object {
-        Test-RdpClientSessionMatchesEntryUser `
-            -EntryUserName $EntryUserName `
-            -Session $_
-    })
-    if ($MatchingSessions.Count -ne 1) {
-        $Ids = @($MatchingSessions | ForEach-Object { [string]$_.Id }) -join ', '
-        throw (
-            "The peer has multiple sessions for $EntryUserName ($Ids). " +
-            'mstsc has no ordinary-RDP session-ID parameter, so selecting one ' +
-            'would be ambiguous. Disconnect the extras or use .shadow <session-id>.'
-        )
-    }
-
-    if ($null -eq $State.SingleSessionPerUser -or
-        [int]$State.SingleSessionPerUser -ne 1) {
-        $Setting = if ($null -eq $State.SingleSessionPerUser) {
-            'unknown'
-        } else {
-            [string]$State.SingleSessionPerUser
-        }
-        throw (
-            'Ordinary RDP cannot guarantee this session selection because ' +
-            "fSingleSessionPerUser is $Setting on the peer. Enable the " +
-            'single-session policy or use .shadow <session-id>.'
         )
     }
 

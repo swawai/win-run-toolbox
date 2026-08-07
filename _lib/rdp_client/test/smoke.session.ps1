@@ -81,6 +81,7 @@ try {
         Terminal = 'console'
         IsConsole = $true
         ClientName = ''
+        ConnectTime = 100
     }
     $OtherSession = [pscustomobject]@{
         Id = 3
@@ -92,12 +93,12 @@ try {
         Terminal = 'rdp'
         IsConsole = $false
         ClientName = 'CLIENT'
+        ConnectTime = 90
     }
     $State = [pscustomobject]@{
         Version = 1
         ComputerName = 'TEST-SERVER'
         ConsoleSessionId = [uint64]2
-        SingleSessionPerUser = 1
         Sessions = @($TargetSession, $OtherSession)
     }
 
@@ -117,30 +118,32 @@ try {
             -SessionId ([uint32]2)
     } -Expected 'belongs to'
 
-    $AmbiguousState = [pscustomobject]@{
+    $MultipleSessionState = [pscustomobject]@{
         ConsoleSessionId = [uint64]2
-        SingleSessionPerUser = 1
         Sessions = @(
             $TargetSession,
             [pscustomobject]@{
                 Id = 4
                 UserName = 'Administrator'
                 DomainName = 'TEST-SERVER'
+                SessionName = 'RDP-Tcp#4'
                 State = 'Disconnected'
                 Terminal = 'rdp'
+                ClientName = 'CLIENT'
+                ConnectTime = 80
             }
         )
     }
-    Assert-ThrowsContaining -Action {
-        Resolve-RdpClientSessionSelection `
-            -State $AmbiguousState `
-            -EntryUserName 'administrator' `
-            -SessionId ([uint32]2)
-    } -Expected 'multiple sessions'
+    $MultipleSelection = Resolve-RdpClientSessionSelection `
+        -State $MultipleSessionState `
+        -EntryUserName 'administrator' `
+        -SessionId ([uint32]2)
+    if ($MultipleSelection.Id -ne 2) {
+        throw 'Exact-ID preflight must allow multiple sessions and policy 0.'
+    }
 
     $NoConsoleState = [pscustomobject]@{
         ConsoleSessionId = [uint64][uint32]::MaxValue
-        SingleSessionPerUser = 1
         Sessions = @($TargetSession)
     }
     Assert-ThrowsContaining -Action {
@@ -157,10 +160,10 @@ try {
         Terminal = 'console'
         IsConsole = $true
         ClientName = ''
+        ConnectTime = 0
     }
     $EmptyConsoleState = [pscustomobject]@{
         ConsoleSessionId = [uint64]5
-        SingleSessionPerUser = 1
         Sessions = @($EmptyConsole, $OtherSession)
     }
     if ((Get-RdpClientSessionDisplayUserName -Session $EmptyConsole) -ne '-') {
@@ -169,18 +172,6 @@ try {
     Assert-ThrowsContaining -Action {
         Resolve-RdpClientShadowConsoleSession -State $EmptyConsoleState
     } -Expected 'no logged-on user desktop'
-
-    $UnsafePolicyState = [pscustomobject]@{
-        ConsoleSessionId = [uint64]2
-        SingleSessionPerUser = 0
-        Sessions = @($TargetSession)
-    }
-    Assert-ThrowsContaining -Action {
-        Resolve-RdpClientSessionSelection `
-            -State $UnsafePolicyState `
-            -EntryUserName 'administrator' `
-            -SessionId ([uint32]2)
-    } -Expected 'fSingleSessionPerUser is 0'
 
     $Json = ConvertTo-Json -InputObject $State -Depth 5 -Compress
     $Marker = 'RDP_CLIENT_SESSION_STATE_V1:' + [Convert]::ToBase64String(
@@ -194,8 +185,9 @@ function Invoke-RdpClientPeerSshPowerShell {
         )
 
         if (-not $RemoteSource.Contains('WTSEnumerateSessions') -or
-            -not $RemoteSource.Contains('WTSGetActiveConsoleSessionId')) {
-            throw 'The transported query must use structured WTS APIs.'
+            -not $RemoteSource.Contains('WTSGetActiveConsoleSessionId') -or
+            -not $RemoteSource.Contains('ConnectTime')) {
+            throw 'The transported query must use structured WTS APIs and connection time.'
         }
         return [pscustomobject]@{
             ExitCode = 0

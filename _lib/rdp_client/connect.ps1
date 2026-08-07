@@ -23,6 +23,7 @@ Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'connect-cache.ps1')
 . (Join-Path $PSScriptRoot 'peer-ssh.ps1')
 . (Join-Path $PSScriptRoot 'session.ps1')
+. (Join-Path $PSScriptRoot 'session-connect.ps1')
 
 function Resolve-RdpClientOutputPath {
     param(
@@ -70,6 +71,9 @@ try {
     }
 
     $SelectedSession = $null
+    $SessionState = $null
+    $ResolvedSshEntry = $null
+    $ResolvedSessionId = $null
     if ($Launch -and $HasSessionId) {
         $ResolvedSshEntry = Resolve-RdpClientPeerSshEntryPath -Value $SshEntryFile
         Assert-RdpClientPeerSshEntryIsSeparate `
@@ -153,7 +157,7 @@ try {
         $SelectedUser = Get-RdpClientSessionDisplayUserName `
             -Session $SelectedSession
         Write-Host (
-            '[RDP] Session:   {0} ({1}; {2}; {3})' -f `
+            '[RDP] Requested: session {0} ({1}; {2}; {3})' -f `
                 $SelectedSession.Id,
                 $SelectedUser,
                 $SelectedSession.State,
@@ -167,8 +171,19 @@ try {
             -CommandName $CommandName
 
         $Mstsc = Get-Command 'mstsc.exe' -ErrorAction Stop
-        Start-Process -FilePath $Mstsc.Source -ArgumentList ('"{0}"' -f $OutputPath) | Out-Null
+        $MstscProcess = Start-Process `
+            -FilePath $Mstsc.Source `
+            -ArgumentList ('"{0}"' -f $OutputPath) `
+            -PassThru
         Write-Host '[RDP] Started mstsc.exe.'
+        if ($null -ne $SelectedSession) {
+            $null = Connect-RdpClientSessionById `
+                -SshEntryPath $ResolvedSshEntry `
+                -BeforeState $SessionState `
+                -EntryUserName $Document.Username `
+                -TargetSessionId $ResolvedSessionId `
+                -MstscProcess $MstscProcess
+        }
     }
 
     exit 0

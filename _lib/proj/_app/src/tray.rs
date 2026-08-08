@@ -18,12 +18,15 @@ use swawkit_proj::{
     server::{self, ServerEvent},
 };
 
+use crate::host_instance::HostInstance;
+
 const STATUS_ID: &str = "tray.status";
 const OPEN_ID: &str = "tray.open";
 const QUIT_ID: &str = "tray.quit";
 
 #[derive(Debug)]
 enum AppEvent {
+    Activate,
     Menu(MenuEvent),
     Server(ServerEvent),
 }
@@ -37,7 +40,6 @@ struct App {
     server_error: Option<String>,
     shutdown: Option<oneshot::Sender<()>>,
     browser_opened: bool,
-    server_stopped: bool,
     shutting_down: bool,
 }
 
@@ -52,7 +54,6 @@ impl App {
             server_error: None,
             shutdown: Some(shutdown),
             browser_opened: false,
-            server_stopped: false,
             shutting_down: false,
         }
     }
@@ -128,10 +129,8 @@ impl App {
     }
 
     fn server_stopped(&mut self, result: Result<(), String>) {
-        self.server_stopped = true;
         self.server_url = None;
         self.server_error = result.err();
-        self.update_tray_status();
     }
 
     fn open_browser(&self) {
@@ -174,30 +173,34 @@ impl ApplicationHandler<AppEvent> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AppEvent) {
         match event {
+            AppEvent::Activate => self.open_browser(),
             AppEvent::Menu(event) => match event.id().as_ref() {
                 OPEN_ID => self.open_browser(),
                 QUIT_ID => {
                     self.request_shutdown();
-                    if self.server_stopped {
-                        event_loop.exit();
-                    }
                 }
                 _ => {}
             },
             AppEvent::Server(ServerEvent::Ready(url)) => self.server_ready(url),
             AppEvent::Server(ServerEvent::Stopped(result)) => {
                 self.server_stopped(result);
-                if self.shutting_down {
-                    event_loop.exit();
-                }
+                event_loop.exit();
             }
         }
     }
 }
 
-pub fn run(context: EntryContext, data_root: DataRootSession) -> Result<(), Box<dyn Error>> {
+pub fn run(
+    context: EntryContext,
+    data_root: DataRootSession,
+    instance: HostInstance,
+) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<AppEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
+
+    let activation_proxy = event_loop.create_proxy();
+    let activation_listener =
+        instance.listen(move || activation_proxy.send_event(AppEvent::Activate).is_ok())?;
 
     let menu_proxy = event_loop.create_proxy();
     MenuEvent::set_event_handler(Some(move |event| {
@@ -220,10 +223,16 @@ pub fn run(context: EntryContext, data_root: DataRootSession) -> Result<(), Box<
 
     let event_loop_result = event_loop.run_app(&mut app);
     app.request_shutdown();
-    if server_thread.join().is_err() {
+    let activation_result = activation_listener.stop();
+    let server_result = server_thread.join();
+    event_loop_result?;
+    activation_result?;
+    if server_result.is_err() {
         return Err("Axum server thread panicked".into());
     }
-    event_loop_result?;
+    if let Some(error) = app.server_error {
+        return Err(format!("Axum server stopped: {error}").into());
+    }
     Ok(())
 }
 

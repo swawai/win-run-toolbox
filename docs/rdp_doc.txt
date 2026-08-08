@@ -1,0 +1,6 @@
+# RDP 属性参考：
+  Microsoft Learn：https://learn.microsoft.com/zh-cn/azure/virtual-desktop/rdp-properties
+  RDP 文件参数：https://www.cnblogs.com/Tuzki/p/4515279.html
+  RDP 文件安全策略：https://learn.microsoft.com/windows-server/remote/remote-desktop-services/remotepc/manage-rdp-file-security-settings-with-group-policy
+  Windows 代码自签名：https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_signing
+  rdpsign 命令：https://learn.microsoft.com/windows-server/administration/windows-commands/rdpsign

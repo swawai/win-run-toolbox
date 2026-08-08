@@ -1,5 +1,4 @@
 mod claim;
-mod development_environment;
 mod document;
 mod execute;
 mod inventory;
@@ -10,7 +9,6 @@ mod resolve;
 mod session;
 
 pub use claim::{ClaimApprovalError, ClaimKind, DataRootClaim, DataRootClaimApprover};
-pub use development_environment::DevelopmentEnvironmentRepair;
 pub use document::{DataRootClaimDocument, DataRootClaimResultDocument};
 pub use inventory::{DataRootInventory, DataRootInventoryError};
 pub(crate) use lock::DataRootLock;

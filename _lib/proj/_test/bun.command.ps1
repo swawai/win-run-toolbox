@@ -21,6 +21,7 @@ $EnvironmentNames = @(
     'SWAWKIT_PROJ_COMMAND_PHASE',
     'SWAWKIT_PROJ_COMMAND_ADDRESS',
     'SWAWKIT_PROJ_COMMAND_DIR',
+    'SWAWKIT_PROJ_COMMAND_DATA_ROOT',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256',
@@ -147,6 +148,7 @@ try {
         SWAWKIT_PROJ_COMMAND_PHASE = 'run'
         SWAWKIT_PROJ_COMMAND_ADDRESS = '.dev.bun'
         SWAWKIT_PROJ_COMMAND_DIR = (Join-Path $ProjRoot '.dev\bun')
+        SWAWKIT_PROJ_COMMAND_DATA_ROOT = (Join-Path $ConsumerDataRoot 'modules\kernel\.dev\bun')
         SWAWKIT_PROJ_BUN_MODE = 'managed'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }
@@ -158,7 +160,7 @@ try {
     Assert-ProjBunTest `
         -Condition ($MissingResult.ExitCode -eq 1 -and
             -not [IO.Directory]::Exists(
-                (Join-Path $ConsumerDataRoot 'dev_env')
+                (Join-Path $ConsumerDataRoot 'modules\kernel\.dev\setup\export')
             )) `
         -Message '.dev.bun implicitly created development state before setup'
 
@@ -170,7 +172,7 @@ try {
     Assert-ProjBunTest `
         -Condition ($DisabledResult.ExitCode -eq 1 -and
             -not [IO.Directory]::Exists(
-                (Join-Path $ConsumerDataRoot 'dev_env')
+                (Join-Path $ConsumerDataRoot 'modules\kernel\.dev\setup\export')
             )) `
         -Message 'disabled .dev.bun wrote development state'
     $env:SWAWKIT_PROJ_BUN_MODE = 'managed'

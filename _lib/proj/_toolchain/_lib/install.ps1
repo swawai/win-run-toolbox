@@ -141,6 +141,7 @@ function Publish-ProjDevInstallDirectory {
             }
         }
         if ($null -ne $RollbackError) {
+            $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
             $TargetRemains = Test-ProjDevPathExists -Path $TargetPath
             $BackupRemains = Test-ProjDevPathExists -Path $BackupPath
             $RecoveryDetail = if ($TargetRemains -and $BackupRemains) {
@@ -158,7 +159,7 @@ function Publish-ProjDevInstallDirectory {
             throw (
                 "Publishing $($Definition.Name) failed and rollback is " +
                 "pending. $RecoveryDetail Release related processes and run " +
-                ".dev.setup again. Original error: " +
+                "'$Repair' again. Original error: " +
                 "$($PublishError.Exception.Message). Rollback error: " +
                 $RollbackError.Exception.Message
             )

@@ -12,12 +12,13 @@ foreach ($RelativePath in @(
 
 function Get-ProjDevMsvcCommandRequirement {
     $Context = New-ProjDevContextFromEnvironment
+    $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
     $Definition = Get-ProjDevMsvcDefinition
     if ($null -eq $Definition) {
         throw (
             'This command requires project-managed MSVC. Enable ' +
             'SWAWKIT_PROJ_MSVC_MODE and run ' +
-            "'$($Context.EntryCommand) .dev.setup'."
+            "'$Repair'."
         )
     }
     Assert-ProjDevWindowsX64 -ToolName 'Managed MSVC command'
@@ -29,15 +30,8 @@ function Get-ProjDevMsvcCommandRequirement {
 
 function Assert-ProjDevMsvcCommandReady {
     $Requirement = Get-ProjDevMsvcCommandRequirement
-    $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
-        -EnvironmentRoot $Requirement.Context.EnvironmentRoot `
-        -EntryCommand $Requirement.Context.EntryCommand
-    if ($null -eq $GenerationId) {
-        throw (
-            'The project development environment is not configured. Run ' +
-            "'$($Requirement.Context.EntryCommand) .dev.setup'."
-        )
-    }
+    $GenerationId = Get-ProjDevGeneratedEnvironmentGeneration `
+        -Context $Requirement.Context
     Assert-ProjDevMsvcReady `
         -Context $Requirement.Context `
         -Definition $Requirement.Definition

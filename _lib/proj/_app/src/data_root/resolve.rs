@@ -6,9 +6,6 @@ use std::path::{Path, PathBuf};
 use crate::entry::{EntryIdentity, EntryIdentityError};
 
 use super::claim::{ClaimApprovalError, ClaimKind, DataRootClaim, DataRootClaimApprover};
-use super::development_environment::{
-    DevelopmentEnvironmentRepair, DevelopmentEnvironmentRepairError, repair_development_environment,
-};
 use super::execute::{DataRootExecutionError, execute_plan};
 use super::inventory::{DataRootInventory, DataRootInventoryError};
 use super::lock::{DataRootLock, DataRootLockError};
@@ -28,7 +25,6 @@ pub struct ResolveDataRootRequest<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedDataRoot {
     pub path: PathBuf,
-    pub development_environment_repair: DevelopmentEnvironmentRepair,
     pub warnings: Vec<String>,
 }
 
@@ -112,19 +108,8 @@ fn complete_locked(
     lock: DataRootLock,
 ) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     let path = plan.target().data_root.clone();
-    let entry_name = plan.target().entry_name.clone();
     let execution = execute_plan(&plan)?;
-    let repair = repair_development_environment(&path)?;
     let mut warnings = Vec::new();
-    if repair == DevelopmentEnvironmentRepair::RemovedStale {
-        warnings.push(format!(
-            concat!(
-                "the development environment publication was moved or incomplete. ",
-                "Run '{} .dev.setup' once to republish it."
-            ),
-            entry_name
-        ));
-    }
     if let Some(source) = execution.legacy_source.or(completed_legacy_source)
         && let Some(warning) = remove_legacy_residue(&source)
     {
@@ -132,7 +117,6 @@ fn complete_locked(
     }
     let resolved = ResolvedDataRoot {
         path,
-        development_environment_repair: repair,
         warnings,
     };
     drop(lock);
@@ -330,7 +314,6 @@ resolve_error_from!(DataRootPlanError);
 resolve_error_from!(DataRootLockError);
 resolve_error_from!(ClaimApprovalError);
 resolve_error_from!(DataRootExecutionError);
-resolve_error_from!(DevelopmentEnvironmentRepairError);
 
 #[cfg(test)]
 mod tests;

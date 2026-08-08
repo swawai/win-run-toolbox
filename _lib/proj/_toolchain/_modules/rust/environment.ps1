@@ -118,9 +118,10 @@ function Assert-ProjDevRustEnvironmentCurrent {
         [string]$env:RUSTUP_TOOLCHAIN -ceq
             [string]$Definition.ToolchainName
     if (-not $ValuesMatch) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The generated Rust environment does not match the project ' +
-            "declaration. Run '$($Context.EntryCommand) .dev.setup'."
+            "declaration. Run '$Repair'."
         )
     }
     foreach ($Name in Get-ProjDevRustAmbientOverrideNames |
@@ -190,9 +191,10 @@ function Assert-ProjDevRustReady {
     if ($null -eq (Get-ProjDevRustValidMetadata `
         -Context $Context `
         -Definition $Definition)) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The managed Rust installation is missing or inconsistent. Run ' +
-            "'$($Context.EntryCommand) .dev.setup'."
+            "'$Repair'."
         )
     }
 }

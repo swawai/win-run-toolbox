@@ -10,7 +10,7 @@ Bun 与 PowerShell 校验等级:
 
 Bun 声明为 latest 时，显示项目已选择的精确版本；尚未首次 setup 时
 显示 unresolved。读取状态不会查询 GitHub，也不会隐式升级。
-PowerShell 的 latest 采用同一锁定语义，并从项目 dev_env/pwsh 读取选择记录。
+PowerShell 的 latest 采用同一锁定语义，并从 .dev.setup 的 export/pwsh 读取选择记录。
 
 MSVC 固定显示 microsoft-manifest；工具链的每个下载制品均使用
 Visual Studio manifest 提供的 SHA-256 校验。product manifest 本身按 channel

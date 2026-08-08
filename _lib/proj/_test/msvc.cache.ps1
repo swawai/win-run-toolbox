@@ -114,8 +114,8 @@ try {
             [IO.File]::Exists($SecondCachedPayload)) `
         -Message 'same-name payload revisions collided'
 
-    $SourceRoot = Join-Path $Context.DataRoot `
-        'dev_env\msvc\installs\.fixture.work-source'
+    $SourceRoot = Join-Path $Context.EnvironmentRoot `
+        'msvc\installs\.fixture.work-source'
     $SourcePath = Copy-ProjDevMsvcPayloadToSourceRoot `
         -Context $Context `
         -Payload $Payload `

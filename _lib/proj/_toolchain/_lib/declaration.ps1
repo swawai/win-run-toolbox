@@ -1,7 +1,7 @@
 Set-StrictMode -Version 2.0
 
 $script:ProjDevelopmentEnvironmentStateSchema =
-    'swawkit.proj-dev.environment-state.v0'
+    'swawkit.proj-dev.environment-state.v1'
 
 $script:ProjDevelopmentModuleRoot = [IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '..\_modules')
@@ -179,6 +179,8 @@ function Get-ProjPendingDevelopmentSetupModuleNames {
 function New-ProjDevelopmentEnvironmentState {
     param(
         [Parameter(Mandatory = $true)][string]$GenerationId,
+        [Parameter(Mandatory = $true)][string]$ProjectRoot,
+        [Parameter(Mandatory = $true)][string]$EnvironmentRoot,
         [Parameter(Mandatory = $true)]
         [Collections.IDictionary]$Declarations
     )
@@ -189,6 +191,8 @@ function New-ProjDevelopmentEnvironmentState {
     return [ordered]@{
         schema = $script:ProjDevelopmentEnvironmentStateSchema
         generationId = $GenerationId
+        projectRoot = Get-ProjDevFullPath -Path $ProjectRoot
+        environmentRoot = Get-ProjDevFullPath -Path $EnvironmentRoot
         declarations = $Declarations
     }
 }
@@ -215,6 +219,10 @@ function Read-ProjDevelopmentEnvironmentState {
     if ([string]$State.schema -cne
             $script:ProjDevelopmentEnvironmentStateSchema -or
         [string]$State.generationId -cnotmatch '^[a-f0-9]{16}$' -or
+        [string]::IsNullOrWhiteSpace([string]$State.projectRoot) -or
+        -not [IO.Path]::IsPathRooted([string]$State.projectRoot) -or
+        [string]::IsNullOrWhiteSpace([string]$State.environmentRoot) -or
+        -not [IO.Path]::IsPathRooted([string]$State.environmentRoot) -or
         $null -eq $State.declarations) {
         throw "The published development environment state is invalid: $Path"
     }
@@ -233,6 +241,8 @@ function Read-ProjDevelopmentEnvironmentState {
     return [pscustomobject][ordered]@{
         Path = $Path
         GenerationId = [string]$State.generationId
+        ProjectRoot = [string]$State.projectRoot
+        EnvironmentRoot = [string]$State.environmentRoot
         Declarations = $Declarations
     }
 }

@@ -98,9 +98,10 @@ function Assert-ProjDevMsvcReady {
     if ($null -eq (Get-ProjDevMsvcValidMetadata `
         -Context $Context `
         -Definition $Definition)) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The managed MSVC installation is missing or inconsistent. Run ' +
-            "'$($Context.EntryCommand) .dev.setup'."
+            "'$Repair'."
         )
     }
 }
@@ -143,9 +144,10 @@ function Assert-ProjDevMsvcEnvironmentCurrent {
             (Get-ProjDevCanonicalPath -Path $InstallRoot),
             [StringComparison]::OrdinalIgnoreCase
         )) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The generated MSVC environment does not match the project ' +
-            "declaration. Run '$($Context.EntryCommand) .dev.setup'."
+            "declaration. Run '$Repair'."
         )
     }
 

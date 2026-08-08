@@ -21,7 +21,7 @@ if ($null -eq $Bun -or $Bun.mode -cne 'managed' -or
 }
 
 $BunExecutable = Join-Path $RepoRoot (
-    'data\proj.swawkit\dev_env\bun\installs\{0}\bun.exe' -f
+    'data\proj.swawkit\modules\kernel\.dev\setup\export\bun\installs\{0}\bun.exe' -f
     [string]$Bun.version
 )
 if (-not [IO.File]::Exists($BunExecutable)) {

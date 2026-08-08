@@ -159,7 +159,7 @@ fn host_process_command(
     executable: &std::path::Path,
     inherited_names: impl IntoIterator<Item = OsString>,
 ) -> Command {
-    const CONTEXT_ENVIRONMENT: [&str; 14] = [
+    const CONTEXT_ENVIRONMENT: [&str; 15] = [
         "SWAWKIT_HOME",
         "SWAWKIT_PROJ_PROTOCOL",
         "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
@@ -170,6 +170,7 @@ fn host_process_command(
         "SWAWKIT_PROJ_COMMAND_PHASE",
         "SWAWKIT_PROJ_COMMAND_ADDRESS",
         "SWAWKIT_PROJ_COMMAND_DIR",
+        "SWAWKIT_PROJ_COMMAND_DATA_ROOT",
         "SWAWKIT_PROJ_GUARD_SCOPE",
         "SWAWKIT_PROJ_HELP_TARGET_ADDRESS",
         "SWAWKIT_PROJ_INVOCATION_DIR",

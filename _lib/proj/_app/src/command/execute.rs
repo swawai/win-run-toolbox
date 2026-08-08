@@ -41,7 +41,7 @@ impl<'a> CommandExecutor<'a> {
                 &invocation.command,
                 ExecutionPhase::Guard(guard.scope),
                 invocation.help_target_address.as_deref(),
-            );
+            )?;
             let exit_code = run_process(
                 guard.adapter,
                 &guard.entry_path,
@@ -59,7 +59,7 @@ impl<'a> CommandExecutor<'a> {
             &invocation.command,
             ExecutionPhase::Run,
             invocation.help_target_address.as_deref(),
-        );
+        )?;
         run_process(
             invocation.command.adapter,
             &invocation.command.entry_path,

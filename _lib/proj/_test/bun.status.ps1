@@ -127,7 +127,7 @@ try {
             $PinnedStatus.Output -like '*[[]MISSING[]]*bun 1.2.15*pinned*' -and
             $PinnedStatus.Output -notlike '*WARNING*' -and
             -not [IO.Directory]::Exists(
-                (Join-Path $PinnedDataRoot 'dev_env')
+                (Join-Path $PinnedDataRoot 'modules\kernel\.dev\setup\export')
             )
         ) `
         -Message ".dev.status was not read-only for pinned state: $($PinnedStatus.Output)"

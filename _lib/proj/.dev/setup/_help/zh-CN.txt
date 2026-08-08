@@ -4,15 +4,15 @@
   {{INVOCATION}}
 
 当前 V0 处理 Bun、PowerShell、MSVC 与 Rust。安装位置:
-  SWAWKIT_PROJ_DATA_ROOT/dev_env/bun/installs/<version>
-  SWAWKIT_PROJ_DATA_ROOT/dev_env/pwsh/installs/<version>
-  SWAWKIT_PROJ_DATA_ROOT/dev_env/msvc/installs/<channel>
-  SWAWKIT_PROJ_DATA_ROOT/dev_env/rust/installs/<toolchain>
+  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/bun/installs/<version>
+  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/pwsh/installs/<version>
+  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/msvc/installs/<channel>
+  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/rust/installs/<toolchain>
 
 同时生成:
-  SWAWKIT_PROJ_DATA_ROOT/dev_env/env.cmd
-  SWAWKIT_PROJ_DATA_ROOT/dev_env/env.ps1
-  SWAWKIT_PROJ_DATA_ROOT/dev_env/_state.json
+  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/env.cmd
+  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/env.ps1
+  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/_state.json
 
 _state.json 记录该代环境实际应用的开发声明。需要受管开发环境的命令模块
 通过自己的 _guard/run.* 校验前提，并由 run.* 加载和复核环境；修改版本、
@@ -26,7 +26,7 @@ channel、mode 或 hash 后，这些命令会要求重新 setup。与开发环�
 任何已启用但尚未实现的开发模块声明都会在下载前报错并终止。
 
 Bun 支持精确版本或 latest。latest 只在首次 setup 时解析为精确版本；
-选择记录在项目 dev_env/bun 中，重复 setup 不会隐式升级。
+选择记录在 .dev.setup 的 export/bun 中，重复 setup 不会隐式升级。
 GitHub Release API 提供的 digest 可用时会用于校验。
 可通过 {{COMMAND}} ..entry.env.bun.SWAWKIT_PROJ_BUN_SHA256 进一步锁定安装包；
 未设置时只给出黄色提示，不阻塞安装。latest 不能与固定 SHA 同时声明；

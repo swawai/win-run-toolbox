@@ -44,6 +44,7 @@ fn host_process_uses_the_shared_core_with_a_clean_launch_envelope() {
         "SWAWKIT_PROJ_INTERNAL_PS_ARG_8",
         "SWAWKIT_PROJ_INTERNAL_PS_ARGC",
         "SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH",
+        "SWAWKIT_PROJ_COMMAND_DATA_ROOT",
         "SWAWKIT_PROJ_BUN_VERSION",
     ]
     .map(OsString::from);
@@ -64,6 +65,7 @@ fn host_process_uses_the_shared_core_with_a_clean_launch_envelope() {
         "SWAWKIT_HOME",
         "SWAWKIT_PROJ_DATA_ROOT",
         "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
+        "SWAWKIT_PROJ_COMMAND_DATA_ROOT",
         "SWAWKIT_PROJ_INTERNAL_PS_ARG_8",
         "SWAWKIT_PROJ_INTERNAL_PS_ARGC",
         "SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH",

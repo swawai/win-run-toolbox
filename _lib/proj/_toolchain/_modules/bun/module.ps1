@@ -321,9 +321,10 @@ function Assert-ProjDevBunEnvironmentCurrent {
             (Get-ProjDevCanonicalPath -Path $InstallRoot),
             [StringComparison]::OrdinalIgnoreCase
         )) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The generated Bun environment does not match the project ' +
-            "declaration. Run '$($Context.EntryCommand) .dev.setup'."
+            "declaration. Run '$Repair'."
         )
     }
 
@@ -361,9 +362,10 @@ function Assert-ProjDevBunReady {
         -Context $Context `
         -Definition $Definition
     )) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The managed Bun installation is missing or inconsistent. Run ' +
-            "'$($Context.EntryCommand) .dev.setup'."
+            "'$Repair'."
         )
     }
 }

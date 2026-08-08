@@ -9,10 +9,10 @@ if (@($args).Count -gt 0) {
 . (Join-Path $PSScriptRoot '..\..\_toolchain\setup.ps1')
 
 $Context = New-ProjDevContextFromEnvironment
+$Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
 try {
     $GenerationId = Get-ProjDevelopmentEnvironmentGeneration `
-        -EnvironmentRoot $Context.EnvironmentRoot `
-        -EntryCommand $Context.EntryCommand
+        -Context $Context
     if ($null -eq $GenerationId) {
         $Enabled = @(
             Get-ProjEnabledDevelopmentDeclarationNames `
@@ -21,7 +21,7 @@ try {
         if ($Enabled.Count -gt 0) {
             Write-Host (
                 '[OUTDATED] no environment has been published; run ' +
-                "'$($Context.EntryCommand) .dev.setup'"
+                "'$Repair'"
             ) -ForegroundColor Red
         }
     }
@@ -40,7 +40,7 @@ if ($null -eq $BunDefinition) {
     if ($null -eq $BunDefinition) {
         Write-Host (
             '[MISSING] bun latest unresolved; run ' +
-            "'$($Context.EntryCommand) .dev.setup'"
+            "'$Repair'"
         ) -ForegroundColor Yellow
     } else {
         $Trust = Get-ProjDevBunTrustStatus `
@@ -83,7 +83,7 @@ if ($null -eq $PwshDefinition) {
     if ($null -eq $PwshDefinition) {
         Write-Host (
             '[MISSING] pwsh latest unresolved; run ' +
-            "'$($Context.EntryCommand) .dev.setup'"
+            "'$Repair'"
         ) -ForegroundColor Yellow
     } else {
         $Trust = Get-ProjDevPwshTrustStatus `

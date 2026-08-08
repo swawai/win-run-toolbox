@@ -144,7 +144,8 @@ fn process_environment_is_declarative_and_phase_specific() {
     let command = ResolvedCommand::from_catalog(&fixture.catalog(), ".tool").unwrap();
     let context = fixture.context();
 
-    let run = ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run, None);
+    let run = ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run, None)
+        .expect("build run environment");
     assert_eq!(
         run.value("SWAWKIT_PROJ_COMMAND_PHASE"),
         Some(Some(OsStr::new("run")))
@@ -153,6 +154,17 @@ fn process_environment_is_declarative_and_phase_specific() {
     assert_eq!(
         run.value("SWAWKIT_PROJ_COMMAND_ADDRESS"),
         Some(Some(OsStr::new(".tool")))
+    );
+    assert_eq!(
+        run.value("SWAWKIT_PROJ_COMMAND_DATA_ROOT"),
+        Some(Some(
+            fixture
+                .data_root
+                .join("modules")
+                .join("kernel")
+                .join(".tool")
+                .as_os_str()
+        ))
     );
     assert_eq!(
         run.value("SWAWKIT_PROJ_TARGET_PROJECT_ROOT"),
@@ -172,7 +184,8 @@ fn process_environment_is_declarative_and_phase_specific() {
         &command,
         ExecutionPhase::Guard(GuardScope::Global),
         Some(".target"),
-    );
+    )
+    .expect("build guard environment");
     assert_eq!(
         guard.value("SWAWKIT_PROJ_GUARD_SCOPE"),
         Some(Some(OsStr::new("global")))
@@ -181,6 +194,46 @@ fn process_environment_is_declarative_and_phase_specific() {
         guard.value("SWAWKIT_PROJ_HELP_TARGET_ADDRESS"),
         Some(Some(OsStr::new(".target")))
     );
+}
+
+#[test]
+fn command_data_roots_are_isolated_by_catalog_source() {
+    let fixture = Fixture::new();
+    fixture.command(".tool", "exit 0");
+    let control = fixture.kernel_root.join("..entry");
+    fs::create_dir_all(&control).unwrap();
+    fs::write(
+        control.join("run.core.json"),
+        r#"{"schema":"swawkit.core-command/v1","handler":"entry.profile"}"#,
+    )
+    .unwrap();
+    let action = fixture.action_root.join("build");
+    fs::create_dir_all(&action).unwrap();
+    fs::write(action.join("run.ps1"), "exit 0").unwrap();
+    let catalog = fixture.catalog();
+    let context = fixture.context();
+
+    for (address, source, relative) in [
+        (".tool", "kernel", ".tool"),
+        ("..entry", "control", "..entry"),
+        ("build", "action", "build"),
+    ] {
+        let command = ResolvedCommand::from_catalog(&catalog, address).unwrap();
+        let environment =
+            ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run, None)
+                .unwrap();
+        assert_eq!(
+            environment.value("SWAWKIT_PROJ_COMMAND_DATA_ROOT"),
+            Some(Some(
+                fixture
+                    .data_root
+                    .join("modules")
+                    .join(source)
+                    .join(relative)
+                    .as_os_str()
+            ))
+        );
+    }
 }
 
 #[test]

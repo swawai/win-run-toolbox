@@ -121,6 +121,7 @@ try {
         'echo SHELL_KIND=cmd'
         'echo ENTRY_NAME=%SWAWKIT_PROJ_ENTRY_COMMAND%'
         'echo COMMAND_ADDRESS=%SWAWKIT_PROJ_COMMAND_ADDRESS%'
+        'echo COMMAND_DATA_ROOT=%SWAWKIT_PROJ_COMMAND_DATA_ROOT%'
         'echo GIT_ID_NAME=%SWAWKIT_PROJ_GIT_ID_NAME%'
         'echo PROJ_HOME=%SWAWKIT_HOME%'
         'echo DATA_ROOT=%SWAWKIT_PROJ_DATA_ROOT%'
@@ -142,6 +143,7 @@ try {
         'JOINED_COMMAND=ok',
         "ENTRY_NAME=$EntryName",
         'COMMAND_ADDRESS=.dev.cmd',
+        "COMMAND_DATA_ROOT=$DataRoot\modules\kernel\.dev\cmd",
         'GIT_ID_NAME=Shell Fixture',
         "PROJ_HOME=$RepoRoot",
         "DATA_ROOT=$DataRoot",
@@ -166,6 +168,7 @@ try {
         'Write-Output "POLICY=$((Get-ExecutionPolicy -Scope Process))"'
         'Write-Output "ENTRY_NAME=$env:SWAWKIT_PROJ_ENTRY_COMMAND"'
         'Write-Output "COMMAND_ADDRESS=$env:SWAWKIT_PROJ_COMMAND_ADDRESS"'
+        'Write-Output "COMMAND_DATA_ROOT=$env:SWAWKIT_PROJ_COMMAND_DATA_ROOT"'
         'Write-Output "GIT_ID_NAME=$env:SWAWKIT_PROJ_GIT_ID_NAME"'
         'Write-Output "PROJ_HOME=$env:SWAWKIT_HOME"'
         'Write-Output "DATA_ROOT=$env:SWAWKIT_PROJ_DATA_ROOT"'
@@ -191,6 +194,7 @@ try {
         'POLICY=Bypass',
         "ENTRY_NAME=$EntryName",
         'COMMAND_ADDRESS=.dev.ps',
+        "COMMAND_DATA_ROOT=$DataRoot\modules\kernel\.dev\ps",
         'GIT_ID_NAME=Shell Fixture',
         "PROJ_HOME=$RepoRoot",
         "DATA_ROOT=$DataRoot",

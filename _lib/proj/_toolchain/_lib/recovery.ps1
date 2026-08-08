@@ -42,7 +42,8 @@ function Remove-ProjDevControlledPathWithRetry {
     }
     throw (
         "Cannot finish $Activity after $Attempts attempts: $Path. " +
-        "Release processes that lock the path, then run .dev.setup again. " +
+        'Release processes that lock the path, then retry the provisioning ' +
+        'command. ' +
         "Last error: $Detail"
     )
 }
@@ -94,7 +95,8 @@ function Move-ProjDevControlledPathWithRetry {
     }
     throw (
         "Cannot finish $Activity after $Attempts attempts. " +
-        "Release processes that lock '$Source', then run .dev.setup again. " +
+        "Release processes that lock '$Source', then retry the provisioning " +
+        'command. ' +
         "Last error: $($LastError.Exception.Message)"
     )
 }

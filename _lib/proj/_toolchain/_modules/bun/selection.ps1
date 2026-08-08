@@ -100,9 +100,10 @@ function Get-ProjDevBunResolvedDefinition {
         -Context $Context `
         -Definition $Definition
     if ($null -eq $Resolved) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'Bun latest has not been resolved for this project. Run ' +
-            "'$($Context.EntryCommand) .dev.setup'."
+            "'$Repair'."
         )
     }
     return $Resolved

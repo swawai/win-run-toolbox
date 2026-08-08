@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
-use std::path::PathBuf;
+use std::path::{Component, PathBuf};
 use std::process::Command;
 
 use crate::{
+    catalog::CommandSource,
     context::EntryContext,
     profile::{EntryProfile, EntryProfileRecord},
 };
 
-use super::{GuardScope, ResolvedCommand};
+use super::{CommandError, CommandResult, GuardScope, ResolvedCommand};
 
 const OPTIONAL_ENVIRONMENT: [&str; 3] = [
     "SWAWKIT_PROJ_GUARD_SCOPE",
@@ -67,7 +68,7 @@ impl ProcessEnvironment {
         protocol_command: &ResolvedCommand,
         phase: ExecutionPhase,
         help_target_address: Option<&str>,
-    ) -> Self {
+    ) -> CommandResult<Self> {
         let mut environment = Self::default();
         for name in OPTIONAL_ENVIRONMENT {
             environment.remove(name);
@@ -82,6 +83,10 @@ impl ProcessEnvironment {
         );
         environment.set("SWAWKIT_PROJ_COMMAND_ADDRESS", &protocol_command.address);
         environment.set("SWAWKIT_PROJ_COMMAND_DIR", &protocol_command.directory);
+        environment.set(
+            "SWAWKIT_PROJ_COMMAND_DATA_ROOT",
+            command_data_root(context, protocol_command)?,
+        );
         if let ExecutionPhase::Guard(scope) = phase {
             environment.set("SWAWKIT_PROJ_GUARD_SCOPE", scope.as_str());
         }
@@ -100,7 +105,7 @@ impl ProcessEnvironment {
         environment.set("SWAWKIT_PROJ_ENTRY_COMMAND", &context.entry_name);
         environment.set("SWAWKIT_PROJ_ENTRY_FILE", &context.entry_file);
         environment.apply_profile(&context.profile);
-        environment
+        Ok(environment)
     }
 
     fn apply_profile(&mut self, profile: &EntryProfileRecord) {
@@ -149,4 +154,35 @@ impl ProcessEnvironment {
             .get(OsStr::new(name))
             .map(|value| value.as_deref())
     }
+}
+
+fn command_data_root(
+    context: &CommandExecutionContext,
+    command: &ResolvedCommand,
+) -> CommandResult<PathBuf> {
+    let (source_name, source_root) = match command.source {
+        CommandSource::Control => ("control", &context.kernel_root),
+        CommandSource::Kernel => ("kernel", &context.kernel_root),
+        CommandSource::Action => ("action", &context.action_root),
+    };
+    let relative = command.directory.strip_prefix(source_root).map_err(|_| {
+        CommandError::new(format!(
+            "Catalog invariant failed for '{}': command directory is outside its source root",
+            command.address
+        ))
+    })?;
+    if relative
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(CommandError::new(format!(
+            "Catalog invariant failed for '{}': command directory has an unsafe relative path",
+            command.address
+        )));
+    }
+    Ok(context
+        .data_root
+        .join("modules")
+        .join(source_name)
+        .join(relative))
 }

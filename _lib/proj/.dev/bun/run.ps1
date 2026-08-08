@@ -5,14 +5,19 @@ Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot '_lib\runtime.ps1')
 
 $Context = New-ProjDevContextFromEnvironment
+$Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
 $BunDefinition = Get-ProjDevBunDefinition
 if ($null -eq $BunDefinition) {
     throw (
         'Bun is disabled for this project. Run ' +
         "'$($Context.EntryCommand) ..entry.env.bun.SWAWKIT_PROJ_BUN_MODE managed', " +
-        "then '$($Context.EntryCommand) .dev.setup'."
+        "then '$Repair'."
     )
 }
+[void](Get-ProjRequiredCommandExport `
+    -DataRoot ([string]$Context.DataRoot) `
+    -ProviderAddress ([string]$Context.EnvironmentProviderAddress) `
+    -EntryCommand ([string]$Context.EntryCommand))
 $BunDefinition = Get-ProjDevBunResolvedDefinition `
     -Context $Context `
     -Definition $BunDefinition

@@ -76,22 +76,31 @@ function New-ProjDevContext {
         throw "Invocation directory does not exist: $ResolvedInvocationDirectory"
     }
 
-    $EnvironmentRoot = Assert-ProjDevelopmentEnvironmentControlledRoot `
-        -EnvironmentRoot (Join-Path $ResolvedDataRoot 'dev_env')
-    $LockRoot = Join-Path $ResolvedDataRoot '_locks'
+    $EnvironmentProviderAddress = '.dev.setup'
+    $SetupCommandRoot = Get-ProjKernelCommandDataRoot `
+        -DataRoot $ResolvedDataRoot `
+        -Address $EnvironmentProviderAddress
+    $EnvironmentRoot = Resolve-ProjCommandExportPath `
+        -DataRoot $ResolvedDataRoot `
+        -ProviderAddress $EnvironmentProviderAddress
+    $LockRoot = Assert-ProjDevPathInsideDataRoot `
+        -Path (Join-Path $SetupCommandRoot 'locks') `
+        -DataRoot $ResolvedDataRoot `
+        -Activity 'resolving the development setup lock root'
     return [pscustomobject][ordered]@{
         ProjectRoot = $ResolvedProjectRoot
         CanonicalProjectRoot = Get-ProjDevCanonicalPath -Path $ResolvedProjectRoot
         DataRoot = $ResolvedDataRoot
         CacheDataRoot = $ResolvedCacheDataRoot
         EnvironmentRoot = $EnvironmentRoot
+        EnvironmentProviderAddress = $EnvironmentProviderAddress
         EnvCmdPath = Join-Path $EnvironmentRoot 'env.cmd'
         EnvPs1Path = Join-Path $EnvironmentRoot 'env.ps1'
         EnvironmentStatePath = Get-ProjDevelopmentEnvironmentStatePath `
             -EnvironmentRoot $EnvironmentRoot
         CacheRoot = Join-Path $ResolvedCacheDataRoot 'downloads'
         LockRoot = $LockRoot
-        SetupLockPath = Join-Path $LockRoot 'dev-setup.lock'
+        SetupLockPath = Join-Path $LockRoot 'setup.lock'
         ArtifactLockRoot = Join-Path $ResolvedCacheDataRoot '_locks'
         EntryCommand = $EntryCommand
         InvocationDirectory = $ResolvedInvocationDirectory

@@ -318,15 +318,15 @@ try {
         -Arguments @()
     Assert-ProjBunTest `
         -Condition ($SetupResult.ExitCode -eq 0 -and
-            [IO.File]::Exists((Join-Path $SetupDataRoot 'dev_env\env.cmd')) -and
-            [IO.File]::Exists((Join-Path $SetupDataRoot 'dev_env\env.ps1')) -and
-            [IO.File]::Exists((Join-Path $SetupDataRoot 'dev_env\_state.json')) -and
+            [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\env.cmd')) -and
+            [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\env.ps1')) -and
+            [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\_state.json')) -and
             -not [IO.Directory]::Exists(
-                (Join-Path $SetupDataRoot 'dev_env\bun')
+                (Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\bun')
             )) `
         -Message "real disabled .dev.setup entry failed: $($SetupResult.Output)"
     $SetupEnvHash = Get-ProjDevFileSha256 `
-        -Path (Join-Path $SetupDataRoot 'dev_env\env.ps1')
+        -Path (Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\env.ps1')
     $RejectedSetup = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
         -EntryPath $SetupEntry `
@@ -334,7 +334,7 @@ try {
     Assert-ProjBunTest `
         -Condition ($RejectedSetup.ExitCode -eq 1 -and
             (Get-ProjDevFileSha256 `
-                -Path (Join-Path $SetupDataRoot 'dev_env\env.ps1')
+                -Path (Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\env.ps1')
             ) -ceq $SetupEnvHash) `
         -Message '.dev.setup accepted arguments or changed state after rejection'
 

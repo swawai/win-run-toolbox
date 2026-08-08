@@ -68,11 +68,13 @@ function Restore-ProjDevelopmentEnvironmentGenerationPlaceholder {
 }
 
 function Get-ProjPublishedDevelopmentEnvironmentGeneration {
-    param(
-        [Parameter(Mandatory = $true)][string]$EnvironmentRoot,
-        [Parameter(Mandatory = $true)][string]$EntryCommand
-    )
+    param([Parameter(Mandatory = $true)][object]$Context)
 
+    $EnvironmentRoot = Assert-ProjDevPathInsideDataRoot `
+        -Path ([string]$Context.EnvironmentRoot) `
+        -DataRoot ([string]$Context.DataRoot) `
+        -Activity 'reading the development environment export'
+    $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
     $CmdPath = Join-Path $EnvironmentRoot 'env.cmd'
     $Ps1Path = Join-Path $EnvironmentRoot 'env.ps1'
     $StatePath = Get-ProjDevelopmentEnvironmentStatePath `
@@ -86,7 +88,7 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
     if (-not $HasCmd -or -not $HasPs1 -or -not $HasState) {
         throw (
             'The published development environment is incomplete. Run ' +
-            "'$EntryCommand .dev.setup'."
+            "'$Repair'."
         )
     }
 
@@ -103,7 +105,7 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
     if ($CmdMatches.Count -ne 1 -or $Ps1Matches.Count -ne 1) {
         throw (
             'The published development environment files do not contain ' +
-            "one canonical generation ID. Run '$EntryCommand .dev.setup'."
+            "one canonical generation ID. Run '$Repair'."
         )
     }
     $CmdMatch = $CmdMatches[0]
@@ -112,7 +114,7 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
         $CmdMatch.Groups[1].Value -cne $Ps1Match.Groups[1].Value) {
         throw (
             'The published development environment files do not match. Run ' +
-            "'$EntryCommand .dev.setup'."
+            "'$Repair'."
         )
     }
     $GenerationId = $CmdMatch.Groups[1].Value
@@ -129,15 +131,43 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
     if ($ContentGenerationId -cne $GenerationId) {
         throw (
             'The published development environment files were modified or ' +
-            "damaged. Run '$EntryCommand .dev.setup'."
+            "damaged. Run '$Repair'."
         )
     }
-    $State = Read-ProjDevelopmentEnvironmentState `
-        -EnvironmentRoot $EnvironmentRoot
+    try {
+        $State = Read-ProjDevelopmentEnvironmentState `
+            -EnvironmentRoot $EnvironmentRoot
+    } catch {
+        throw "$($_.Exception.Message) Run '$Repair'."
+    }
     if ([string]$State.GenerationId -cne $GenerationId) {
         throw (
             'The published development environment state does not match ' +
-            "env.cmd and env.ps1. Run '$EntryCommand .dev.setup'."
+            "env.cmd and env.ps1. Run '$Repair'."
+        )
+    }
+
+    try {
+        $SameProject = (Get-ProjDevCanonicalPath `
+            -Path ([string]$State.ProjectRoot)).Equals(
+                ([string]$Context.CanonicalProjectRoot),
+                [StringComparison]::OrdinalIgnoreCase
+            )
+        $SameEnvironment = (Get-ProjDevCanonicalPath `
+            -Path ([string]$State.EnvironmentRoot)).Equals(
+                (Get-ProjDevCanonicalPath -Path $EnvironmentRoot),
+                [StringComparison]::OrdinalIgnoreCase
+            )
+    } catch {
+        throw (
+            'The published development environment identity is invalid. ' +
+            "Run '$Repair'."
+        )
+    }
+    if (-not $SameProject -or -not $SameEnvironment) {
+        throw (
+            '[DEV ENV OUTDATED] The published development environment ' +
+            "belongs to another project or data root. Run '$Repair'."
         )
     }
 
@@ -145,19 +175,15 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
 }
 
 function Get-ProjDevelopmentEnvironmentGeneration {
-    param(
-        [Parameter(Mandatory = $true)][string]$EnvironmentRoot,
-        [Parameter(Mandatory = $true)][string]$EntryCommand
-    )
+    param([Parameter(Mandatory = $true)][object]$Context)
 
     $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
-        -EnvironmentRoot $EnvironmentRoot `
-        -EntryCommand $EntryCommand
+        -Context $Context
     if ($null -eq $GenerationId) {
         return $null
     }
     $State = Read-ProjDevelopmentEnvironmentState `
-        -EnvironmentRoot $EnvironmentRoot
+        -EnvironmentRoot ([string]$Context.EnvironmentRoot)
     $Declared = Get-ProjDevelopmentDeclarationSnapshot
     $Differences = @(Compare-ProjDevelopmentDeclarations `
         -Applied $State.Declarations `
@@ -173,7 +199,8 @@ function Get-ProjDevelopmentEnvironmentGeneration {
                 "'$($Difference.Declared)'"
             )
         }
-        [void]$Lines.Add("Run '$EntryCommand .dev.setup'.")
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
+        [void]$Lines.Add("Run '$Repair'.")
         throw [string]::Join([Environment]::NewLine, $Lines)
     }
     return $GenerationId

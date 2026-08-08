@@ -3,15 +3,19 @@ Set-StrictMode -Version 2.0
 function Get-ProjDevGeneratedEnvironmentGeneration {
     param([Parameter(Mandatory = $true)][object]$Context)
 
+    [void](Get-ProjRequiredCommandExport `
+        -DataRoot ([string]$Context.DataRoot) `
+        -ProviderAddress ([string]$Context.EnvironmentProviderAddress) `
+        -EntryCommand ([string]$Context.EntryCommand))
     # Command modules own declaration freshness. Shared activation only proves
     # that the environment publication is complete and internally consistent.
     $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
-        -EnvironmentRoot $Context.EnvironmentRoot `
-        -EntryCommand $Context.EntryCommand
+        -Context $Context
     if ($null -eq $GenerationId) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The project development environment is not configured. Run ' +
-            "'$($Context.EntryCommand) .dev.setup'."
+            "'$Repair'."
         )
     }
     return $GenerationId
@@ -37,6 +41,7 @@ function Assert-ProjDevActivatedEnvironmentIdentity {
         [Parameter(Mandatory = $true)][string]$GenerationId
     )
 
+    $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
     if ([string]$env:SWAWKIT_PROJ_DEV_GENERATION_ID -cne $GenerationId) {
         throw (
             'The active development environment generation is stale. ' +
@@ -45,7 +50,7 @@ function Assert-ProjDevActivatedEnvironmentIdentity {
     }
     if ([string]$env:SWAWKIT_PROJ_DEV_ENV_SCHEMA -cne
         'swawkit.proj-dev.environment.v0') {
-        throw "Unsupported generated environment schema. Run '.dev.setup'."
+        throw "Unsupported generated environment schema. Run '$Repair'."
     }
     foreach ($Name in @(
         'SWAWKIT_PROJ_DEV_PROJECT_ROOT',
@@ -54,7 +59,7 @@ function Assert-ProjDevActivatedEnvironmentIdentity {
         if ([string]::IsNullOrWhiteSpace(
             [Environment]::GetEnvironmentVariable($Name, 'Process')
         )) {
-            throw "Generated environment is missing $Name. Run '.dev.setup'."
+            throw "Generated environment is missing $Name. Run '$Repair'."
         }
     }
     if (-not (Get-ProjDevCanonicalPath -Path (
@@ -103,13 +108,13 @@ function Assert-ProjDevActiveEnvironmentPublished {
         return $false
     }
     $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
-        -EnvironmentRoot $Context.EnvironmentRoot `
-        -EntryCommand $Context.EntryCommand
+        -Context $Context
     if ($null -eq $GenerationId) {
+        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'A project development environment is active, but no environment ' +
             'is published. Exit this shell and run ' +
-            "'$($Context.EntryCommand) .dev.setup'."
+            "'$Repair'."
         )
     }
     Assert-ProjDevActivatedEnvironmentIdentity `
@@ -124,8 +129,7 @@ function Import-ProjDevOptionalGeneratedEnvironment {
     $AlreadyActive = Assert-ProjDevActiveEnvironmentCompatible `
         -Context $Context
     $GenerationId = Get-ProjDevelopmentEnvironmentGeneration `
-        -EnvironmentRoot $Context.EnvironmentRoot `
-        -EntryCommand $Context.EntryCommand
+        -Context $Context
     if ($null -eq $GenerationId) {
         if ($AlreadyActive) {
             throw (
@@ -138,11 +142,16 @@ function Import-ProjDevOptionalGeneratedEnvironment {
                 -Declarations (Get-ProjDevelopmentDeclarationSnapshot)
         )
         if ($Enabled.Count -gt 0) {
+            [void](Get-ProjRequiredCommandExport `
+                -DataRoot ([string]$Context.DataRoot) `
+                -ProviderAddress ([string]$Context.EnvironmentProviderAddress) `
+                -EntryCommand ([string]$Context.EntryCommand))
+            $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
             throw (
                 'The project declares managed development tools, but no ' +
                 'environment has been published. Enabled: ' +
                 [string]::Join(', ', $Enabled) + '. Run ' +
-                "'$($Context.EntryCommand) .dev.setup'."
+                "'$Repair'."
             )
         }
         return $false

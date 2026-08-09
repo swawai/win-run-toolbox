@@ -7,21 +7,14 @@ use axum::{
 use serde::Deserialize;
 
 use crate::data_root::{
-    DataRootClaim, DataRootClaimDocument, DataRootClaimResultDocument, DataRootSessionError,
-    DataRootSessionState,
+    DataRootClaim, DataRootClaimDocument, DataRootSessionError, DataRootSessionState,
 };
 
 use super::{ServerState, api_error, data_root_status, expected_revision};
 
 pub(super) async fn get_claim(State(state): State<ServerState>) -> Response {
     match data_root_status(&state).await {
-        Ok(DataRootSessionState::Ready(resolved)) if resolved.warnings().is_empty() => {
-            StatusCode::NO_CONTENT.into_response()
-        }
-        Ok(DataRootSessionState::Ready(resolved)) => Json(DataRootClaimResultDocument::ready(
-            resolved.warnings().to_vec(),
-        ))
-        .into_response(),
+        Ok(DataRootSessionState::Ready(_)) => StatusCode::NO_CONTENT.into_response(),
         Ok(DataRootSessionState::ClaimRequired(claim)) => claim_response(&claim),
         Err(error) => error.into_response(),
     }
@@ -51,13 +44,7 @@ pub(super) async fn post_claim(
         }
     };
     match claim {
-        Ok(warnings) => {
-            for warning in &warnings {
-                eprintln!("[WARNING] {warning}");
-            }
-            Json(DataRootClaimResultDocument::claimed(warnings))
-            .into_response()
-        }
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error @ DataRootSessionError::ConfirmationMismatch { .. }) => {
             api_error(StatusCode::UNPROCESSABLE_ENTITY, error.to_string()).into_response()
         }

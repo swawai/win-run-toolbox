@@ -6,12 +6,10 @@ mod host_instance;
 mod tray;
 
 use std::error::Error;
-use std::{env, path::PathBuf};
-
 use swawkit_proj::{
     context::EntryContext,
     data_root::{DataRootSession, ResolveDataRootRequest},
-    launch::{LaunchMode, LaunchRequest},
+    launch::{LaunchMode, LaunchRequest, clear_inherited_swawkit_environment},
 };
 
 use crate::host_instance::{HostInstance, HostInstanceAcquisition};
@@ -29,23 +27,17 @@ fn main() {
 
 fn run() -> Result<i32, Box<dyn Error>> {
     let request = LaunchRequest::from_process()?;
+    // SAFETY: `run` is the process composition root and no application thread
+    // has been spawned yet. All launch facts needed below are owned by request.
+    unsafe { clear_inherited_swawkit_environment() };
     let context = EntryContext::from_launch(&request)?;
 
     match request.mode {
         LaunchMode::Cli => cli::run(&context, &request.argv).map_err(Into::into),
         LaunchMode::InternalHost => {
-            let inherited_data_root = env::var_os("SWAWKIT_PROJ_DATA_ROOT")
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from);
-            let legacy_data_directory = env::var_os("SWAWKIT_PROJ_TARGET_PROJECT_ROOT")
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
-                .map(|path| path.join("data"));
             let data_root = DataRootSession::new(ResolveDataRootRequest {
                 swawkit_home: &context.swawkit_home,
                 entry_file: &context.entry_file,
-                inherited_data_root: inherited_data_root.as_deref(),
-                legacy_data_directory: legacy_data_directory.as_deref(),
             })?;
             let instance = match HostInstance::acquire(data_root.entry_identity())? {
                 HostInstanceAcquisition::Primary(instance) => instance,

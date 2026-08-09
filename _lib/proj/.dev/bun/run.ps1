@@ -38,31 +38,8 @@ $BunExecutable = Resolve-ProjDevChildPath `
     -RelativePath ([string]$BunDefinition.Executable) `
     -Description 'Bun executable'
 [string[]]$BunArguments = @($args)
-$BunWorkingDirectory = $Context.InvocationDirectory
-$RuntimeWorkingDirectory = [Environment]::GetEnvironmentVariable(
-    'SWAWKIT_PROJ_CORE_COMMAND_RUNTIME_WORKING_DIR',
-    [EnvironmentVariableTarget]::Process
-)
-[Environment]::SetEnvironmentVariable(
-    'SWAWKIT_PROJ_CORE_COMMAND_RUNTIME_WORKING_DIR',
-    $null,
-    [EnvironmentVariableTarget]::Process
-)
-if (-not [string]::IsNullOrWhiteSpace($RuntimeWorkingDirectory)) {
-    $RuntimeWorkingDirectory = Get-ProjDevFullPath `
-        -Path $RuntimeWorkingDirectory
-    if (-not $RuntimeWorkingDirectory.Equals(
-        $Context.ProjectRoot,
-        [StringComparison]::OrdinalIgnoreCase
-    )) {
-        throw (
-            'The internal Bun runtime working directory must be the project root.'
-        )
-    }
-    $BunWorkingDirectory = $RuntimeWorkingDirectory
-}
 $ExitCode = Invoke-ProjDevConsoleProcess `
     -Executable $BunExecutable `
     -Arguments $BunArguments `
-    -WorkingDirectory $BunWorkingDirectory
+    -WorkingDirectory $Context.InvocationDirectory
 exit ([int]$ExitCode)

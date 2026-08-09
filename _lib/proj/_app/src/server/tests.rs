@@ -43,8 +43,6 @@ impl Fixture {
             ResolveDataRootRequest {
                 swawkit_home: &context.swawkit_home,
                 entry_file: &context.entry_file,
-                inherited_data_root: None,
-                legacy_data_directory: None,
             },
             &mut approve,
         )
@@ -79,8 +77,6 @@ impl Fixture {
         DataRootSession::new(ResolveDataRootRequest {
             swawkit_home: &context.swawkit_home,
             entry_file: &context.entry_file,
-            inherited_data_root: None,
-            legacy_data_directory: None,
         })
         .expect("pin fixture Entry for DataRoot session")
     }

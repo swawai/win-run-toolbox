@@ -1,13 +1,11 @@
 mod claim;
 mod control;
 
-use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fmt;
 use std::io::{self, Write};
 use std::os::windows::process::CommandExt;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use swawkit_proj::{
@@ -21,60 +19,29 @@ use swawkit_proj::{
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 pub fn run(context: &EntryContext, argv: &[OsString]) -> Result<i32, CliError> {
-    let inherited_data_root = env::var_os("SWAWKIT_PROJ_DATA_ROOT")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from);
-    let legacy_data_directory = env::var_os("SWAWKIT_PROJ_TARGET_PROJECT_ROOT")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .map(|path| path.join("data"));
     let mut approver =
         |pending: &swawkit_proj::data_root::DataRootClaim| Err(claim::rejection(context, pending));
-    run_with_approver(
-        context,
-        argv,
-        inherited_data_root.as_deref(),
-        legacy_data_directory.as_deref(),
-        &mut approver,
-    )
+    run_with_approver(context, argv, &mut approver)
 }
 
 fn run_with_approver(
     context: &EntryContext,
     argv: &[OsString],
-    inherited_data_root: Option<&std::path::Path>,
-    legacy_data_directory: Option<&std::path::Path>,
     approver: &mut impl DataRootClaimApprover,
 ) -> Result<i32, CliError> {
     let mut host_launcher = launch_entry_host;
-    run_with_host_launcher(
-        context,
-        argv,
-        inherited_data_root,
-        legacy_data_directory,
-        approver,
-        &mut host_launcher,
-    )
+    run_with_host_launcher(context, argv, approver, &mut host_launcher)
 }
 
 fn run_with_host_launcher(
     context: &EntryContext,
     argv: &[OsString],
-    inherited_data_root: Option<&std::path::Path>,
-    legacy_data_directory: Option<&std::path::Path>,
     approver: &mut impl DataRootClaimApprover,
     host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
 ) -> Result<i32, CliError> {
     match control::dispatch_before_data_root(context, argv, host_launcher)? {
         Some(control::PreDataRootControl::Claim { snapshot, address }) => {
-            return claim::run(
-                context,
-                argv,
-                inherited_data_root,
-                legacy_data_directory,
-                &snapshot,
-                &address,
-            );
+            return claim::run(context, argv, &snapshot, &address);
         }
         Some(control::PreDataRootControl::Complete(exit_code)) => return Ok(exit_code),
         None => {}
@@ -84,15 +51,10 @@ fn run_with_host_launcher(
         ResolveDataRootRequest {
             swawkit_home: &context.swawkit_home,
             entry_file: &context.entry_file,
-            inherited_data_root,
-            legacy_data_directory,
         },
         approver,
     )
     .map_err(|error| CliError::new(format!("DataRoot resolution failed: {error}")))?;
-    for warning in resolved.warnings() {
-        eprintln!("[WARNING] {warning}");
-    }
 
     let profile_store = EntryProfileStore::new(&context.swawkit_home, resolved.path());
     let profile_state = profile_store.read();

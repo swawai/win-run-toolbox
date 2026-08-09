@@ -2,6 +2,7 @@ use super::*;
 use crate::data_root::claim::ClaimKind;
 use crate::data_root::lock::DataRootLock;
 use crate::data_root::record::{publish_entry_record, read_entry_record};
+use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -11,7 +12,6 @@ struct Fixture {
     root: PathBuf,
     swawkit_home: PathBuf,
     project_root: PathBuf,
-    legacy_data_directory: PathBuf,
 }
 
 impl Fixture {
@@ -23,14 +23,12 @@ impl Fixture {
         ));
         let swawkit_home = root.join("home");
         let project_root = root.join("project");
-        let legacy_data_directory = project_root.join("data");
         fs::create_dir_all(&swawkit_home).expect("create SWAWKIT_HOME");
         fs::create_dir_all(&project_root).expect("create project root");
         Self {
             root,
             swawkit_home,
             project_root,
-            legacy_data_directory,
         }
     }
 
@@ -52,8 +50,6 @@ impl Fixture {
         ResolveDataRootRequest {
             swawkit_home: &self.swawkit_home,
             entry_file,
-            inherited_data_root: None,
-            legacy_data_directory: Some(&self.legacy_data_directory),
         }
     }
 }
@@ -157,35 +153,6 @@ fn approver_expected_claim_rejects_a_changed_incumbent_record() {
     let error = resolve_data_root(fixture.request(&entry), &mut approver).unwrap_err();
     assert!(error.is_state_changed());
     assert_record_matches(&data_root, &incumbent_c);
-}
-
-#[test]
-fn completed_explicit_legacy_claim_cleans_legacy_residue() {
-    let fixture = Fixture::new();
-    let entry = fixture.write_entry("legacy-new", "entry");
-    let identity = EntryIdentity::read(&entry).expect("entry identity");
-    let legacy_directory = fixture.legacy_data_directory.clone();
-    let legacy_root = legacy_directory.join("proj.legacy-old");
-    fs::create_dir_all(&legacy_root).expect("create legacy DataRoot");
-    publish_entry_record(&legacy_root, "legacy-old", &entry, &identity)
-        .expect("publish legacy record");
-    fs::write(legacy_directory.join("_proj-entry.lock"), "").expect("write legacy lock");
-    let expected = inspect_data_root(fixture.request(&entry))
-        .expect("inspect legacy claim")
-        .claim
-        .expect("legacy claim");
-    assert_eq!(expected.kind, ClaimKind::MigrateLegacy);
-
-    let target = fixture.data_root("legacy-new");
-    fs::create_dir_all(target.parent().expect("target parent")).expect("create current data root");
-    fs::rename(&legacy_root, &target).expect("simulate completed legacy move");
-    publish_entry_record(&target, "legacy-new", &entry, &identity)
-        .expect("complete target record");
-
-    let resolved = claim_data_root(fixture.request(&entry), &expected)
-        .expect("accept completed legacy claim");
-    assert_eq!(resolved.path(), target);
-    assert!(!legacy_directory.exists());
 }
 
 #[test]
@@ -307,7 +274,6 @@ fn rename_follows_file_identity_and_preserves_opaque_module_data() {
     assert!(saw_rename);
     assert_eq!(renamed.path(), fixture.data_root("new-name"));
     assert!(!old_data_root.exists());
-    assert!(renamed.warnings().is_empty());
     assert_eq!(
         fs::read(
             renamed
@@ -345,26 +311,6 @@ fn confirmation_releases_the_data_root_lock_but_keeps_the_entry_pinned() {
         .expect("claim the pinned replacement Entry");
     assert_eq!(resolved.path(), original_data_root);
     assert_record_matches(resolved.path(), &entry);
-}
-
-#[test]
-fn migrates_a_matching_legacy_root_without_claim_and_cleans_its_directory() {
-    let fixture = Fixture::new();
-    let entry = fixture.write_entry("legacy", "entry");
-    let identity = EntryIdentity::read(&entry).expect("entry identity");
-    let legacy_directory = fixture.project_root.join("data");
-    let legacy_root = legacy_directory.join("proj.legacy");
-    fs::create_dir_all(&legacy_root).expect("create legacy root");
-    publish_entry_record(&legacy_root, "legacy", &entry, &identity).expect("publish legacy record");
-    fs::write(legacy_directory.join("_proj-entry.lock"), "").expect("write stale lock file");
-    let mut unexpected_claim =
-        |_claim: &DataRootClaim| Err(ClaimApprovalError::new("legacy migration should not claim"));
-
-    let resolved = resolve_data_root(fixture.request(&entry), &mut unexpected_claim)
-        .expect("migrate legacy root");
-    assert_eq!(resolved.path(), fixture.data_root("legacy"));
-    assert!(!legacy_root.exists());
-    assert!(!legacy_directory.exists());
 }
 
 fn replace_entry(path: &Path, content: &str) {

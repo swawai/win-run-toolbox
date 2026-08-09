@@ -5,9 +5,6 @@ import { createExplorerView } from "./explorer.js";
 import { createEntryProfileView } from "./entry-profile.js";
 
 const elements = {
-  applicationNotice: document.querySelector("#application-notice"),
-  applicationNoticeDismiss: document.querySelector("#application-notice-dismiss"),
-  applicationNoticeMessage: document.querySelector("#application-notice-message"),
   breadcrumb: document.querySelector("#breadcrumb"),
   cliCommand: document.querySelector("#cli-command"),
   claimConfirmation: document.querySelector("#claim-confirmation"),
@@ -98,14 +95,6 @@ function setLoadState(status, message = "") {
   }
 }
 
-function showApplicationWarnings(warnings = []) {
-  const messages = warnings.filter(
-    (warning) => typeof warning === "string" && warning.length > 0,
-  );
-  elements.applicationNoticeMessage.textContent = messages.join("\n");
-  elements.applicationNotice.hidden = messages.length === 0;
-}
-
 async function startApplication() {
   setLoadState("loading");
   try {
@@ -140,7 +129,7 @@ async function loadCatalog() {
   }
 }
 
-async function loadApplication(warnings = []) {
+async function loadApplication() {
   setLoadState("loading");
   try {
     const document = await entryProfile.loadProfile();
@@ -155,7 +144,6 @@ async function loadApplication(warnings = []) {
     catalog = createCatalog(await response.json());
     explorer.setCatalog(catalog);
     setLoadState("ready");
-    showApplicationWarnings(warnings);
   } catch (error) {
     const message = error instanceof Error
       ? error.message
@@ -171,8 +159,5 @@ elements.profileForm.addEventListener("submit", (event) => {
 });
 elements.finderColumns.addEventListener("keydown", explorer.handleKeyboard);
 elements.retryButton.addEventListener("click", startApplication);
-elements.applicationNoticeDismiss.addEventListener("click", () => {
-  elements.applicationNotice.hidden = true;
-});
 
 startApplication();

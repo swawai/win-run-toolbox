@@ -1,6 +1,6 @@
 use super::*;
 use crate::data_root::record::{publish_entry_record, read_entry_record};
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::os::windows::fs::OpenOptionsExt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use windows_sys::Win32::Storage::FileSystem::{
@@ -39,8 +39,6 @@ impl Fixture {
         ResolveDataRootRequest {
             swawkit_home: &self.swawkit_home,
             entry_file: &self.entry_file,
-            inherited_data_root: None,
-            legacy_data_directory: None,
         }
     }
 

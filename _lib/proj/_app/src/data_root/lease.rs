@@ -77,14 +77,6 @@ fn expected_data_root_identity(plan: &DataRootPlan) -> Option<&EntryIdentity> {
         | DataRootPlan::ClaimRename {
             observed_directory_identity,
             ..
-        }
-        | DataRootPlan::MigrateLegacy {
-            observed_directory_identity,
-            ..
-        }
-        | DataRootPlan::ClaimMigrateLegacy {
-            observed_directory_identity,
-            ..
         } => Some(observed_directory_identity),
         DataRootPlan::Create { .. } => None,
     }

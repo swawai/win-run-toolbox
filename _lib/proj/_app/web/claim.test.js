@@ -27,7 +27,7 @@ function headers(etag = '"sha256-claim"') {
 }
 
 function pendingResponse(document = {
-  protocol: "swawkit.data-root-claim/v1",
+  protocol: "swawkit.data-root-claim/v2",
   status: "claimRequired",
   claim,
 }) {
@@ -72,27 +72,7 @@ test("a 204 claim probe means the DataRoot is ready", async () => {
     ok: true,
     status: 204,
   }));
-  assert.deepEqual(result, { status: "ready", warnings: [] });
-});
-
-test("a ready claim probe preserves repair warnings", async () => {
-  const result = await readDataRootClaim(async () => ({
-    ok: true,
-    status: 200,
-    headers: headers(),
-    async json() {
-      return {
-        protocol: "swawkit.data-root-claim/v1",
-        status: "ready",
-        warnings: ["republish the development environment"],
-      };
-    },
-  }));
-  assert.deepEqual(result, {
-    protocol: "swawkit.data-root-claim/v1",
-    status: "ready",
-    warnings: ["republish the development environment"],
-  });
+  assert.deepEqual(result, { status: "ready" });
 });
 
 test("a pending claim preserves the server revision and every displayed field", async () => {
@@ -114,21 +94,14 @@ test("confirmation is exact and does not trim or fold case", () => {
 
 test("claim confirmation sends only the typed name with the loaded revision", async () => {
   let request;
-  const result = await confirmDataRootClaim(
+  await confirmDataRootClaim(
     { claim, revision: '"sha256-claim"' },
     "swawkit",
     async (url, options) => {
       request = { url, options };
       return {
         ok: true,
-        status: 200,
-        async json() {
-          return {
-            protocol: "swawkit.data-root-claim/v1",
-            status: "claimed",
-            warnings: ["recovered stale metadata"],
-          };
-        },
+        status: 204,
       };
     },
   );
@@ -136,34 +109,25 @@ test("claim confirmation sends only the typed name with the loaded revision", as
   assert.equal(request.url, "/api/v2/data-root/claim");
   assert.equal(request.options.headers["If-Match"], '"sha256-claim"');
   assert.deepEqual(JSON.parse(request.options.body), { confirmation: "swawkit" });
-  assert.deepEqual(result.warnings, ["recovered stale metadata"]);
 });
 
-test("claim documents require the exact v1 protocol", async () => {
+test("claim documents require the exact v2 protocol", async () => {
   await assert.rejects(
     readDataRootClaim(async () => pendingResponse({
-      protocol: "swawkit.data-root-claim/v2",
+      protocol: "swawkit.data-root-claim/v1",
       status: "claimRequired",
       claim,
     })),
     DataRootClaimError,
   );
+});
 
+test("a successful claim requires an empty 204 response", async () => {
   await assert.rejects(
     confirmDataRootClaim(
       { claim, revision: '"sha256-claim"' },
       "swawkit",
-      async () => ({
-        ok: true,
-        status: 200,
-        async json() {
-          return {
-            protocol: "swawkit.data-root-claim/v2",
-            status: "claimed",
-            warnings: [],
-          };
-        },
-      }),
+      async () => ({ ok: true, status: 200 }),
     ),
     DataRootClaimError,
   );
@@ -205,15 +169,14 @@ test("server validation errors preserve their message for inline feedback", asyn
   );
 });
 
-test("the view forwards claim warnings to the ready application", async () => {
+test("the view enters the ready application after a claim", async () => {
   const elements = claimElements();
-  const warnings = ["recovered stale metadata"];
   let request = 0;
-  let readyWarnings;
+  let ready = false;
   const view = createDataRootClaimView(elements, {
     onClaimRequired() {},
-    async onReady(nextWarnings) {
-      readyWarnings = nextWarnings;
+    async onReady() {
+      ready = true;
     },
     async fetchClaim() {
       request += 1;
@@ -222,14 +185,7 @@ test("the view forwards claim warnings to the ready application", async () => {
       }
       return {
         ok: true,
-        status: 200,
-        async json() {
-          return {
-            protocol: "swawkit.data-root-claim/v1",
-            status: "claimed",
-            warnings,
-          };
-        },
+        status: 204,
       };
     },
   });
@@ -237,7 +193,7 @@ test("the view forwards claim warnings to the ready application", async () => {
   assert.equal(await view.ensureReady(), false);
   elements.claimConfirmation.value = "swawkit";
   await view.submit();
-  assert.deepEqual(readyWarnings, warnings);
+  assert.equal(ready, true);
 });
 
 test("a failed conflict refresh remains an inline error", async () => {
@@ -280,11 +236,11 @@ test("a failed conflict refresh remains an inline error", async () => {
 test("a conflict refresh enters the application when another client completed the claim", async () => {
   const elements = claimElements();
   let request = 0;
-  let readyWarnings;
+  let ready = false;
   const view = createDataRootClaimView(elements, {
     onClaimRequired() {},
-    async onReady(warnings) {
-      readyWarnings = warnings;
+    async onReady() {
+      ready = true;
     },
     async fetchClaim() {
       request += 1;
@@ -308,6 +264,6 @@ test("a conflict refresh enters the application when another client completed th
   elements.claimConfirmation.value = "swawkit";
   await view.submit();
 
-  assert.deepEqual(readyWarnings, []);
+  assert.equal(ready, true);
   assert.equal(request, 3);
 });

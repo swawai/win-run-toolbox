@@ -56,18 +56,17 @@ impl DataRootSession {
         &self,
         expected_revision: &str,
         confirmation: &str,
-    ) -> Result<Vec<String>, DataRootSessionError> {
+    ) -> Result<(), DataRootSessionError> {
         let mut ready = self.lock_ready()?;
-        if let Some(resolved) = ready.as_ref() {
-            return Ok(resolved.warnings().to_vec());
+        if ready.is_some() {
+            return Ok(());
         }
 
         let inspection = inspect_owned_data_root(&self.request)?;
         let Some(expected_claim) = inspection.claim else {
             let resolved = self.resolve_without_claim()?;
-            let warnings = resolved.warnings().to_vec();
             *ready = Some(resolved);
-            return Ok(warnings);
+            return Ok(());
         };
         if expected_claim.revision() != expected_revision {
             return Err(DataRootSessionError::Conflict);
@@ -85,9 +84,8 @@ impl DataRootSession {
             }
             Err(error) => return Err(error.into()),
         };
-        let warnings = resolved.warnings().to_vec();
         *ready = Some(resolved);
-        Ok(warnings)
+        Ok(())
     }
 
     fn resolve_without_claim(&self) -> Result<ResolvedDataRoot, DataRootSessionError> {
@@ -176,8 +174,6 @@ mod tests {
         let request = ResolveDataRootRequest {
             swawkit_home: &swawkit_home,
             entry_file: &entry_file,
-            inherited_data_root: None,
-            legacy_data_directory: None,
         };
         let mut approve = |_claim: &DataRootClaim| Ok(true);
         let resolved = resolve_data_root(request, &mut approve).expect("bind first Entry");

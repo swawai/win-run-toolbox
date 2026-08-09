@@ -150,7 +150,6 @@ try {
         'echo GIT_ID_NAME=%SWAWKIT_PROJ_GIT_ID_NAME%'
         'echo PROJ_HOME=%SWAWKIT_HOME%'
         'echo DATA_ROOT=%SWAWKIT_PROJ_DATA_ROOT%'
-        'echo RUNTIME_BIN=%SWAWKIT_PROJ_RUNTIME_BIN%'
         'echo PATH_VALUE=%PATH%'
         'echo WORKING_DIR=%CD%'
         'echo CMD_SPECIAL=left^&right'
@@ -173,7 +172,6 @@ try {
         'GIT_ID_NAME=Shell Fixture',
         "PROJ_HOME=$($Runtime.Home)",
         "DATA_ROOT=$DataRoot",
-        "RUNTIME_BIN=$RuntimeBin",
         "PATH_VALUE=$RuntimeBin;",
         "WORKING_DIR=$($Runtime.Home)",
         'CMD_SPECIAL=left&right',
@@ -199,7 +197,6 @@ try {
         'Write-Output "GIT_ID_NAME=$env:SWAWKIT_PROJ_GIT_ID_NAME"'
         'Write-Output "PROJ_HOME=$env:SWAWKIT_HOME"'
         'Write-Output "DATA_ROOT=$env:SWAWKIT_PROJ_DATA_ROOT"'
-        'Write-Output "RUNTIME_BIN=$env:SWAWKIT_PROJ_RUNTIME_BIN"'
         'Write-Output "PATH_VALUE=$env:PATH"'
         'Write-Output "WORKING_DIR=$((Get-Location).ProviderPath)"'
         'Write-Output ''COMMAND_TEXT=ampersand&pipe|percent%'''
@@ -226,7 +223,6 @@ try {
         'GIT_ID_NAME=Shell Fixture',
         "PROJ_HOME=$($Runtime.Home)",
         "DATA_ROOT=$DataRoot",
-        "RUNTIME_BIN=$RuntimeBin",
         "PATH_VALUE=$RuntimeBin;",
         "WORKING_DIR=$($Runtime.Home)",
         'COMMAND_TEXT=ampersand&pipe|percent%'
@@ -251,14 +247,13 @@ Write-Output ('FILE_ARGS=' + [string]::Join('|', @($First, $Second, $Third)))
 Write-Output ('PS_MAJOR=' + $PSVersionTable.PSVersion.Major)
 Write-Output ('POLICY=' + (Get-ExecutionPolicy -Scope Process))
 Write-Output ('WORKING_DIR=' + (Get-Location).ProviderPath)
-Write-Output ('RUNTIME_BIN=' + $env:SWAWKIT_PROJ_RUNTIME_BIN)
 $ProcessEnvironmentNames = [string[]]@(
     [Environment]::GetEnvironmentVariables('Process').Keys
 )
-$CoreAdapterNames = @(
+$CoreCommandAdapterNames = @(
     $ProcessEnvironmentNames | Where-Object {
         $_.StartsWith(
-            'SWAWKIT_PROJ_CORE_ADAPTER_',
+            'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_',
             [StringComparison]::OrdinalIgnoreCase
         )
     }
@@ -271,7 +266,9 @@ $ModuleNames = @(
         )
     }
 )
-Write-Output ('CORE_ADAPTER_INTERNAL_COUNT=' + $CoreAdapterNames.Count)
+Write-Output (
+    'CORE_COMMAND_ADAPTER_INTERNAL_COUNT=' + $CoreCommandAdapterNames.Count
+)
 Write-Output ('MODULE_INTERNAL_COUNT=' + $ModuleNames.Count)
 Write-Output ('UNDEFINED=' + [string]$ProjUndefinedVariable)
 exit 33
@@ -305,8 +302,7 @@ exit 33
         'PS_MAJOR=5',
         'POLICY=Bypass',
         "WORKING_DIR=$($Runtime.Home)",
-        "RUNTIME_BIN=$RuntimeBin",
-        'CORE_ADAPTER_INTERNAL_COUNT=0',
+        'CORE_COMMAND_ADAPTER_INTERNAL_COUNT=0',
         'MODULE_INTERNAL_COUNT=0',
         'UNDEFINED='
     )) {

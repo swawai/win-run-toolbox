@@ -37,37 +37,27 @@ fn inventory(
 fn request<'a>(
     identity: &'a EntryIdentity,
     current: &'a DataRootInventory,
-    legacy: Option<&'a DataRootInventory>,
-    inherited: Option<&'a Path>,
 ) -> DataRootPlanningRequest<'a> {
     DataRootPlanningRequest {
         entry_file: Path::new(r"D:\kit\Favorites\project-one.exe"),
         identity,
         current,
-        legacy,
-        inherited_data_root: inherited,
     }
 }
 
 #[test]
-fn creates_only_when_no_binding_or_inherited_state_exists() {
+fn creates_only_when_no_binding_exists() {
     let id = identity(1);
     let current = inventory(r"D:\kit\data", []);
-    let plan = plan_data_root(request(&id, &current, None, None)).expect("plan");
+    let plan = plan_data_root(request(&id, &current)).expect("plan");
     assert!(matches!(plan, DataRootPlan::Create { .. }));
-
-    let inherited = Path::new(r"D:\kit\data\proj.project-one");
-    assert!(matches!(
-        plan_data_root(request(&id, &current, None, Some(inherited))),
-        Err(DataRootPlanError::UnboundInherited(_))
-    ));
 }
 
 #[test]
 fn derives_the_entry_name_from_the_absolute_entry_file() {
     let id = identity(11);
     let current = inventory(r"D:\kit\data", []);
-    let plan = plan_data_root(request(&id, &current, None, None)).expect("plan");
+    let plan = plan_data_root(request(&id, &current)).expect("plan");
     assert_eq!(plan.target().entry_name, "project-one");
     assert!(plan.target().data_root.ends_with("proj.project-one"));
 
@@ -75,8 +65,6 @@ fn derives_the_entry_name_from_the_absolute_entry_file() {
         entry_file: Path::new("project-one.exe"),
         identity: &id,
         current: &current,
-        legacy: None,
-        inherited_data_root: None,
     };
     assert!(matches!(
         plan_data_root(relative),
@@ -92,7 +80,7 @@ fn uses_a_matching_candidate_directly() {
         [("PROJ.PROJECT-ONE", valid_record("PROJECT-ONE", &id))],
     );
     assert!(matches!(
-        plan_data_root(request(&id, &current, None, None)),
+        plan_data_root(request(&id, &current)),
         Ok(DataRootPlan::Direct { .. })
     ));
 }
@@ -105,7 +93,7 @@ fn requires_claim_for_an_unbound_or_copied_same_name_candidate() {
         path: PathBuf::from(r"D:\kit\data\proj.project-one\_entry.json"),
     };
     let current = inventory(r"D:\kit\data", [("proj.project-one", missing)]);
-    let plan = plan_data_root(request(&id, &current, None, None)).expect("missing plan");
+    let plan = plan_data_root(request(&id, &current)).expect("missing plan");
     assert!(matches!(
         plan,
         DataRootPlan::ClaimCurrent { ref reason, .. } if reason == "identity record is missing"
@@ -116,7 +104,7 @@ fn requires_claim_for_an_unbound_or_copied_same_name_candidate() {
         [("proj.project-one", valid_record("project-one", &copied_from))],
     );
     assert!(matches!(
-        plan_data_root(request(&id, &current, None, None)),
+        plan_data_root(request(&id, &current)),
         Ok(DataRootPlan::ClaimCurrent { .. })
     ));
 }
@@ -128,7 +116,7 @@ fn follows_a_renamed_entry_by_file_identity() {
         r"D:\kit\data",
         [("proj.old-name", valid_record("old-name", &id))],
     );
-    let plan = plan_data_root(request(&id, &current, None, None)).expect("rename plan");
+    let plan = plan_data_root(request(&id, &current)).expect("rename plan");
     assert!(matches!(
         plan,
         DataRootPlan::ClaimRename { source_data_root, .. }
@@ -148,36 +136,13 @@ fn rejects_a_taken_candidate_when_the_identity_exists_elsewhere() {
         ],
     );
     assert!(matches!(
-        plan_data_root(request(&id, &current, None, None)),
+        plan_data_root(request(&id, &current)),
         Err(DataRootPlanError::CandidateCollision { .. })
     ));
 }
 
 #[test]
-fn distinguishes_direct_and_claimed_legacy_migration() {
-    let id = identity(8);
-    let current = inventory(r"D:\kit\data", []);
-    let legacy = inventory(
-        r"D:\project\data",
-        [("proj.project-one", valid_record("project-one", &id))],
-    );
-    assert!(matches!(
-        plan_data_root(request(&id, &current, Some(&legacy), None)),
-        Ok(DataRootPlan::MigrateLegacy { .. })
-    ));
-
-    let legacy = inventory(
-        r"D:\project\data",
-        [("proj.old-name", valid_record("old-name", &id))],
-    );
-    assert!(matches!(
-        plan_data_root(request(&id, &current, Some(&legacy), None)),
-        Ok(DataRootPlan::ClaimMigrateLegacy { .. })
-    ));
-}
-
-#[test]
-fn rejects_ambiguous_identity_and_inherited_state() {
+fn rejects_ambiguous_current_identity() {
     let id = identity(9);
     let current = inventory(
         r"D:\kit\data",
@@ -187,31 +152,7 @@ fn rejects_ambiguous_identity_and_inherited_state() {
         ],
     );
     assert!(matches!(
-        plan_data_root(request(&id, &current, None, None)),
+        plan_data_root(request(&id, &current)),
         Err(DataRootPlanError::MultipleCurrentBindings(_))
-    ));
-
-    let current = inventory(r"D:\kit\data", []);
-    let foreign = Path::new(r"D:\kit\data\proj.other");
-    assert!(matches!(
-        plan_data_root(request(&id, &current, None, Some(foreign))),
-        Err(DataRootPlanError::ForeignInherited(_))
-    ));
-}
-
-#[test]
-fn rejects_the_same_identity_in_current_and_legacy_storage() {
-    let id = identity(10);
-    let current = inventory(
-        r"D:\kit\data",
-        [("proj.current", valid_record("current", &id))],
-    );
-    let legacy = inventory(
-        r"D:\project\data",
-        [("proj.legacy", valid_record("legacy", &id))],
-    );
-    assert!(matches!(
-        plan_data_root(request(&id, &current, Some(&legacy), None)),
-        Err(DataRootPlanError::CurrentAndLegacyBindings { .. })
     ));
 }

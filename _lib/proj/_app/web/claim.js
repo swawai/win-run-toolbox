@@ -1,5 +1,5 @@
 const CLAIM_URL = "/api/v2/data-root/claim";
-const CLAIM_PROTOCOL = "swawkit.data-root-claim/v1";
+const CLAIM_PROTOCOL = "swawkit.data-root-claim/v2";
 
 export class DataRootClaimError extends Error {
   constructor(message, status = 0) {
@@ -39,7 +39,7 @@ export async function readDataRootClaim(fetchClaim = fetch) {
     headers: { Accept: "application/json" },
   });
   if (response.status === 204) {
-    return { status: "ready", warnings: [] };
+    return { status: "ready" };
   }
   if (!response.ok) {
     throw new DataRootClaimError(
@@ -49,10 +49,6 @@ export async function readDataRootClaim(fetchClaim = fetch) {
   }
 
   const document = await response.json();
-  if (document?.status === "ready") {
-    validateReadyDocument(document);
-    return document;
-  }
   const revision = response.headers.get("etag");
   validateClaimDocument(document, revision);
   return { status: document.status, claim: document.claim, revision };
@@ -82,10 +78,12 @@ export async function confirmDataRootClaim(pending, confirmation, fetchClaim = f
     }
     throw new DataRootClaimError(message, response.status);
   }
-
-  const document = await readJsonDocument(response, "Host 返回了无效的 DataRoot 认领结果。");
-  validateClaimedDocument(document);
-  return document;
+  if (response.status !== 204) {
+    throw new DataRootClaimError(
+      "Host 返回了无效的 DataRoot 认领结果。",
+      response.status,
+    );
+  }
 }
 
 export function createDataRootClaimView(
@@ -127,7 +125,7 @@ export function createDataRootClaimView(
     const next = await readDataRootClaim(fetchClaim);
     if (next.status === "ready") {
       pending = null;
-      await onReady(next.warnings);
+      await onReady();
       return;
     }
     render(next);
@@ -140,7 +138,7 @@ export function createDataRootClaimView(
     const next = await readDataRootClaim(fetchClaim);
     if (next.status === "ready") {
       pending = null;
-      await onReady(next.warnings);
+      await onReady();
       return;
     }
     render(next);
@@ -164,9 +162,9 @@ export function createDataRootClaimView(
     updateSubmitState();
     setFeedback("正在重新核对并认领 DataRoot…");
     try {
-      const result = await confirmDataRootClaim(pending, confirmation, fetchClaim);
+      await confirmDataRootClaim(pending, confirmation, fetchClaim);
       pending = null;
-      await onReady(result.warnings);
+      await onReady();
     } catch (error) {
       if (error instanceof DataRootClaimConflictError) {
         setFeedback("认领信息已经变化，正在刷新…");
@@ -231,36 +229,6 @@ function validateClaimDocument(document, revision) {
   }
   if (typeof revision !== "string" || !revision) {
     throw new DataRootClaimError("Host 未提供 DataRoot 认领版本，无法安全确认。");
-  }
-}
-
-function validateClaimedDocument(document) {
-  if (
-    !document
-    || document.protocol !== CLAIM_PROTOCOL
-    || document.status !== "claimed"
-    || !Array.isArray(document.warnings)
-    || document.warnings.some((warning) => typeof warning !== "string" || !warning)
-  ) {
-    throw new DataRootClaimError("Host 返回了无效的 DataRoot 认领结果。");
-  }
-}
-
-function validateReadyDocument(document) {
-  if (
-    document.protocol !== CLAIM_PROTOCOL
-    || !Array.isArray(document.warnings)
-    || document.warnings.some((warning) => typeof warning !== "string" || !warning)
-  ) {
-    throw new DataRootClaimError("Host 返回了无效的 DataRoot 就绪状态。");
-  }
-}
-
-async function readJsonDocument(response, fallback) {
-  try {
-    return await response.json();
-  } catch {
-    throw new DataRootClaimError(fallback, response.status);
   }
 }
 

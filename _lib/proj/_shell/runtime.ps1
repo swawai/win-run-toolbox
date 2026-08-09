@@ -1,6 +1,6 @@
 Set-StrictMode -Version 2.0
 
-function Initialize-ProjShellCommandEnvironment {
+function Add-ProjShellRuntimePath {
     param([Parameter(Mandatory = $true)][string]$KernelRoot)
 
     $RuntimeBin = [IO.Path]::GetFullPath(
@@ -15,7 +15,6 @@ function Initialize-ProjShellCommandEnvironment {
         throw "Proj runtime bin directory cannot be a reparse point: $RuntimeBin"
     }
 
-    $env:SWAWKIT_PROJ_RUNTIME_BIN = $RuntimeBin
     $AlreadyPresent = $false
     foreach ($Entry in ([string]$env:PATH).Split(
         [IO.Path]::PathSeparator,
@@ -39,7 +38,6 @@ function Initialize-ProjShellCommandEnvironment {
             "$RuntimeBin$([IO.Path]::PathSeparator)$([string]$env:PATH)"
         )
     }
-    return $RuntimeBin
 }
 
 function Get-ProjSystemCmdPath {

@@ -8,20 +8,20 @@ use crate::catalog::{CommandAdapter, is_help_marker};
 
 use super::{CommandError, CommandResult, ProcessEnvironment};
 
-const ADAPTER_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_ADAPTER_";
-const POWERSHELL_ARGUMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_";
-const POWERSHELL_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ENTRY_PATH";
-const POWERSHELL_COUNT_ENV: &str = "SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_COUNT";
-const CMD_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_ADAPTER_CMD_ENTRY_PATH";
+const ADAPTER_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_";
+const POWERSHELL_ARGUMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_";
+const POWERSHELL_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ENTRY_PATH";
+const POWERSHELL_COUNT_ENV: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_COUNT";
+const CMD_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_CMD_ENTRY_PATH";
 
 const POWERSHELL_RUNNER: &str = r#"
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 try {
-    $entryPathName = 'SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ENTRY_PATH'
-    $countName = 'SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_COUNT'
-    $argumentPrefix = 'SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_'
+    $entryPathName = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ENTRY_PATH'
+    $countName = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_COUNT'
+    $argumentPrefix = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_'
     $entryPath = [Environment]::GetEnvironmentVariable($entryPathName, 'Process')
     $countText = [Environment]::GetEnvironmentVariable($countName, 'Process')
     $count = [int]::Parse($countText, [Globalization.CultureInfo]::InvariantCulture)

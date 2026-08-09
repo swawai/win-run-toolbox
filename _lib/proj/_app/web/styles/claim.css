@@ -154,59 +154,6 @@
   color: var(--ui-status-error);
 }
 
-.application-notice {
-  max-width: min(680px, calc(100% - 24px));
-  position: absolute;
-  z-index: 3;
-  top: 12px;
-  left: 50%;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--ui-border-strong);
-  border-radius: var(--radius-control);
-  color: var(--ui-text);
-  background: var(--ui-surface);
-  box-shadow: 0 4px 18px rgb(0 0 0 / 12%);
-  transform: translateX(-50%);
-}
-
-.application-notice-symbol {
-  color: var(--ui-status-warning);
-  font-weight: 800;
-}
-
-.application-notice p {
-  min-width: 0;
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.application-notice strong,
-#application-notice-message {
-  display: block;
-}
-
-#application-notice-message {
-  margin-top: 2px;
-  color: var(--ui-text-muted);
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-
-#application-notice-dismiss {
-  margin: -4px -4px -4px auto;
-  padding: 2px 5px;
-  border: 0;
-  color: var(--ui-text-muted);
-  background: transparent;
-  font-size: 17px;
-  line-height: 1;
-  cursor: pointer;
-}
-
 @media (max-width: 560px) {
   .claim-state {
     display: block;

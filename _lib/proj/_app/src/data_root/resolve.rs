@@ -1,12 +1,11 @@
 use std::error::Error;
 use std::fmt;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::entry::{EntryIdentity, EntryIdentityError, EntryIdentityLease};
 
-use super::claim::{ClaimApprovalError, ClaimKind, DataRootClaim, DataRootClaimApprover};
+use super::claim::{ClaimApprovalError, DataRootClaim, DataRootClaimApprover};
 use super::execute::{DataRootExecutionError, execute_plan};
 use super::inventory::{DataRootInventory, DataRootInventoryError};
 use super::lease::{DataRootBindingLease, DataRootBindingLeaseError};
@@ -20,24 +19,17 @@ use super::plan::{
 pub struct ResolveDataRootRequest<'a> {
     pub swawkit_home: &'a Path,
     pub entry_file: &'a Path,
-    pub inherited_data_root: Option<&'a Path>,
-    pub legacy_data_directory: Option<&'a Path>,
 }
 
 #[derive(Clone)]
 pub struct ResolvedDataRoot {
     path: PathBuf,
-    warnings: Vec<String>,
     _lease: Arc<DataRootBindingLease>,
 }
 
 impl ResolvedDataRoot {
     pub fn path(&self) -> &Path {
         &self.path
-    }
-
-    pub fn warnings(&self) -> &[String] {
-        &self.warnings
     }
 }
 
@@ -46,14 +38,13 @@ impl fmt::Debug for ResolvedDataRoot {
         formatter
             .debug_struct("ResolvedDataRoot")
             .field("path", &self.path)
-            .field("warnings", &self.warnings)
             .finish_non_exhaustive()
     }
 }
 
 impl PartialEq for ResolvedDataRoot {
     fn eq(&self, other: &Self) -> bool {
-        self.path == other.path && self.warnings == other.warnings
+        self.path == other.path
     }
 }
 
@@ -119,7 +110,7 @@ pub(super) fn resolve_owned_data_root(
     let initial_plan = build_plan(&request, &data_directory)?;
     let claim = DataRootClaim::from_plan(&initial_plan);
     let Some(claim) = claim else {
-        return complete_locked(initial_plan, None, lock, request);
+        return complete_locked(initial_plan, lock, request);
     };
     drop(lock);
 
@@ -137,42 +128,27 @@ fn build_plan(
     data_directory: &Path,
 ) -> Result<DataRootPlan, ResolveDataRootError> {
     let current = DataRootInventory::scan(data_directory)?;
-    let legacy = request
-        .legacy_data_directory
-        .as_deref()
-        .map(DataRootInventory::scan)
-        .transpose()?;
     plan_data_root(DataRootPlanningRequest {
         entry_file: &request.entry_file,
         identity: request.entry_identity(),
         current: &current,
-        legacy: legacy.as_ref(),
-        inherited_data_root: request.inherited_data_root.as_deref(),
     })
     .map_err(Into::into)
 }
 
 fn complete_locked(
     plan: DataRootPlan,
-    completed_legacy_source: Option<PathBuf>,
     lock: DataRootLock,
     request: &OwnedRequest,
 ) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     let target = plan.target().clone();
-    let execution = execute_plan(&plan)?;
+    execute_plan(&plan)?;
     let lease = Arc::new(DataRootBindingLease::acquire(
         &plan,
         Arc::clone(&request.entry_file_lease),
     )?);
-    let mut warnings = Vec::new();
-    if let Some(source) = execution.legacy_source.or(completed_legacy_source)
-        && let Some(warning) = remove_legacy_residue(&source)
-    {
-        warnings.push(warning);
-    }
     let resolved = ResolvedDataRoot {
         path: target.data_root,
-        warnings,
         _lease: lease,
     };
     drop(lock);
@@ -186,15 +162,8 @@ fn complete_expected_claim(
     request: &OwnedRequest,
 ) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     match DataRootClaim::from_plan(&plan) {
-        Some(current) if &current == expected => complete_locked(plan, None, lock, request),
-        None if direct_target_matches(&plan, expected) => {
-            let completed_legacy_source = if expected.kind == ClaimKind::MigrateLegacy {
-                expected.source_data_root.clone()
-            } else {
-                None
-            };
-            complete_locked(plan, completed_legacy_source, lock, request)
-        }
+        Some(current) if &current == expected => complete_locked(plan, lock, request),
+        None if direct_target_matches(&plan, expected) => complete_locked(plan, lock, request),
         _ => Err(ResolveDataRootError::state_changed()),
     }
 }
@@ -215,39 +184,10 @@ fn direct_target_matches(plan: &DataRootPlan, expected: &DataRootClaim) -> bool 
         && data_root_identity == expected.observed_directory_identity()
 }
 
-fn remove_legacy_residue(legacy_data_root: &Path) -> Option<String> {
-    let legacy_directory = legacy_data_root.parent()?;
-    if !legacy_directory.is_dir() {
-        return None;
-    }
-    let result = (|| -> Result<(), std::io::Error> {
-        let lock_path = legacy_directory.join("_proj-entry.lock");
-        if lock_path.is_file() && fs::metadata(&lock_path)?.len() == 0 {
-            fs::remove_file(lock_path)?;
-        }
-        if fs::read_dir(legacy_directory)?
-            .next()
-            .transpose()?
-            .is_none()
-        {
-            fs::remove_dir(legacy_directory)?;
-        }
-        Ok(())
-    })();
-    result.err().map(|error| {
-        format!(
-            "the obsolete project-local data directory could not be fully cleaned: {}. {error}",
-            legacy_directory.display()
-        )
-    })
-}
-
 pub(super) struct OwnedRequest {
     swawkit_home: PathBuf,
     entry_file: PathBuf,
     entry_file_lease: Arc<EntryIdentityLease>,
-    inherited_data_root: Option<PathBuf>,
-    legacy_data_directory: Option<PathBuf>,
 }
 
 impl OwnedRequest {
@@ -256,26 +196,11 @@ impl OwnedRequest {
     ) -> Result<Self, ResolveDataRootError> {
         let swawkit_home = required_directory(request.swawkit_home, "SWAWKIT_HOME")?;
         let entry_file = absolute(request.entry_file, "project entry file")?;
-        let inherited_data_root = match request.inherited_data_root {
-            Some(path) if !path.is_absolute() => {
-                return Err(ResolveDataRootError::invalid_input(
-                    "inherited SWAWKIT_PROJ_DATA_ROOT must be absolute".to_owned(),
-                ));
-            }
-            Some(path) => Some(absolute(path, "inherited DataRoot")?),
-            None => None,
-        };
-        let legacy_data_directory = request
-            .legacy_data_directory
-            .map(|path| absolute(path, "legacy project data directory"))
-            .transpose()?;
         let entry_file_lease = Arc::new(EntryIdentityLease::acquire_entry(&entry_file)?);
         Ok(Self {
             swawkit_home,
             entry_file,
             entry_file_lease,
-            inherited_data_root,
-            legacy_data_directory,
         })
     }
 

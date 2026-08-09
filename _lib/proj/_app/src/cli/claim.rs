@@ -1,6 +1,4 @@
 use std::ffi::OsString;
-use std::path::Path;
-
 use swawkit_proj::{
     catalog::{CatalogSnapshot, is_help_marker},
     context::EntryContext,
@@ -18,8 +16,6 @@ const ADDRESS: &str = "..entry.claim";
 pub(super) fn run(
     context: &EntryContext,
     argv: &[OsString],
-    inherited_data_root: Option<&Path>,
-    legacy_data_directory: Option<&Path>,
     snapshot: &CatalogSnapshot,
     address: &str,
 ) -> Result<i32, CliError> {
@@ -43,8 +39,6 @@ pub(super) fn run(
     let request = ResolveDataRootRequest {
         swawkit_home: &context.swawkit_home,
         entry_file: &context.entry_file,
-        inherited_data_root,
-        legacy_data_directory,
     };
     let inspection = inspect_data_root(request)
         .map_err(|error| CliError::new(format!("DataRoot inspection failed: {error}")))?;
@@ -62,9 +56,6 @@ pub(super) fn run(
             };
             let resolved = claim_data_root(request, &expected)
                 .map_err(|error| CliError::new(format!("DataRoot claim failed: {error}")))?;
-            for warning in resolved.warnings() {
-                eprintln!("[WARNING] {warning}");
-            }
             let output = format!(
                 "DataRoot Claim\nStatus: claimed\nEntry: {}\nDataRoot: {}",
                 expected.entry_name,

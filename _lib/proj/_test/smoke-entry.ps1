@@ -57,9 +57,9 @@ $PoisonedEnvironment = [ordered]@{
     SWAWKIT_PROJ_ENTRY_COMMAND = 'foreign-entry'
     SWAWKIT_PROJ_ENTRY_FILE = 'C:\foreign-entry.cmd'
     SWAWKIT_PROJ_LAUNCH_MODE = 'internal-host'
-    SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_COUNT = '99'
-    SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_47 = 'foreign-argument'
-    SWAWKIT_PROJ_CORE_ADAPTER_CMD_ENTRY_PATH = 'C:\foreign-run.cmd'
+    SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_COUNT = '99'
+    SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_47 = 'foreign-argument'
+    SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_CMD_ENTRY_PATH = 'C:\foreign-run.cmd'
 }
 $SavedEnvironment = @{}
 

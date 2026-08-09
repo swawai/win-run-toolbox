@@ -338,7 +338,7 @@ fn cmd_adapter_allows_only_one_standalone_help_selector() {
     fs::write(
         directory.join("run.cmd"),
         "@echo off\r\n\
-         if defined SWAWKIT_PROJ_CORE_ADAPTER_CMD_ENTRY_PATH exit /b 91\r\n\
+         if defined SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_CMD_ENTRY_PATH exit /b 91\r\n\
          > \"%SWAWKIT_PROJ_DATA_ROOT%\\cmd.txt\" \
          echo %~1^|%SWAWKIT_PROJ_CORE_COMMAND_ADDRESS%\r\n\
          exit /b 31\r\n",

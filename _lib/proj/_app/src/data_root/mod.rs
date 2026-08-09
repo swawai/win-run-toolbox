@@ -10,7 +10,7 @@ mod resolve;
 mod session;
 
 pub use claim::{ClaimApprovalError, ClaimKind, DataRootClaim, DataRootClaimApprover};
-pub use document::{DataRootClaimDocument, DataRootClaimResultDocument};
+pub use document::DataRootClaimDocument;
 pub use inventory::{DataRootInventory, DataRootInventoryError};
 pub(crate) use lock::DataRootLock;
 pub use plan::{

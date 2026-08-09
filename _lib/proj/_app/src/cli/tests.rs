@@ -67,8 +67,6 @@ impl Fixture {
             ResolveDataRootRequest {
                 swawkit_home: &self.context.swawkit_home,
                 entry_file: &self.context.entry_file,
-                inherited_data_root: None,
-                legacy_data_directory: None,
             },
             &mut approve,
         )
@@ -142,8 +140,6 @@ fn protocol_help_initializes_the_entry_without_requiring_an_entry_profile() {
     let exit_code = run_with_approver(
         &fixture.context,
         &argv(&["--help"]),
-        None,
-        None,
         &mut unexpected,
     )
     .unwrap();
@@ -174,8 +170,6 @@ fn local_help_is_read_only_but_command_owned_help_executes() {
         run_with_approver(
             &fixture.context,
             &argv(&[".local", "--help"]),
-            None,
-            None,
             &mut unexpected,
         )
         .unwrap(),
@@ -186,8 +180,6 @@ fn local_help_is_read_only_but_command_owned_help_executes() {
         run_with_approver(
             &fixture.context,
             &argv(&[".owned", "--help"]),
-            None,
-            None,
             &mut unexpected,
         )
         .unwrap(),
@@ -213,8 +205,6 @@ fn command_execution_creates_and_reuses_the_entry_data_root() {
             run_with_approver(
                 &fixture.context,
                 &argv(&[".tool"]),
-                None,
-                None,
                 &mut unexpected,
             )
             .unwrap(),
@@ -239,8 +229,6 @@ fn invalid_or_unsupported_commands_fail_before_process_execution() {
     let missing = run_with_approver(
         &fixture.context,
         &argv(&[".missing"]),
-        None,
-        None,
         &mut unexpected,
     )
     .unwrap_err();
@@ -248,8 +236,6 @@ fn invalid_or_unsupported_commands_fail_before_process_execution() {
     let unsupported = run_with_approver(
         &fixture.context,
         &argv(&[".future"]),
-        None,
-        None,
         &mut unexpected,
     )
     .unwrap_err();
@@ -275,8 +261,6 @@ fn an_unbound_candidate_requires_approval_before_execution() {
     let error = run_with_approver(
         &fixture.context,
         &argv(&[".tool"]),
-        None,
-        None,
         &mut approve,
     )
     .unwrap_err();
@@ -295,8 +279,6 @@ fn an_unbound_candidate_requires_approval_before_execution() {
         run_with_approver(
             &fixture.context,
             &argv(&[".tool"]),
-            None,
-            None,
             &mut unexpected,
         )
         .unwrap(),
@@ -315,8 +297,6 @@ fn ordinary_cli_rejects_a_claim_immediately_with_dedicated_commands() {
     let error = run_with_approver(
         &fixture.context,
         &argv(&[".tool"]),
-        None,
-        None,
         &mut reject,
     )
     .expect_err("ordinary command must not claim DataRoot");
@@ -344,8 +324,6 @@ fn dedicated_claim_preview_is_read_only_and_yes_applies_it() {
         run_with_approver(
             &fixture.context,
             &argv(&["..entry.claim"]),
-            None,
-            None,
             &mut unexpected,
         )
         .unwrap(),
@@ -358,8 +336,6 @@ fn dedicated_claim_preview_is_read_only_and_yes_applies_it() {
         run_with_approver(
             &fixture.context,
             &argv(&["..entry.claim", "--yes"]),
-            None,
-            None,
             &mut unexpected,
         )
         .unwrap(),

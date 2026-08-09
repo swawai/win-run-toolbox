@@ -43,7 +43,7 @@ async fn pending_claim_gates_the_host_and_transitions_to_ready() {
         .await
         .expect("claim body");
     let document: Value = serde_json::from_slice(&body).expect("claim JSON");
-    assert_eq!(document["protocol"], "swawkit.data-root-claim/v1");
+    assert_eq!(document["protocol"], "swawkit.data-root-claim/v2");
     assert_eq!(document["status"], "claimRequired");
     assert_eq!(document["claim"]["entryName"], "swawkit");
     assert_eq!(document["claim"]["kind"], "current");
@@ -95,14 +95,11 @@ async fn pending_claim_gates_the_host_and_transitions_to_ready() {
     );
 
     let claimed = send_claim(app.clone(), "swawkit", Some(&revision)).await;
-    assert_eq!(claimed.status(), StatusCode::OK);
+    assert_eq!(claimed.status(), StatusCode::NO_CONTENT);
     let claimed_body = to_bytes(claimed.into_body(), usize::MAX)
         .await
         .expect("claimed body");
-    let claimed_document: Value = serde_json::from_slice(&claimed_body).expect("claimed JSON");
-    assert_eq!(claimed_document["protocol"], "swawkit.data-root-claim/v1");
-    assert_eq!(claimed_document["status"], "claimed");
-    assert_eq!(claimed_document["warnings"], json!([]));
+    assert!(claimed_body.is_empty());
     assert_ne!(fs::read(&record_path).unwrap(), before);
     assert_eq!(
         send(
@@ -173,7 +170,7 @@ async fn ready_probe_keeps_module_data_opaque() {
 }
 
 #[tokio::test]
-async fn claim_result_and_retry_keep_empty_warnings_stable() {
+async fn claim_result_and_retry_keep_module_data_opaque() {
     let fixture = Fixture::new();
     fixture.replace_entry(b"copied entry");
     let export = fixture.directory(
@@ -192,13 +189,7 @@ async fn claim_result_and_retry_keep_empty_warnings_stable() {
     let revision = pending.headers().get(ETAG).expect("claim ETag").clone();
 
     let claimed = send_claim(app.clone(), "swawkit", Some(&revision)).await;
-    assert_eq!(claimed.status(), StatusCode::OK);
-    let claimed_body = to_bytes(claimed.into_body(), usize::MAX)
-        .await
-        .expect("claimed body");
-    let claimed_document: Value =
-        serde_json::from_slice(&claimed_body).expect("claimed JSON");
-    assert!(claimed_document["warnings"].as_array().unwrap().is_empty());
+    assert_eq!(claimed.status(), StatusCode::NO_CONTENT);
 
     let retry = send(
         app,

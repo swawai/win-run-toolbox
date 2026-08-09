@@ -16,8 +16,6 @@ fn control_web_command_launches_the_entry_before_profile_gating() {
     let exit_code = run_with_host_launcher(
         &fixture.context,
         &argv(&["..web"]),
-        None,
-        None,
         &mut unexpected_claim,
         &mut launch_host,
     )
@@ -110,8 +108,6 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
         run_with_approver(
             &fixture.context,
             &argv(&["..entry", "--json"]),
-            None,
-            None,
             &mut unexpected_claim,
         )
         .unwrap(),
@@ -123,8 +119,6 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
         run_with_approver(
             &fixture.context,
             &argv(&["..entry.env", ".h"]),
-            None,
-            None,
             &mut unexpected_claim,
         )
         .unwrap(),
@@ -136,8 +130,6 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
         run_with_approver(
             &fixture.context,
             &argv(&["..entry.env.git.SWAWKIT_PROJ_GIT_ID_NAME", "Fixture User",]),
-            None,
-            None,
             &mut unexpected_claim,
         )
         .unwrap(),
@@ -154,8 +146,6 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
     let invalid_update = run_with_approver(
         &fixture.context,
         &argv(&["..entry.env.git.SWAWKIT_PROJ_UNKNOWN", "value"]),
-        None,
-        None,
         &mut unexpected_claim,
     )
     .unwrap_err();
@@ -173,8 +163,6 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
         run_with_approver(
             &fixture.context,
             &argv(&["..entry.apply", "--file", "profile.json"]),
-            None,
-            None,
             &mut unexpected_claim,
         )
         .unwrap(),

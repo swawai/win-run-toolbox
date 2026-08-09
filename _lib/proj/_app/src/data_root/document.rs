@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use super::DataRootClaim;
 
-pub const DATA_ROOT_CLAIM_PROTOCOL: &str = "swawkit.data-root-claim/v1";
+pub const DATA_ROOT_CLAIM_PROTOCOL: &str = "swawkit.data-root-claim/v2";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,32 +22,6 @@ impl DataRootClaimDocument {
                 "notRequired"
             },
             claim: claim.map(DataRootClaimView::from),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DataRootClaimResultDocument {
-    protocol: &'static str,
-    status: &'static str,
-    warnings: Vec<String>,
-}
-
-impl DataRootClaimResultDocument {
-    pub fn claimed(warnings: Vec<String>) -> Self {
-        Self::new("claimed", warnings)
-    }
-
-    pub fn ready(warnings: Vec<String>) -> Self {
-        Self::new("ready", warnings)
-    }
-
-    fn new(status: &'static str, warnings: Vec<String>) -> Self {
-        Self {
-            protocol: DATA_ROOT_CLAIM_PROTOCOL,
-            status,
-            warnings,
         }
     }
 }

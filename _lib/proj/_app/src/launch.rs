@@ -6,6 +6,8 @@ use std::path::PathBuf;
 
 pub const ENTRY_FILE_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE";
 pub const LAUNCH_MODE_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_MODE";
+const PROJECT_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_";
+const SWAWKIT_HOME_ENV: &str = "SWAWKIT_HOME";
 
 /// Selects the composition root without consuming a user argument.
 ///
@@ -67,6 +69,39 @@ impl LaunchRequest {
             argv,
         })
     }
+}
+
+/// Removes inherited Swaw Kit state after the native launch declarations have
+/// been captured into a [`LaunchRequest`].
+///
+/// # Safety
+///
+/// The caller must ensure that no other thread can read or mutate the process
+/// environment for the duration of this call.
+pub unsafe fn clear_inherited_swawkit_environment() {
+    let inherited_names = env::vars_os()
+        .map(|(name, _value)| name)
+        .filter(|name| is_swawkit_environment_name(name))
+        .collect::<Vec<_>>();
+
+    for name in inherited_names {
+        // SAFETY: the caller guarantees exclusive access to the process
+        // environment for the complete snapshot-and-remove operation.
+        unsafe { env::remove_var(name) };
+    }
+}
+
+fn is_swawkit_environment_name(name: &OsStr) -> bool {
+    name.to_str().is_some_and(|name| {
+        name.eq_ignore_ascii_case(SWAWKIT_HOME_ENV)
+            || has_ascii_prefix(name, PROJECT_ENVIRONMENT_PREFIX)
+    })
+}
+
+fn has_ascii_prefix(value: &str, prefix: &str) -> bool {
+    value
+        .get(..prefix.len())
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
 }
 
 fn read_mode(lookup: &mut impl FnMut(&str) -> Option<OsString>) -> Result<LaunchMode, LaunchError> {
@@ -224,5 +259,33 @@ mod tests {
 
         let relative = request(&[], &[(ENTRY_FILE_ENV, "project.exe")]).unwrap_err();
         assert!(relative.to_string().contains("must be absolute"));
+    }
+
+    #[test]
+    fn swawkit_environment_ownership_is_exact_and_case_insensitive() {
+        for owned_name in [
+            "SWAWKIT_HOME",
+            "swawkit_home",
+            "SWAWKIT_PROJ_",
+            "swawkit_proj_unknown",
+            "SwAwKiT_PrOj_Core_Command_Protocol",
+        ] {
+            assert!(
+                is_swawkit_environment_name(OsStr::new(owned_name)),
+                "expected an owned environment name: {owned_name}"
+            );
+        }
+
+        for foreign_name in [
+            "SWAWKIT",
+            "SWAWKIT_HOME_EXTRA",
+            "SWAWKIT_PROJECT",
+            "XSWAWKIT_PROJ_UNKNOWN",
+        ] {
+            assert!(
+                !is_swawkit_environment_name(OsStr::new(foreign_name)),
+                "expected a foreign environment name: {foreign_name}"
+            );
+        }
     }
 }

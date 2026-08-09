@@ -11,7 +11,6 @@ use super::plan::DataRootPlan;
 pub enum ClaimKind {
     Current,
     Rename,
-    MigrateLegacy,
 }
 
 impl ClaimKind {
@@ -19,7 +18,6 @@ impl ClaimKind {
         match self {
             Self::Current => "current",
             Self::Rename => "rename",
-            Self::MigrateLegacy => "migrateLegacy",
         }
     }
 }
@@ -72,22 +70,7 @@ impl DataRootClaim {
                 observed_record_revision.clone(),
                 reason.clone(),
             ),
-            DataRootPlan::ClaimMigrateLegacy {
-                source_data_root,
-                observed_directory_identity,
-                observed_record_revision,
-                reason,
-                ..
-            } => (
-                ClaimKind::MigrateLegacy,
-                Some(source_data_root.clone()),
-                observed_directory_identity.clone(),
-                observed_record_revision.clone(),
-                reason.clone(),
-            ),
-            DataRootPlan::Direct { .. }
-            | DataRootPlan::Create { .. }
-            | DataRootPlan::MigrateLegacy { .. } => return None,
+            DataRootPlan::Direct { .. } | DataRootPlan::Create { .. } => return None,
         };
         let target = plan.target();
         Some(Self {

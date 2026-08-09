@@ -105,7 +105,7 @@ $TargetRoot = Join-Path $TemporaryRoot 'target'
 $ActionRoot = Join-Path $TargetRoot '.swaw'
 $ProbeRoot = Join-Path $ActionRoot 'probe'
 $InvocationRoot = Join-Path $TemporaryRoot 'invocation'
-$CapturePath = Join-Path $TemporaryRoot 'capture.json'
+$CapturePath = Join-Path $DataRoot 'modules\action\probe\capture.json'
 $NestedRoot = Join-Path $TemporaryRoot 'nested\level'
 $NestedEntry = Join-Path $NestedRoot 'outside-supported-layout.exe'
 $BootstrapHome = Join-Path $TemporaryRoot 'bootstrap-home'
@@ -132,7 +132,13 @@ $PoisonedVariables = @(
     'SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL',
     'SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE',
     'SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT',
-    'SWAWKIT_PROJ_TEST_LAUNCHER_CAPTURE'
+    'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION',
+    'SWAWKIT_PROJ_BUN_VERSION',
+    'SwAwKiT_PrOj_UnKnOwN',
+    'swawkit_proj_module_kernel_dev_setup_inherited_test',
+    'SwAwKiT_PrOj_CoRe_AdApTeR_PoWeRsHeLl_ArG_47',
+    'sWaWkIt_pRoJ_CoRe_cOmMaNd_aDaPtEr_pOwErShElL_ArG_47'
 )
 $SavedEnvironment = @{}
 foreach ($Name in $PoisonedVariables) {
@@ -283,11 +289,13 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
 $ErrorActionPreference = 'Stop'
 $Payload = [ordered]@{
     arguments = [string[]]@($args)
+    swawkitHome = [string]$env:SWAWKIT_HOME
     entryFile = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE
     launchEntryFile = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE
     legacyEntryFile = [string]$env:SWAWKIT_PROJ_ENTRY_FILE
     entryName = [string]$env:SWAWKIT_PROJ_ENTRY_COMMAND
     targetProjectRoot = [string]$env:SWAWKIT_PROJ_TARGET_PROJECT_ROOT
+    actionRoot = [string]$env:SWAWKIT_PROJ_ACTION_ROOT
     dataRoot = [string]$env:SWAWKIT_PROJ_DATA_ROOT
     commandProtocol = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL
     commandDataRoot = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT
@@ -297,9 +305,17 @@ $Payload = [ordered]@{
     launchMode = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_MODE
     legacyLaunchMode = [string]$env:SWAWKIT_PROJ_LAUNCH_MODE
     bunVersion = [string]$env:SWAWKIT_PROJ_BUN_VERSION
+    environmentInputRevision = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION
+    profileRevision = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION
+    unknownState = [string]$env:SWAWKIT_PROJ_UNKNOWN
+    moduleState = [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_INHERITED_TEST
+    legacyAdapterState = [string]$env:SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_47
+    commandAdapterState = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_47
 }
+$CapturePath = Join-Path $env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT 'capture.json'
+[void][IO.Directory]::CreateDirectory((Split-Path -Path $CapturePath -Parent))
 [IO.File]::WriteAllText(
-    $env:SWAWKIT_PROJ_TEST_LAUNCHER_CAPTURE,
+    $CapturePath,
     (($Payload | ConvertTo-Json -Depth 5) + "`n"),
     [Text.UTF8Encoding]::new($false)
 )
@@ -322,7 +338,13 @@ exit 37
     $env:SWAWKIT_PROJ_CORE_LAUNCH_MODE = 'internal-host'
     $env:SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE = 'C:\foreign-command-entry.exe'
     $env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT = 'C:\foreign-core-command-data'
-    $env:SWAWKIT_PROJ_TEST_LAUNCHER_CAPTURE = $CapturePath
+    $env:SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION = 'foreign-input-revision'
+    $env:SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION = 'foreign-profile-revision'
+    $env:SWAWKIT_PROJ_BUN_VERSION = 'foreign-version'
+    $env:SwAwKiT_PrOj_UnKnOwN = 'foreign-unknown'
+    $env:swawkit_proj_module_kernel_dev_setup_inherited_test = 'foreign-module'
+    $env:SwAwKiT_PrOj_CoRe_AdApTeR_PoWeRsHeLl_ArG_47 = 'foreign-legacy-adapter'
+    $env:sWaWkIt_pRoJ_CoRe_cOmMaNd_aDaPtEr_pOwErShElL_ArG_47 = 'foreign-command-adapter'
 
     $Run = Invoke-ProjLauncherRuntimeProcess `
         -Executable $EntryPath `
@@ -344,11 +366,13 @@ exit 37
         ) `
         -Message 'Launcher did not preserve empty, metacharacter, and Unicode argv'
     $Expectations = [ordered]@{
+        swawkitHome = $RuntimeHome
         entryFile = $EntryPath
         launchEntryFile = ''
         legacyEntryFile = ''
         entryName = $EntryName
         targetProjectRoot = $TargetRoot
+        actionRoot = $ActionRoot
         dataRoot = $DataRoot
         commandProtocol = '1'
         commandDataRoot = (Join-Path $DataRoot 'modules\action\probe')
@@ -358,6 +382,10 @@ exit 37
         launchMode = ''
         legacyLaunchMode = ''
         bunVersion = '1.2.15'
+        unknownState = ''
+        moduleState = ''
+        legacyAdapterState = ''
+        commandAdapterState = ''
     }
     foreach ($Expectation in $Expectations.GetEnumerator()) {
         Assert-ProjLauncherRuntimeTest `
@@ -368,6 +396,20 @@ exit 37
             -Message (
                 "unexpected $($Expectation.Key): " +
                 "'$([string]$Capture.($Expectation.Key))'"
+            )
+    }
+    foreach ($RevisionName in @(
+        'environmentInputRevision',
+        'profileRevision'
+    )) {
+        Assert-ProjLauncherRuntimeTest `
+            -Condition (
+                [string]$Capture.($RevisionName) -cmatch
+                    '^sha256-[a-f0-9]{64}$'
+            ) `
+            -Message (
+                "unexpected ${RevisionName}: " +
+                "'$([string]$Capture.($RevisionName))'"
             )
     }
 

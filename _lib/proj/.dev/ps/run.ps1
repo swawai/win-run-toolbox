@@ -12,7 +12,7 @@ $KernelRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 
 $Context = New-ProjDevContextFromEnvironment
 [void](Import-ProjDevOptionalGeneratedEnvironment -Context $Context)
-[void](Initialize-ProjShellCommandEnvironment -KernelRoot $KernelRoot)
+Add-ProjShellRuntimePath -KernelRoot $KernelRoot
 
 $Mode = [string]$PowerShellArguments[0]
 [string[]]$InvocationArguments = @()

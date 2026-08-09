@@ -1,5 +1,6 @@
 use super::*;
 use crate::data_root::record::publish_entry_record;
+use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
@@ -37,8 +38,6 @@ impl Fixture {
         ResolveDataRootRequest {
             swawkit_home: &self.swawkit_home,
             entry_file: &self.entry_file,
-            inherited_data_root: None,
-            legacy_data_directory: None,
         }
     }
 }
@@ -159,8 +158,6 @@ fn rename_claim_accepts_the_same_directory_moved_and_completed_elsewhere() {
     let request = ResolveDataRootRequest {
         swawkit_home: &fixture.swawkit_home,
         entry_file: &renamed_entry,
-        inherited_data_root: None,
-        legacy_data_directory: None,
     };
     let expected = inspect_data_root(request)
         .expect("inspect rename")

@@ -284,41 +284,6 @@ static BOOL build_child_command_line(const WCHAR *argument_tail)
 
 static BOOL prepare_environment(BOOL host_mode)
 {
-    static const WCHAR *clear_names[] = {
-        L"SWAWKIT_HOME",
-        L"SWAWKIT_PROJ_PROTOCOL",
-        L"SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
-        L"SWAWKIT_PROJ_ACTION_ROOT",
-        L"SWAWKIT_PROJ_DATA_ROOT",
-        L"SWAWKIT_PROJ_ENTRY_COMMAND",
-        L"SWAWKIT_PROJ_ENTRY_FILE",
-        L"SWAWKIT_PROJ_LAUNCH_MODE",
-        L"SWAWKIT_PROJ_COMMAND_PROTOCOL",
-        L"SWAWKIT_PROJ_COMMAND_PHASE",
-        L"SWAWKIT_PROJ_COMMAND_ADDRESS",
-        L"SWAWKIT_PROJ_COMMAND_DIR",
-        L"SWAWKIT_PROJ_COMMAND_DATA_ROOT",
-        L"SWAWKIT_PROJ_GUARD_SCOPE",
-        L"SWAWKIT_PROJ_HELP_TARGET_ADDRESS",
-        L"SWAWKIT_PROJ_INVOCATION_DIR",
-        L"SWAWKIT_PROJ_INTERNAL_RUNTIME_WORKING_DIR",
-        L"SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE",
-        L"SWAWKIT_PROJ_CORE_COMMAND_PHASE",
-        L"SWAWKIT_PROJ_CORE_COMMAND_ADDRESS",
-        L"SWAWKIT_PROJ_CORE_COMMAND_DIR",
-        L"SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT",
-        L"SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE",
-        L"SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS",
-        L"SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR",
-        L"SWAWKIT_PROJ_CORE_COMMAND_RUNTIME_WORKING_DIR"
-    };
-    DWORD index;
-
-    for (index = 0u; index < sizeof(clear_names) / sizeof(clear_names[0]); ++index) {
-        if (!SetEnvironmentVariableW(clear_names[index], NULL)) {
-            return FALSE;
-        }
-    }
     return SetEnvironmentVariableW(
             L"SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE",
             entry_path

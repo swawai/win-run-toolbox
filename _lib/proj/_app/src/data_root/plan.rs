@@ -39,19 +39,6 @@ pub enum DataRootPlan {
         observed_record_revision: String,
         reason: String,
     },
-    MigrateLegacy {
-        target: PlanTarget,
-        source_data_root: PathBuf,
-        observed_directory_identity: EntryIdentity,
-        reason: String,
-    },
-    ClaimMigrateLegacy {
-        target: PlanTarget,
-        source_data_root: PathBuf,
-        observed_directory_identity: EntryIdentity,
-        observed_record_revision: String,
-        reason: String,
-    },
 }
 
 impl DataRootPlan {
@@ -60,9 +47,7 @@ impl DataRootPlan {
             Self::Direct { target, .. }
             | Self::Create { target }
             | Self::ClaimCurrent { target, .. }
-            | Self::ClaimRename { target, .. }
-            | Self::MigrateLegacy { target, .. }
-            | Self::ClaimMigrateLegacy { target, .. } => target,
+            | Self::ClaimRename { target, .. } => target,
         }
     }
 }
@@ -71,8 +56,6 @@ pub struct DataRootPlanningRequest<'a> {
     pub entry_file: &'a Path,
     pub identity: &'a EntryIdentity,
     pub current: &'a DataRootInventory,
-    pub legacy: Option<&'a DataRootInventory>,
-    pub inherited_data_root: Option<&'a Path>,
 }
 
 pub fn plan_data_root(
@@ -99,33 +82,6 @@ pub fn plan_data_root(
         return Err(DataRootPlanError::MultipleCurrentBindings(paths(
             &current_matches,
         )));
-    }
-
-    let legacy_inventory = request
-        .legacy
-        .filter(|inventory| !ordinal_path_eq(inventory.directory(), request.current.directory()));
-    let legacy_matches = legacy_inventory
-        .map(|inventory| identity_matches(inventory, request.identity))
-        .unwrap_or_default();
-    if legacy_matches.len() > 1 {
-        return Err(DataRootPlanError::MultipleLegacyBindings(paths(
-            &legacy_matches,
-        )));
-    }
-    if let (Some(current), Some(legacy)) = (current_matches.first(), legacy_matches.first()) {
-        return Err(DataRootPlanError::CurrentAndLegacyBindings {
-            current: current.path.clone(),
-            legacy: legacy.path.clone(),
-        });
-    }
-
-    let inherited = normalize_inherited(request.inherited_data_root)?;
-    if let Some(inherited) = inherited.as_deref()
-        && !ordinal_path_eq(inherited, &candidate)
-        && !contains_path(&current_matches, inherited)
-        && !contains_path(&legacy_matches, inherited)
-    {
-        return Err(DataRootPlanError::ForeignInherited(inherited.to_path_buf()));
     }
 
     let target = PlanTarget {
@@ -189,36 +145,6 @@ pub fn plan_data_root(
         });
     }
 
-    if let Some(legacy) = legacy_matches.first() {
-        let record = legacy
-            .record
-            .valid_record()
-            .expect("identity matches only contain valid records");
-        let legacy_name_matches = ordinal_text_eq(&record.entry_name, &entry_name)
-            && legacy
-                .path
-                .file_name()
-                .is_some_and(|name| ordinal_os_eq(name, format!("proj.{entry_name}")));
-        if legacy_name_matches {
-            return Ok(DataRootPlan::MigrateLegacy {
-                target,
-                source_data_root: legacy.path.clone(),
-                observed_directory_identity: legacy.directory_identity().clone(),
-                reason: "DataRoot is stored in the legacy project-local data directory".to_owned(),
-            });
-        }
-        return Ok(DataRootPlan::ClaimMigrateLegacy {
-            target,
-            source_data_root: legacy.path.clone(),
-            observed_directory_identity: legacy.directory_identity().clone(),
-            observed_record_revision: legacy.record_revision(),
-            reason: "the entry File ID is stored under a renamed legacy DataRoot".to_owned(),
-        });
-    }
-
-    if let Some(inherited) = inherited {
-        return Err(DataRootPlanError::UnboundInherited(inherited));
-    }
     Ok(DataRootPlan::Create { target })
 }
 
@@ -239,22 +165,6 @@ fn identity_matches<'a>(
 
 fn paths(roots: &[&DataRootSnapshot]) -> Vec<PathBuf> {
     roots.iter().map(|root| root.path.clone()).collect()
-}
-
-fn contains_path(roots: &[&DataRootSnapshot], path: &Path) -> bool {
-    roots.iter().any(|root| ordinal_path_eq(&root.path, path))
-}
-
-fn normalize_inherited(path: Option<&Path>) -> Result<Option<PathBuf>, DataRootPlanError> {
-    let Some(path) = path else {
-        return Ok(None);
-    };
-    if !path.is_absolute() {
-        return Err(DataRootPlanError::InheritedNotAbsolute(path.to_path_buf()));
-    }
-    std::path::absolute(path)
-        .map(Some)
-        .map_err(|_| DataRootPlanError::InheritedNotAbsolute(path.to_path_buf()))
 }
 
 pub(crate) fn ordinal_path_eq(left: &Path, right: &Path) -> bool {
@@ -294,15 +204,7 @@ fn ordinal_wide_eq(left: &[u16], right: &[u16]) -> bool {
 pub enum DataRootPlanError {
     InvalidEntryName,
     EntryFileNotAbsolute(PathBuf),
-    InheritedNotAbsolute(PathBuf),
-    ForeignInherited(PathBuf),
-    UnboundInherited(PathBuf),
     MultipleCurrentBindings(Vec<PathBuf>),
-    MultipleLegacyBindings(Vec<PathBuf>),
-    CurrentAndLegacyBindings {
-        current: PathBuf,
-        legacy: PathBuf,
-    },
     CandidateCollision {
         candidate: PathBuf,
         current: PathBuf,
@@ -318,27 +220,6 @@ impl fmt::Display for DataRootPlanError {
                 "project entry file must be absolute: {}",
                 path.display()
             ),
-            Self::InheritedNotAbsolute(path) => write!(
-                formatter,
-                "inherited SWAWKIT_PROJ_DATA_ROOT must be absolute: {}",
-                path.display()
-            ),
-            Self::ForeignInherited(path) => write!(
-                formatter,
-                concat!(
-                    "another project's DataRoot is already active: {}. ",
-                    "Exit that project shell before invoking this entry."
-                ),
-                path.display()
-            ),
-            Self::UnboundInherited(path) => write!(
-                formatter,
-                concat!(
-                    "inherited DataRoot '{}' has no valid binding for the current entry. ",
-                    "Manual repair is required."
-                ),
-                path.display()
-            ),
             Self::MultipleCurrentBindings(paths) => write!(
                 formatter,
                 concat!(
@@ -346,23 +227,6 @@ impl fmt::Display for DataRootPlanError {
                     "Manual repair is required."
                 ),
                 display_paths(paths)
-            ),
-            Self::MultipleLegacyBindings(paths) => write!(
-                formatter,
-                concat!(
-                    "multiple legacy project DataRoots contain the current entry File ID: {}. ",
-                    "Manual repair is required."
-                ),
-                display_paths(paths)
-            ),
-            Self::CurrentAndLegacyBindings { current, legacy } => write!(
-                formatter,
-                concat!(
-                    "both the Swaw Kit Home and legacy project directory contain DataRoots ",
-                    "for the current entry File ID: '{}', '{}'. Manual repair is required."
-                ),
-                current.display(),
-                legacy.display()
             ),
             Self::CandidateCollision { candidate, current } => write!(
                 formatter,

@@ -12,11 +12,10 @@ use crate::{
 
 use super::{CommandError, CommandResult, GuardScope, ResolvedCommand};
 
-const TRANSIENT_ENVIRONMENT: [&str; 5] = [
+const TRANSIENT_ENVIRONMENT: [&str; 4] = [
     ENTRY_FILE_ENV,
     LAUNCH_MODE_ENV,
     "SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE",
-    "SWAWKIT_PROJ_CORE_COMMAND_RUNTIME_WORKING_DIR",
     "SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS",
 ];
 

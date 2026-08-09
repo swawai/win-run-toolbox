@@ -162,7 +162,9 @@ param(
     [string]$SessionId,
     [string]$CommandName,
     [switch]$Control,
-    [switch]$NoConsentPrompt
+    [switch]$NoConsentPrompt,
+    [switch]$Display,
+    [string]$TsconSessionId
 )
 [IO.File]::WriteAllLines($env:RDP_SHADOW_START_CAPTURE, @(
     "EntryFile=$EntryFile",
@@ -170,7 +172,9 @@ param(
     "SessionId=$SessionId",
     "CommandName=$CommandName",
     "Control=$($Control.IsPresent)",
-    "NoConsentPrompt=$($NoConsentPrompt.IsPresent)"
+    "NoConsentPrompt=$($NoConsentPrompt.IsPresent)",
+    "Display=$($Display.IsPresent)",
+    "TsconSessionId=$TsconSessionId"
 ))
 exit 0
 '@
@@ -257,6 +261,55 @@ exit 0
         $ConsoleStartState -notcontains 'Control=True' -or
         $ConsoleStartState -notcontains 'NoConsentPrompt=True') {
         throw "Unexpected console Shadow dispatch: $($ConsoleStartState -join '; ')"
+    }
+
+    $env:RDP_SHADOW_START_CAPTURE = $StartCapturePath
+    try {
+        Invoke-ShadowTestEntry `
+            -Arguments @(
+                '.shadow',
+                'console',
+                '--display',
+                '--no-consent',
+                '--control'
+            ) `
+            -ExpectedExitCode 0 |
+            Out-Null
+    } finally {
+        Remove-Item Env:RDP_SHADOW_START_CAPTURE -ErrorAction SilentlyContinue
+    }
+    $DisplayStartState = @([IO.File]::ReadAllLines($StartCapturePath))
+    if ($DisplayStartState -notcontains 'SessionId=console' -or
+        $DisplayStartState -notcontains 'Display=True' -or
+        $DisplayStartState -notcontains 'TsconSessionId=' -or
+        $DisplayStartState -notcontains 'Control=True' -or
+        $DisplayStartState -notcontains 'NoConsentPrompt=True') {
+        throw "Unexpected console display dispatch: $($DisplayStartState -join '; ')"
+    }
+
+    $env:RDP_SHADOW_START_CAPTURE = $StartCapturePath
+    try {
+        Invoke-ShadowTestEntry `
+            -Arguments @(
+                '.shadow',
+                'console',
+                '--tscon',
+                '3',
+                '--control',
+                '--no-consent'
+            ) `
+            -ExpectedExitCode 0 |
+            Out-Null
+    } finally {
+        Remove-Item Env:RDP_SHADOW_START_CAPTURE -ErrorAction SilentlyContinue
+    }
+    $TsconStartState = @([IO.File]::ReadAllLines($StartCapturePath))
+    if ($TsconStartState -notcontains 'SessionId=console' -or
+        $TsconStartState -notcontains 'Display=False' -or
+        $TsconStartState -notcontains 'TsconSessionId=3' -or
+        $TsconStartState -notcontains 'Control=True' -or
+        $TsconStartState -notcontains 'NoConsentPrompt=True') {
+        throw "Unexpected console tscon dispatch: $($TsconStartState -join '; ')"
     }
 
     $env:RDP_SHADOW_DOCTOR_CAPTURE = $DoctorCapturePath

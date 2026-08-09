@@ -16,6 +16,8 @@ if ($null -eq $Request.PSObject.Properties['SessionId'] -or
 }
 
 $Arguments = New-Object 'Collections.Generic.List[string]'
+$Executable = $null
+$Outcome = 'completed'
 switch ([string]$Request.Action) {
     'connect' {
         $Destination = [string]$Request.DestinationSessionName
@@ -26,6 +28,31 @@ switch ([string]$Request.Action) {
         $Arguments.Add([string]$SessionId)
         $Arguments.Add(('/dest:{0}' -f $Destination))
     }
+    'connect-console-if-empty' {
+        if ($null -eq (Get-Variable -Name Sessions -ErrorAction SilentlyContinue)) {
+            throw 'Guarded console routing requires an RDP session snapshot.'
+        }
+        $ConsoleUsers = @($Sessions | Where-Object {
+            [bool]$_.IsConsole -and
+            -not [string]::IsNullOrWhiteSpace([string]$_.UserName)
+        })
+        if ($ConsoleUsers.Count -gt 0) {
+            $Outcome = 'console-occupied'
+            break
+        }
+        $Destination = [string]$Request.DestinationSessionName
+        if (-not [string]::Equals(
+            $Destination,
+            'console',
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw 'Guarded console routing requires destination console.'
+        }
+        $Executable = Join-Path $env:SystemRoot 'System32\tscon.exe'
+        $Arguments.Add([string]$SessionId)
+        $Arguments.Add('/dest:console')
+        $Outcome = 'connected'
+    }
     'disconnect' {
         $Executable = Join-Path $env:SystemRoot 'System32\tsdiscon.exe'
         $Arguments.Add([string]$SessionId)
@@ -35,13 +62,19 @@ switch ([string]$Request.Action) {
     }
 }
 
-$NativeOutput = @(& $Executable @Arguments 2>&1 | ForEach-Object {
-    [string]$_
-})
+$NativeExitCode = 0
+$NativeOutput = @()
+if ($null -ne $Executable) {
+    $NativeOutput = @(& $Executable @Arguments 2>&1 | ForEach-Object {
+        [string]$_
+    })
+    $NativeExitCode = [int]$LASTEXITCODE
+}
 $Result = [ordered]@{
     Version  = 1
     Action   = [string]$Request.Action
-    ExitCode = [int]$LASTEXITCODE
+    Outcome  = $Outcome
+    ExitCode = $NativeExitCode
     Output   = $NativeOutput
 }
 $Json = ConvertTo-Json -InputObject $Result -Depth 3 -Compress

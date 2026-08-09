@@ -28,6 +28,8 @@
   {{COMMAND}} .shadow 2 --no-consent        View without peer-user consent
   {{COMMAND}} .shadow 3 --control           Request control; can be combined with --no-consent
   {{COMMAND}} .shadow console               Find the active user session attached to the console and shadow it
+  {{COMMAND}} .shadow console --display     If console has no active desktop, bootstrap one through temporary ordinary RDP, then shadow it
+  {{COMMAND}} .shadow console --tscon 3     Explicitly attach session 3 to console, then shadow it; may disconnect the previous console session
 
 
 # Manage and invoke peer PsExec through SSH:

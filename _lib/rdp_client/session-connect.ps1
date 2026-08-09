@@ -107,7 +107,8 @@ function Test-RdpClientSessionOwnsDestination {
 function Invoke-RdpClientPeerSessionRoute {
     param(
         [Parameter(Mandatory = $true)][string]$SshEntryPath,
-        [Parameter(Mandatory = $true)][ValidateSet('connect', 'disconnect')]
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('connect', 'connect-console-if-empty', 'disconnect')]
         [string]$Action,
         [Parameter(Mandatory = $true)][uint32]$SessionId,
         [AllowEmptyString()][string]$DestinationSessionName = ''
@@ -117,7 +118,7 @@ function Invoke-RdpClientPeerSessionRoute {
     if (-not [IO.File]::Exists($RemoteScriptPath)) {
         throw "RDP session route script was not found: $RemoteScriptPath"
     }
-    if ($Action -eq 'connect' -and
+    if ($Action -in @('connect', 'connect-console-if-empty') -and
         [string]::IsNullOrWhiteSpace($DestinationSessionName)) {
         throw 'An RDP destination session name is required.'
     }
@@ -131,10 +132,23 @@ function Invoke-RdpClientPeerSessionRoute {
     $RequestBase64 = [Convert]::ToBase64String(
         [Text.Encoding]::UTF8.GetBytes($RequestJson)
     )
-    $RemoteSource = (
-        '$RdpClientSessionRequestBase64 = ''' + $RequestBase64 + "'`r`n" +
+    $RemoteParts = New-Object 'Collections.Generic.List[string]'
+    $RemoteParts.Add(
+        '$RdpClientSessionRequestBase64 = ''' + $RequestBase64 + "'"
+    )
+    if ($Action -eq 'connect-console-if-empty') {
+        $QueryScriptPath = Join-Path $PSScriptRoot 'session-query.remote.ps1'
+        if (-not [IO.File]::Exists($QueryScriptPath)) {
+            throw "RDP session query script was not found: $QueryScriptPath"
+        }
+        $RemoteParts.Add(
+            [IO.File]::ReadAllText($QueryScriptPath, [Text.Encoding]::UTF8)
+        )
+    }
+    $RemoteParts.Add(
         [IO.File]::ReadAllText($RemoteScriptPath, [Text.Encoding]::UTF8)
     )
+    $RemoteSource = $RemoteParts -join "`r`n"
     $Invocation = Invoke-RdpClientPeerSshPowerShell `
         -SshEntryPath $SshEntryPath `
         -RemoteSource $RemoteSource `

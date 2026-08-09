@@ -90,6 +90,8 @@ try {
             'RDP_PEER_SSH_ENTRY',
             "$EntryCommand .shadow doctor",
             "$EntryCommand .shadow console",
+            "$EntryCommand .shadow console --display",
+            "$EntryCommand .shadow console --tscon 3",
             "$EntryCommand .shadow 2",
             "$EntryCommand .shadow 3 --control",
             "$EntryCommand .peer shadow enable",
@@ -272,12 +274,19 @@ try {
         [string[]]@('.shadow', 'start', '2'),
         [string[]]@('.shadow', '2', '--unexpected'),
         [string[]]@('.shadow', '2', '--control', '--control'),
+        [string[]]@('.shadow', '2', '--display'),
+        [string[]]@('.shadow', '2', '--tscon', '3'),
         [string[]]@('.shadow', 'doctor', 'unexpected'),
         [string[]]@('.shadow', 'enable', '--unexpected'),
         [string[]]@('.shadow', 'enable', '--dry-run', 'unexpected'),
         [string[]]@('.shadow', 'restore', '--unexpected'),
         [string[]]@('.shadow', 'list'),
-        [string[]]@('.shadow', 'console', '--unexpected')
+        [string[]]@('.shadow', 'console', '--unexpected'),
+        [string[]]@('.shadow', 'console', '--display', '--display'),
+        [string[]]@('.shadow', 'console', '--display', '--tscon', '3'),
+        [string[]]@('.shadow', 'console', '--tscon'),
+        [string[]]@('.shadow', 'console', '--tscon', 'abc'),
+        [string[]]@('.shadow', 'console', '--tscon', '3', '--tscon', '4')
     )) {
         $InvalidShadow = Invoke-HelpTestCommand `
             -Arguments $InvalidShadowArguments `

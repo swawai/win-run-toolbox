@@ -63,22 +63,54 @@ exit /b %ERRORLEVEL%
 if /i "%~2"=="doctor" goto :ShadowDoctor
 if "%~2"=="" goto :InvalidShadowCommand
 set "RDP_SHADOW_SESSION_ID=%~2"
-if /i "%RDP_SHADOW_SESSION_ID%"=="console" goto :ParseShadowOptions
+set "RDP_SHADOW_IS_CONSOLE="
+if /i "%RDP_SHADOW_SESSION_ID%"=="console" set "RDP_SHADOW_IS_CONSOLE=1"
+if defined RDP_SHADOW_IS_CONSOLE goto :ParseShadowOptions
 for /f "delims=0123456789" %%I in ("%RDP_SHADOW_SESSION_ID%") do goto :InvalidShadowCommand
 :ParseShadowOptions
 set "RDP_SHADOW_CONTROL="
 set "RDP_SHADOW_NO_CONSENT="
-if not "%~5"=="" goto :InvalidShadowCommand
+set "RDP_SHADOW_DISPLAY="
+set "RDP_SHADOW_TSCON_PARAMETER="
+
+:ParseNextShadowOption
 if "%~3"=="" goto :RunShadowStart
-if /i "%~3"=="--control" set "RDP_SHADOW_CONTROL=-Control"
-if /i "%~3"=="--no-consent" set "RDP_SHADOW_NO_CONSENT=-NoConsentPrompt"
-if not defined RDP_SHADOW_CONTROL if not defined RDP_SHADOW_NO_CONSENT goto :InvalidShadowCommand
-if "%~4"=="" goto :RunShadowStart
-if /i "%~4"=="--control" if not defined RDP_SHADOW_CONTROL set "RDP_SHADOW_CONTROL=-Control"
-if /i "%~4"=="--no-consent" if not defined RDP_SHADOW_NO_CONSENT set "RDP_SHADOW_NO_CONSENT=-NoConsentPrompt"
-if /i "%~3"=="%~4" goto :InvalidShadowCommand
-if not defined RDP_SHADOW_CONTROL goto :InvalidShadowCommand
-if not defined RDP_SHADOW_NO_CONSENT goto :InvalidShadowCommand
+if /i "%~3"=="--control" goto :ParseShadowControl
+if /i "%~3"=="--no-consent" goto :ParseShadowNoConsent
+if /i "%~3"=="--display" goto :ParseShadowDisplay
+if /i "%~3"=="--tscon" goto :ParseShadowTscon
+goto :InvalidShadowCommand
+
+:ParseShadowControl
+if defined RDP_SHADOW_CONTROL goto :InvalidShadowCommand
+set "RDP_SHADOW_CONTROL=-Control"
+shift /3
+goto :ParseNextShadowOption
+
+:ParseShadowNoConsent
+if defined RDP_SHADOW_NO_CONSENT goto :InvalidShadowCommand
+set "RDP_SHADOW_NO_CONSENT=-NoConsentPrompt"
+shift /3
+goto :ParseNextShadowOption
+
+:ParseShadowDisplay
+if not defined RDP_SHADOW_IS_CONSOLE goto :InvalidShadowCommand
+if defined RDP_SHADOW_DISPLAY goto :InvalidShadowCommand
+if defined RDP_SHADOW_TSCON_PARAMETER goto :InvalidShadowCommand
+set "RDP_SHADOW_DISPLAY=-Display"
+shift /3
+goto :ParseNextShadowOption
+
+:ParseShadowTscon
+if not defined RDP_SHADOW_IS_CONSOLE goto :InvalidShadowCommand
+if defined RDP_SHADOW_DISPLAY goto :InvalidShadowCommand
+if defined RDP_SHADOW_TSCON_PARAMETER goto :InvalidShadowCommand
+if "%~4"=="" goto :InvalidShadowCommand
+for /f "delims=0123456789" %%I in ("%~4") do goto :InvalidShadowCommand
+set "RDP_SHADOW_TSCON_PARAMETER=-TsconSessionId %~4"
+shift /3
+shift /3
+goto :ParseNextShadowOption
 
 :RunShadowStart
 if not defined RDP_ENTRY_FILE goto :InvalidEntryFile
@@ -89,7 +121,7 @@ if not exist "%RDP_SHADOW_START_SCRIPT%" (
     exit /b 1
 )
 
-PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_SHADOW_START_SCRIPT%" -EntryFile "%RDP_ENTRY_FILE%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -SessionId "%RDP_SHADOW_SESSION_ID%" -CommandName "%RDP_ENTRY_COMMAND%" %RDP_SHADOW_CONTROL% %RDP_SHADOW_NO_CONSENT%
+PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_SHADOW_START_SCRIPT%" -EntryFile "%RDP_ENTRY_FILE%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -SessionId "%RDP_SHADOW_SESSION_ID%" -CommandName "%RDP_ENTRY_COMMAND%" %RDP_SHADOW_CONTROL% %RDP_SHADOW_NO_CONSENT% %RDP_SHADOW_DISPLAY% %RDP_SHADOW_TSCON_PARAMETER%
 exit /b %ERRORLEVEL%
 
 :ShadowDoctor
@@ -339,6 +371,8 @@ echo [ERROR] Shadow usage:
 echo   "%RDP_ENTRY_COMMAND% .shadow doctor"
 echo   "%RDP_ENTRY_COMMAND% .shadow <session-id> [--control] [--no-consent]"
 echo   "%RDP_ENTRY_COMMAND% .shadow console [--control] [--no-consent]"
+echo   "%RDP_ENTRY_COMMAND% .shadow console --display [--control] [--no-consent]"
+echo   "%RDP_ENTRY_COMMAND% .shadow console --tscon <session-id> [--control] [--no-consent]"
 exit /b 1
 
 :InvalidSessionCommand

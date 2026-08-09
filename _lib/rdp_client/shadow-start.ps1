@@ -14,7 +14,12 @@ param(
 
     [switch]$Control,
 
-    [switch]$NoConsentPrompt
+    [switch]$NoConsentPrompt,
+
+    [switch]$Display,
+
+    [AllowNull()][AllowEmptyString()]
+    [string]$TsconSessionId
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +27,8 @@ Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'entry.ps1')
 . (Join-Path $PSScriptRoot 'peer-ssh.ps1')
 . (Join-Path $PSScriptRoot 'session.ps1')
+. (Join-Path $PSScriptRoot 'session-connect.ps1')
+. (Join-Path $PSScriptRoot 'shadow-console.ps1')
 
 try {
     $Utf8NoBom = New-Object Text.UTF8Encoding($false)
@@ -29,12 +36,22 @@ try {
     $OutputEncoding = $Utf8NoBom
 
     $ResolvedEntry = [IO.Path]::GetFullPath($EntryFile)
-    $ConsoleSession = $null
-    if ([string]::Equals(
+    $Document = Read-RdpClientEntryDocument -Path $ResolvedEntry
+    $HasTsconSession = $PSBoundParameters.ContainsKey('TsconSessionId')
+    if ($Display -and $HasTsconSession) {
+        throw '--display and --tscon cannot be used together.'
+    }
+    $IsConsole = [string]::Equals(
         $SessionId,
         'console',
         [StringComparison]::OrdinalIgnoreCase
-    )) {
+    )
+    if (-not $IsConsole -and ($Display -or $HasTsconSession)) {
+        throw '--display and --tscon are only valid with .shadow console.'
+    }
+
+    $ConsoleSession = $null
+    if ($IsConsole) {
         $ResolvedSshEntry = Resolve-RdpClientPeerSshEntryPath `
             -Value $SshEntryFile
         Assert-RdpClientPeerSshEntryIsSeparate `
@@ -42,8 +59,26 @@ try {
             -RdpEntryPath $ResolvedEntry
         $SessionState = Get-RdpClientPeerSessionState `
             -SshEntryPath $ResolvedSshEntry
-        $ConsoleSession = Resolve-RdpClientShadowConsoleSession `
-            -State $SessionState
+        if ($HasTsconSession) {
+            $ConsoleSession = Move-RdpClientSessionToConsole `
+                -SshEntryPath $ResolvedSshEntry `
+                -State $SessionState `
+                -SessionId $TsconSessionId
+        } elseif ($Display) {
+            $ConsoleSession = Get-RdpClientActiveConsoleSession `
+                -State $SessionState
+            if ($null -eq $ConsoleSession) {
+                $ConsoleSession = Enable-RdpClientConsoleDisplay `
+                    -SshEntryPath $ResolvedSshEntry `
+                    -EntryFile $ResolvedEntry `
+                    -EntryUserName $Document.Username `
+                    -CommandName $CommandName `
+                    -BeforeState $SessionState
+            }
+        } else {
+            $ConsoleSession = Resolve-RdpClientShadowConsoleSession `
+                -State $SessionState
+        }
         $ResolvedSessionId = [uint32]$ConsoleSession.Id
     } else {
         $ResolvedSessionId = Resolve-RdpClientShadowSessionId -Value $SessionId
@@ -53,7 +88,6 @@ try {
     }
 
     $HostAlias = Resolve-RdpClientHostAlias -Value $env:RDP_HOST_ALIAS
-    $Document = Read-RdpClientEntryDocument -Path $ResolvedEntry
     $Target = Resolve-RdpClientConnectionTarget `
         -Document $Document `
         -HostAlias $HostAlias

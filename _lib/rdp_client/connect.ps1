@@ -13,7 +13,9 @@ param(
     [string]$SshEntryFile = '',
 
     [AllowNull()][AllowEmptyString()]
-    [string]$SessionId
+    [string]$SessionId,
+
+    [switch]$ReportMstscProcessId
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,6 +70,9 @@ try {
     $HasSessionId = $PSBoundParameters.ContainsKey('SessionId')
     if ($HasSessionId -and -not $Launch) {
         throw 'Session selectors can only be used when launching Remote Desktop.'
+    }
+    if ($ReportMstscProcessId -and -not $Launch) {
+        throw 'An mstsc process ID can only be reported when launching Remote Desktop.'
     }
 
     $SelectedSession = $null
@@ -176,6 +181,9 @@ try {
             -ArgumentList ('"{0}"' -f $OutputPath) `
             -PassThru
         Write-Host '[RDP] Started mstsc.exe.'
+        if ($ReportMstscProcessId) {
+            Write-Output ('RDP_CLIENT_MSTSC_PROCESS_V1:' + $MstscProcess.Id)
+        }
         if ($null -ne $SelectedSession) {
             $null = Connect-RdpClientSessionById `
                 -SshEntryPath $ResolvedSshEntry `

@@ -28,6 +28,8 @@
   {{COMMAND}} .shadow 2 --no-consent        无需对方同意
   {{COMMAND}} .shadow 3 --control           申请控制，可叠加 --no-consent
   {{COMMAND}} .shadow console               自动查找当前挂接到 console 的活动用户会话并 shadow
+  {{COMMAND}} .shadow console --display     console 无活动桌面时，以临时普通 RDP 建立桌面后 shadow
+  {{COMMAND}} .shadow console --tscon 3     明确将会话 3 挂接到 console 后 shadow；可能断开原 console 会话
 
 
 # 通过 SSH 管理和调用对端 PsExec：

@@ -26,16 +26,8 @@ struct VariableSpec {
 
 const VARIABLE_SPECS: [VariableSpec; 32] = [
     dev_setup_variable("bun", "SWAWKIT_PROJ_BUN_MODE", "development.bun.mode"),
-    dev_setup_lowercase_optional(
-        "bun",
-        "SWAWKIT_PROJ_BUN_SHA256",
-        "development.bun.sha256",
-    ),
-    dev_setup_variable(
-        "bun",
-        "SWAWKIT_PROJ_BUN_VERSION",
-        "development.bun.version",
-    ),
+    dev_setup_lowercase_optional("bun", "SWAWKIT_PROJ_BUN_SHA256", "development.bun.sha256"),
+    dev_setup_variable("bun", "SWAWKIT_PROJ_BUN_VERSION", "development.bun.version"),
     optional("git", "SWAWKIT_PROJ_GIT_ID_ACCESS", "git.access"),
     optional("git", "SWAWKIT_PROJ_GIT_ID_EMAIL", "git.email"),
     optional("git", "SWAWKIT_PROJ_GIT_ID_NAME", "git.name"),
@@ -49,10 +41,26 @@ const VARIABLE_SPECS: [VariableSpec; 32] = [
         "development.msvc.channel",
     ),
     dev_setup_variable("msvc", "SWAWKIT_PROJ_MSVC_MODE", "development.msvc.mode"),
-    variable("preferences", "SWAWKIT_PROJ_DEFAULT_IDE", "preferences.defaultIde"),
-    variable("preferences", "SWAWKIT_PROJ_DEFAULT_SHELL", "preferences.defaultShell"),
-    optional("preferences", "SWAWKIT_PROJ_HELP_LANG", "preferences.helpLanguage"),
-    resolved_target("project", "SWAWKIT_PROJ_TARGET_PROJECT_ROOT", "targetProjectRoot"),
+    variable(
+        "preferences",
+        "SWAWKIT_PROJ_DEFAULT_IDE",
+        "preferences.defaultIde",
+    ),
+    variable(
+        "preferences",
+        "SWAWKIT_PROJ_DEFAULT_SHELL",
+        "preferences.defaultShell",
+    ),
+    optional(
+        "preferences",
+        "SWAWKIT_PROJ_HELP_LANG",
+        "preferences.helpLanguage",
+    ),
+    resolved_target(
+        "project",
+        "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
+        "targetProjectRoot",
+    ),
     dev_setup_variable("pwsh", "SWAWKIT_PROJ_PWSH_MODE", "development.pwsh.mode"),
     dev_setup_lowercase_optional(
         "pwsh",
@@ -64,7 +72,11 @@ const VARIABLE_SPECS: [VariableSpec; 32] = [
         "SWAWKIT_PROJ_PWSH_VERSION",
         "development.pwsh.version",
     ),
-    variable("python", "SWAWKIT_PROJ_PYTHON_MODE", "development.python.mode"),
+    variable(
+        "python",
+        "SWAWKIT_PROJ_PYTHON_MODE",
+        "development.python.mode",
+    ),
     optional(
         "python",
         "SWAWKIT_PROJ_PYTHON_SHA256",
@@ -87,19 +99,23 @@ const VARIABLE_SPECS: [VariableSpec; 32] = [
         "SWAWKIT_PROJ_RUST_TOOLCHAIN",
         "development.rust.toolchain",
     ),
-    variable("system", "SWAWKIT_PROJ_CURSOR_MODE", "development.cursor.mode"),
+    variable(
+        "system",
+        "SWAWKIT_PROJ_CURSOR_MODE",
+        "development.cursor.mode",
+    ),
     variable("system", "SWAWKIT_PROJ_GH_MODE", "development.gh.mode"),
-    variable("system", "SWAWKIT_PROJ_VSCODE_MODE", "development.vscode.mode"),
+    variable(
+        "system",
+        "SWAWKIT_PROJ_VSCODE_MODE",
+        "development.vscode.mode",
+    ),
     variable("uv", "SWAWKIT_PROJ_UV_MODE", "development.uv.mode"),
     optional("uv", "SWAWKIT_PROJ_UV_SHA256", "development.uv.sha256"),
     variable("uv", "SWAWKIT_PROJ_UV_VERSION", "development.uv.version"),
 ];
 
-const fn variable(
-    group: &'static str,
-    name: &'static str,
-    field: &'static str,
-) -> VariableSpec {
+const fn variable(group: &'static str, name: &'static str, field: &'static str) -> VariableSpec {
     VariableSpec {
         group,
         name,
@@ -109,11 +125,7 @@ const fn variable(
     }
 }
 
-const fn optional(
-    group: &'static str,
-    name: &'static str,
-    field: &'static str,
-) -> VariableSpec {
+const fn optional(group: &'static str, name: &'static str, field: &'static str) -> VariableSpec {
     VariableSpec {
         group,
         name,
@@ -181,7 +193,10 @@ const fn dev_setup_lowercase_optional(
 
 impl EntryProfileRecord {
     pub fn environment_variable_names() -> Vec<&'static str> {
-        let mut names = VARIABLE_SPECS.iter().map(|spec| spec.name).collect::<Vec<_>>();
+        let mut names = VARIABLE_SPECS
+            .iter()
+            .map(|spec| spec.name)
+            .collect::<Vec<_>>();
         names.sort_unstable();
         names
     }
@@ -221,20 +236,14 @@ impl EntryProfileRecord {
         self.set_value(spec.field, value)
     }
 
-    pub(crate) fn published_environment_variables(
-        &self,
-    ) -> Vec<(&'static str, String, bool)> {
+    pub(crate) fn published_environment_variables(&self) -> Vec<(&'static str, String, bool)> {
         let values = self.environment_variable_values();
         VARIABLE_SPECS
             .iter()
             .filter_map(|spec| match spec.publication {
                 VariablePublication::ResolvedTarget => None,
-                VariablePublication::Always => {
-                    Some((spec.name, values[spec.name].clone(), false))
-                }
-                VariablePublication::NonEmpty => {
-                    Some((spec.name, values[spec.name].clone(), true))
-                }
+                VariablePublication::Always => Some((spec.name, values[spec.name].clone(), false)),
+                VariablePublication::NonEmpty => Some((spec.name, values[spec.name].clone(), true)),
             })
             .collect()
     }

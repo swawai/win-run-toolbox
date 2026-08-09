@@ -38,40 +38,35 @@ pub struct DataRootClaim {
 
 impl DataRootClaim {
     pub(crate) fn from_plan(plan: &DataRootPlan) -> Option<Self> {
-        let (
-            kind,
-            source_data_root,
-            observed_directory_identity,
-            observed_record_revision,
-            reason,
-        ) = match plan {
-            DataRootPlan::ClaimCurrent {
-                observed_directory_identity,
-                observed_record_revision,
-                reason,
-                ..
-            } => (
-                ClaimKind::Current,
-                None,
-                observed_directory_identity.clone(),
-                observed_record_revision.clone(),
-                reason.clone(),
-            ),
-            DataRootPlan::ClaimRename {
-                source_data_root,
-                observed_directory_identity,
-                observed_record_revision,
-                reason,
-                ..
-            } => (
-                ClaimKind::Rename,
-                Some(source_data_root.clone()),
-                observed_directory_identity.clone(),
-                observed_record_revision.clone(),
-                reason.clone(),
-            ),
-            DataRootPlan::Direct { .. } | DataRootPlan::Create { .. } => return None,
-        };
+        let (kind, source_data_root, observed_directory_identity, observed_record_revision, reason) =
+            match plan {
+                DataRootPlan::ClaimCurrent {
+                    observed_directory_identity,
+                    observed_record_revision,
+                    reason,
+                    ..
+                } => (
+                    ClaimKind::Current,
+                    None,
+                    observed_directory_identity.clone(),
+                    observed_record_revision.clone(),
+                    reason.clone(),
+                ),
+                DataRootPlan::ClaimRename {
+                    source_data_root,
+                    observed_directory_identity,
+                    observed_record_revision,
+                    reason,
+                    ..
+                } => (
+                    ClaimKind::Rename,
+                    Some(source_data_root.clone()),
+                    observed_directory_identity.clone(),
+                    observed_record_revision.clone(),
+                    reason.clone(),
+                ),
+                DataRootPlan::Direct { .. } | DataRootPlan::Create { .. } => return None,
+            };
         let target = plan.target();
         Some(Self {
             kind,
@@ -103,10 +98,7 @@ impl DataRootClaim {
             None => digest.update([0]),
         }
         hash_text(&mut digest, &self.reason);
-        hash_text(
-            &mut digest,
-            self.observed_directory_identity.volume_id(),
-        );
+        hash_text(&mut digest, self.observed_directory_identity.volume_id());
         hash_text(&mut digest, self.observed_directory_identity.file_id());
         hash_text(&mut digest, &self.observed_record_revision);
         format!("sha256-{:x}", digest.finalize())

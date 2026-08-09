@@ -44,14 +44,14 @@ pub(super) fn run(
         .map_err(|error| CliError::new(format!("DataRoot inspection failed: {error}")))?;
 
     match mode {
-        ClaimMode::Preview => {
-            write_human_preview(context, address, inspection.claim.as_ref())?
-        }
+        ClaimMode::Preview => write_human_preview(context, address, inspection.claim.as_ref())?,
         ClaimMode::Json => write_json_preview(inspection.claim.as_ref())?,
         ClaimMode::Apply => {
             let Some(expected) = inspection.claim else {
-                write_output("DataRoot Claim\nStatus: notRequired\nNo ownership claim is required.")
-                    .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
+                write_output(
+                    "DataRoot Claim\nStatus: notRequired\nNo ownership claim is required.",
+                )
+                .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
                 return Ok(0);
             };
             let resolved = claim_data_root(request, &expected)

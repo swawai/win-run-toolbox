@@ -128,11 +128,7 @@ fn discovers_control_kernel_and_action_hierarchies() {
         env.view.as_ref().map(|view| view.children_column.width),
         Some(ColumnWidth::Normal)
     );
-    let preferences = node(
-        &snapshot,
-        CommandSource::Control,
-        "..entry.env.preferences",
-    );
+    let preferences = node(&snapshot, CommandSource::Control, "..entry.env.preferences");
     assert_eq!(preferences.parent.as_deref(), Some("..entry.env"));
     assert_eq!(
         preferences

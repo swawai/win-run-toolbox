@@ -332,6 +332,8 @@ fn publish_incumbent(data_root: &Path, entry_name: &str, entry_file: &Path) {
 fn assert_record_matches(data_root: &Path, entry_file: &Path) {
     let expected = EntryIdentity::read(entry_file).expect("expected incumbent identity");
     let state = read_entry_record(data_root);
-    let record = state.valid_record().expect("incumbent record remains valid");
+    let record = state
+        .valid_record()
+        .expect("incumbent record remains valid");
     assert!(record.matches_identity(&expected));
 }

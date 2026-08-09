@@ -8,9 +8,7 @@ use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 
 use crate::entry::EntryIdentity;
 
-use super::record::{
-    EntryRecordFingerprint, EntryRecordState, read_entry_record_with_fingerprint,
-};
+use super::record::{EntryRecordFingerprint, EntryRecordState, read_entry_record_with_fingerprint};
 
 #[derive(Debug, Clone)]
 pub struct DataRootInventory {
@@ -55,7 +53,11 @@ impl DataRootInventory {
                 ))
             })?;
             let name = entry.file_name();
-            if !name.to_string_lossy().to_ascii_lowercase().starts_with("proj.") {
+            if !name
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .starts_with("proj.")
+            {
                 continue;
             }
             let path = entry.path();
@@ -145,7 +147,10 @@ impl DataRootSnapshot {
 
 fn reject_reparse_point(path: &Path, label: &str) -> Result<(), DataRootInventoryError> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
-        DataRootInventoryError::new(format!("cannot inspect {label} '{}': {error}", path.display()))
+        DataRootInventoryError::new(format!(
+            "cannot inspect {label} '{}': {error}",
+            path.display()
+        ))
     })?;
     if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
         return Err(DataRootInventoryError::new(format!(
@@ -193,19 +198,22 @@ mod tests {
         fs::create_dir(root.join("PROJ.invalid")).expect("create invalid root");
         fs::create_dir(root.join("cache")).expect("create unrelated directory");
         fs::write(root.join("proj.file"), "not a directory").expect("write unrelated file");
-        fs::write(root.join("PROJ.invalid/_entry.json"), "not json")
-            .expect("write invalid record");
+        fs::write(root.join("PROJ.invalid/_entry.json"), "not json").expect("write invalid record");
 
         let inventory = DataRootInventory::scan(&root).expect("scan inventory");
         assert_eq!(inventory.roots.len(), 2);
-        assert!(inventory.roots.iter().any(|root| matches!(
-            root.record,
-            EntryRecordState::Missing { .. }
-        )));
-        assert!(inventory.roots.iter().any(|root| matches!(
-            root.record,
-            EntryRecordState::Invalid { .. }
-        )));
+        assert!(
+            inventory
+                .roots
+                .iter()
+                .any(|root| matches!(root.record, EntryRecordState::Missing { .. }))
+        );
+        assert!(
+            inventory
+                .roots
+                .iter()
+                .any(|root| matches!(root.record, EntryRecordState::Invalid { .. }))
+        );
 
         fs::remove_dir_all(root).expect("remove fixture");
     }

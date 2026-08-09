@@ -10,10 +10,9 @@ use std::path::Path;
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
-    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_INFO,
-    FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    FileAttributeTagInfo, FileIdInfo, GetFileInformationByHandleEx,
-    GetVolumeNameForVolumeMountPointW, OPEN_EXISTING,
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_INFO, FILE_READ_ATTRIBUTES,
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FileAttributeTagInfo, FileIdInfo,
+    GetFileInformationByHandleEx, GetVolumeNameForVolumeMountPointW, OPEN_EXISTING,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,7 +136,10 @@ pub(crate) fn is_valid_volume_id(value: &str) -> bool {
     else {
         return false;
     };
-    !body.is_empty() && body.bytes().all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+    !body.is_empty()
+        && body
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
 }
 
 pub(crate) fn is_valid_file_id(value: &str) -> bool {
@@ -249,7 +251,10 @@ fn read_volume_id(path: &Path) -> Result<String, EntryIdentityError> {
         )
     };
     if succeeded == 0 {
-        return Err(last_os_error("cannot query filesystem volume identity", path));
+        return Err(last_os_error(
+            "cannot query filesystem volume identity",
+            path,
+        ));
     }
     let length = volume_name
         .iter()
@@ -366,16 +371,20 @@ mod tests {
 
     #[test]
     fn validates_the_persisted_v0_identity_shape() {
-        assert!(EntryIdentity::from_parts(
-            r"\\?\volume{91cf565a-694f-4232-be2d-368578d28629}",
-            "0000000000000000001400000000685d"
-        )
-        .is_ok());
+        assert!(
+            EntryIdentity::from_parts(
+                r"\\?\volume{91cf565a-694f-4232-be2d-368578d28629}",
+                "0000000000000000001400000000685d"
+            )
+            .is_ok()
+        );
         assert!(EntryIdentity::from_parts("D:", "ABCDEF0123456789").is_err());
-        assert!(EntryIdentity::from_parts(
-            r"\\?\volume{91cf565a-694f-4232-be2d-368578d28629}",
-            "ABCDEF0123456789"
-        )
-        .is_err());
+        assert!(
+            EntryIdentity::from_parts(
+                r"\\?\volume{91cf565a-694f-4232-be2d-368578d28629}",
+                "ABCDEF0123456789"
+            )
+            .is_err()
+        );
     }
 }

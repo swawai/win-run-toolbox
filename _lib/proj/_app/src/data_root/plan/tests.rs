@@ -101,7 +101,10 @@ fn requires_claim_for_an_unbound_or_copied_same_name_candidate() {
 
     let current = inventory(
         r"D:\kit\data",
-        [("proj.project-one", valid_record("project-one", &copied_from))],
+        [(
+            "proj.project-one",
+            valid_record("project-one", &copied_from),
+        )],
     );
     assert!(matches!(
         plan_data_root(request(&id, &current)),

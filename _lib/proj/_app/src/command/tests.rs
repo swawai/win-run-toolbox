@@ -80,8 +80,7 @@ impl Fixture {
             entry_file: self.root.join("fixture.exe"),
             invocation_directory: self.target_project_root.clone(),
             profile: EntryProfileRecord::default(),
-            environment_input_revision: EntryProfileRecord::default()
-                .environment_input_revision(),
+            environment_input_revision: EntryProfileRecord::default().environment_input_revision(),
             profile_revision: format!("sha256-{}", "0".repeat(64)),
         }
     }
@@ -236,12 +235,8 @@ fn command_data_roots_are_isolated_by_catalog_source() {
         ("build", "action", "build"),
     ] {
         let command = ResolvedCommand::from_catalog(&catalog, address).unwrap();
-        let environment = ProcessEnvironment::for_command(
-            &context,
-            &command,
-            ExecutionPhase::Run,
-        )
-        .unwrap();
+        let environment =
+            ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run).unwrap();
         assert_eq!(
             environment.value("SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT"),
             Some(Some(

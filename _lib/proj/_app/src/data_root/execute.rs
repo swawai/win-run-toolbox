@@ -14,9 +14,8 @@ pub(crate) fn execute_plan(plan: &DataRootPlan) -> Result<(), DataRootExecutionE
     match plan {
         DataRootPlan::Direct { .. } => return Ok(()),
         DataRootPlan::Create { .. } => {
-            fs::create_dir(&target.data_root).map_err(|error| {
-                execution_error("create DataRoot", &target.data_root, error)
-            })?;
+            fs::create_dir(&target.data_root)
+                .map_err(|error| execution_error("create DataRoot", &target.data_root, error))?;
         }
         DataRootPlan::ClaimCurrent { .. } => {
             require_directory(&target.data_root, "claim target")?;
@@ -54,7 +53,10 @@ fn move_data_root(
 
 fn require_directory(path: &Path, label: &str) -> Result<(), DataRootExecutionError> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
-        DataRootExecutionError::new(format!("cannot inspect {label} '{}': {error}", path.display()))
+        DataRootExecutionError::new(format!(
+            "cannot inspect {label} '{}': {error}",
+            path.display()
+        ))
     })?;
     if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
         return Err(DataRootExecutionError::new(format!(

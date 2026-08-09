@@ -95,11 +95,7 @@ impl EntryProfileRecord {
 }
 
 #[cfg(test)]
-fn collect_string_field_paths(
-    value: &serde_json::Value,
-    prefix: &str,
-    fields: &mut Vec<String>,
-) {
+fn collect_string_field_paths(value: &serde_json::Value, prefix: &str, fields: &mut Vec<String>) {
     match value {
         serde_json::Value::String(_) if !prefix.is_empty() => fields.push(prefix.to_owned()),
         serde_json::Value::Object(object) => {

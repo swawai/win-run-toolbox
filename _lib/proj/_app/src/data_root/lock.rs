@@ -136,8 +136,7 @@ mod tests {
             "swawkit-data-lock-{}-{sequence}",
             std::process::id()
         ));
-        let first = DataRootLock::acquire_for_test(&root, 1, Duration::ZERO)
-            .expect("first lock");
+        let first = DataRootLock::acquire_for_test(&root, 1, Duration::ZERO).expect("first lock");
         assert!(root.join(LOCK_FILE_NAME).is_file());
         assert!(DataRootLock::acquire_for_test(&root, 2, Duration::from_millis(1)).is_err());
 
@@ -176,7 +175,10 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.to_string().contains("must be a regular file"));
-        assert_eq!(fs::read(&target).expect("read untouched target"), b"external");
+        assert_eq!(
+            fs::read(&target).expect("read untouched target"),
+            b"external"
+        );
 
         fs::remove_file(lock_path).expect("remove reparse lock");
         fs::remove_dir_all(root).expect("remove reparse lock fixture");

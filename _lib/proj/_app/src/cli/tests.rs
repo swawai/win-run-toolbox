@@ -137,12 +137,8 @@ fn protocol_help_initializes_the_entry_without_requiring_an_entry_profile() {
     let mut unexpected =
         |_claim: &DataRootClaim| Err(ClaimApprovalError::new("claim was not expected"));
 
-    let exit_code = run_with_approver(
-        &fixture.context,
-        &argv(&["--help"]),
-        &mut unexpected,
-    )
-    .unwrap();
+    let exit_code =
+        run_with_approver(&fixture.context, &argv(&["--help"]), &mut unexpected).unwrap();
 
     assert_eq!(exit_code, 0);
     assert!(
@@ -202,12 +198,7 @@ fn command_execution_creates_and_reuses_the_entry_data_root() {
 
     for _ in 0..2 {
         assert_eq!(
-            run_with_approver(
-                &fixture.context,
-                &argv(&[".tool"]),
-                &mut unexpected,
-            )
-            .unwrap(),
+            run_with_approver(&fixture.context, &argv(&[".tool"]), &mut unexpected,).unwrap(),
             29
         );
     }
@@ -226,19 +217,11 @@ fn invalid_or_unsupported_commands_fail_before_process_execution() {
     let mut unexpected =
         |_claim: &DataRootClaim| Err(ClaimApprovalError::new("claim was not expected"));
 
-    let missing = run_with_approver(
-        &fixture.context,
-        &argv(&[".missing"]),
-        &mut unexpected,
-    )
-    .unwrap_err();
+    let missing =
+        run_with_approver(&fixture.context, &argv(&[".missing"]), &mut unexpected).unwrap_err();
     assert!(missing.to_string().contains("command not found"));
-    let unsupported = run_with_approver(
-        &fixture.context,
-        &argv(&[".future"]),
-        &mut unexpected,
-    )
-    .unwrap_err();
+    let unsupported =
+        run_with_approver(&fixture.context, &argv(&[".future"]), &mut unexpected).unwrap_err();
     assert!(unsupported.to_string().contains("does not yet support"));
     assert!(
         read_entry_record(&fixture.data_root())
@@ -258,12 +241,7 @@ fn an_unbound_candidate_requires_approval_before_execution() {
         Ok(true)
     };
 
-    let error = run_with_approver(
-        &fixture.context,
-        &argv(&[".tool"]),
-        &mut approve,
-    )
-    .unwrap_err();
+    let error = run_with_approver(&fixture.context, &argv(&[".tool"]), &mut approve).unwrap_err();
     assert!(error.to_string().contains("no profile"));
     assert!(saw_claim);
     assert!(
@@ -276,12 +254,7 @@ fn an_unbound_candidate_requires_approval_before_execution() {
     let mut unexpected =
         |_claim: &DataRootClaim| Err(ClaimApprovalError::new("claim was not expected"));
     assert_eq!(
-        run_with_approver(
-            &fixture.context,
-            &argv(&[".tool"]),
-            &mut unexpected,
-        )
-        .unwrap(),
+        run_with_approver(&fixture.context, &argv(&[".tool"]), &mut unexpected,).unwrap(),
         0
     );
 }
@@ -292,14 +265,9 @@ fn ordinary_cli_rejects_a_claim_immediately_with_dedicated_commands() {
     fixture.command(".tool", "run.cmd", "@exit /b 0\r\n");
     fs::create_dir_all(fixture.data_root()).unwrap();
 
-    let mut reject =
-        |pending: &DataRootClaim| Err(claim::rejection(&fixture.context, pending));
-    let error = run_with_approver(
-        &fixture.context,
-        &argv(&[".tool"]),
-        &mut reject,
-    )
-    .expect_err("ordinary command must not claim DataRoot");
+    let mut reject = |pending: &DataRootClaim| Err(claim::rejection(&fixture.context, pending));
+    let error = run_with_approver(&fixture.context, &argv(&[".tool"]), &mut reject)
+        .expect_err("ordinary command must not claim DataRoot");
     let message = error.to_string();
     assert!(message.contains("Status: claimRequired"));
     assert!(message.contains("Review: fixture ..entry.claim"));
@@ -321,12 +289,7 @@ fn dedicated_claim_preview_is_read_only_and_yes_applies_it() {
         |_claim: &DataRootClaim| Err(ClaimApprovalError::new("claim callback was not expected"));
 
     assert_eq!(
-        run_with_approver(
-            &fixture.context,
-            &argv(&["..entry.claim"]),
-            &mut unexpected,
-        )
-        .unwrap(),
+        run_with_approver(&fixture.context, &argv(&["..entry.claim"]), &mut unexpected,).unwrap(),
         0
     );
     assert!(!record_path.exists());
@@ -341,7 +304,11 @@ fn dedicated_claim_preview_is_read_only_and_yes_applies_it() {
         .unwrap(),
         0
     );
-    assert!(read_entry_record(&fixture.data_root()).valid_record().is_some());
+    assert!(
+        read_entry_record(&fixture.data_root())
+            .valid_record()
+            .is_some()
+    );
 }
 
 #[test]

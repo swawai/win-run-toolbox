@@ -98,14 +98,12 @@ fn is_normal_segment(segment: &str) -> bool {
 }
 
 fn has_environment_variable_syntax(segment: &str) -> bool {
-    segment
-        .strip_prefix("SWAWKIT_PROJ_")
-        .is_some_and(|suffix| {
-            !suffix.is_empty()
-                && suffix
-                    .bytes()
-                    .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
-        })
+    segment.strip_prefix("SWAWKIT_PROJ_").is_some_and(|suffix| {
+        !suffix.is_empty()
+            && suffix
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+    })
 }
 
 fn is_kernel_literal_segment(segment: &str) -> bool {

@@ -39,8 +39,8 @@ pub(super) fn dispatch_before_data_root(
     let arguments = argv.get(1..).unwrap_or_default();
     if matches!(arguments, [marker] if marker.to_str().is_some_and(is_help_marker)) {
         control_node(&snapshot, address)?;
-        let output = render_help(&snapshot, address)
-            .map_err(|error| CliError::new(error.to_string()))?;
+        let output =
+            render_help(&snapshot, address).map_err(|error| CliError::new(error.to_string()))?;
         write_output(&output)
             .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
         return Ok(Some(PreDataRootControl::Complete(0)));
@@ -165,24 +165,19 @@ fn set_profile(
         return Err(CliError::new(format!("usage: {address} <value>")));
     };
     let value = unicode_argument(value, "profile value")?.to_owned();
-    let command_path = address
-        .strip_prefix("..entry.env.")
-        .ok_or_else(|| {
-            CliError::new(format!(
-                "Catalog invariant failed for '{address}': Entry Profile setter address is invalid"
-            ))
-        })?;
+    let command_path = address.strip_prefix("..entry.env.").ok_or_else(|| {
+        CliError::new(format!(
+            "Catalog invariant failed for '{address}': Entry Profile setter address is invalid"
+        ))
+    })?;
     let mut segments = command_path.split('.');
-    let (Some(group), Some(variable), None) =
-        (segments.next(), segments.next(), segments.next())
+    let (Some(group), Some(variable), None) = (segments.next(), segments.next(), segments.next())
     else {
         return Err(CliError::new(format!(
             "Catalog invariant failed for '{address}': Entry Profile setter address is invalid"
         )));
     };
-    if !EntryProfileRecord::environment_variable_commands()
-        .contains(&(group, variable))
-    {
+    if !EntryProfileRecord::environment_variable_commands().contains(&(group, variable)) {
         return Err(CliError::new(format!(
             "Catalog invariant failed for '{address}': Entry Profile variable is in the wrong group"
         )));

@@ -11,10 +11,7 @@ pub(crate) struct Invocation {
 }
 
 impl Invocation {
-    pub(crate) fn resolve(
-        snapshot: &CatalogSnapshot,
-        argv: &[OsString],
-    ) -> CommandResult<Self> {
+    pub(crate) fn resolve(snapshot: &CatalogSnapshot, argv: &[OsString]) -> CommandResult<Self> {
         let address = argv
             .first()
             .map(|value| {

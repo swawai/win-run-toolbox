@@ -8,6 +8,17 @@ $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $ProjRoot '_toolchain\bootstrap.ps1')
 
 $Toolchain = Initialize-ProjBootstrapToolchain
+$ManifestPath = Join-Path $ProjRoot '_app\Cargo.toml'
+
+& $Toolchain.CargoPath `
+    fmt `
+    --manifest-path $ManifestPath `
+    -- `
+    --check
+if ($LASTEXITCODE -ne 0) {
+    throw "Rust Core formatting check failed with exit code $LASTEXITCODE."
+}
+
 $TargetRoot = Assert-ProjDevPathInsideDataRoot `
     -Path (Join-Path $Toolchain.Context.DataRoot 'build\app-test') `
     -DataRoot $Toolchain.Context.DataRoot `
@@ -21,7 +32,7 @@ try {
         test `
         --locked `
         --offline `
-        --manifest-path (Join-Path $ProjRoot '_app\Cargo.toml') `
+        --manifest-path $ManifestPath `
         --target-dir $TargetRoot
     if ($LASTEXITCODE -ne 0) {
         throw "Rust Core tests failed with exit code $LASTEXITCODE."

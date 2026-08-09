@@ -307,9 +307,7 @@ impl EntryProfileStore {
 
 fn snapshot_input_revision(snapshot: &ProfileSnapshot) -> Option<String> {
     match &snapshot.state {
-        EntryProfileState::Ready(profile) => {
-            Some(profile.environment_input_revision().to_owned())
-        }
+        EntryProfileState::Ready(profile) => Some(profile.environment_input_revision().to_owned()),
         EntryProfileState::Invalid {
             record: Some(record),
             ..

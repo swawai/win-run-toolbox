@@ -2,12 +2,7 @@ use super::*;
 use crate::binding::SWAWKIT_HOME_PLACEHOLDER;
 use crate::profile::EntryProfileState;
 
-async fn send_variable(
-    app: Router,
-    name: &str,
-    value: &str,
-    revision: Option<&str>,
-) -> Response {
+async fn send_variable(app: Router, name: &str, value: &str, revision: Option<&str>) -> Response {
     let mut request = Request::builder()
         .method(Method::PUT)
         .uri(format!("/api/v2/profile/variables/{name}"))
@@ -101,13 +96,8 @@ async fn requires_a_revision_and_rejects_a_stale_variable_without_overwriting() 
     fixture.directory("home/_lib/proj");
     let app = fixture.app();
 
-    let missing_precondition = send_variable(
-        app.clone(),
-        "SWAWKIT_PROJ_GIT_ID_NAME",
-        "Web Writer",
-        None,
-    )
-    .await;
+    let missing_precondition =
+        send_variable(app.clone(), "SWAWKIT_PROJ_GIT_ID_NAME", "Web Writer", None).await;
     assert_eq!(
         missing_precondition.status(),
         StatusCode::PRECONDITION_REQUIRED
@@ -196,10 +186,7 @@ async fn web_profile_updates_share_the_provider_invalidation_transaction() {
     let EntryProfileState::Ready(profile) = fixture.profile_store().read() else {
         panic!("expected ready profile");
     };
-    assert_eq!(
-        state["inputRevision"],
-        profile.environment_input_revision()
-    );
+    assert_eq!(state["inputRevision"], profile.environment_input_revision());
     let state_after_provider_update = fs::read(&state_path).unwrap();
 
     let stale = send_variable(

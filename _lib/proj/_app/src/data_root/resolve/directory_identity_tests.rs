@@ -78,14 +78,16 @@ fn explicit_claim_rejects_a_replaced_directory_with_identical_record_bytes() {
 
     let error = claim_data_root(fixture.request(), &expected).unwrap_err();
     assert!(error.is_state_changed());
-    assert_eq!(fs::read(record_path).expect("read replacement record"), record);
+    assert_eq!(
+        fs::read(record_path).expect("read replacement record"),
+        record
+    );
 }
 
 #[test]
 fn explicit_claim_rejects_a_replacement_that_publishes_a_matching_record() {
     let fixture = Fixture::new();
-    fs::write(fixture.data_root.join("_entry.json"), "unbound")
-        .expect("write original record");
+    fs::write(fixture.data_root.join("_entry.json"), "unbound").expect("write original record");
     let expected = inspect_data_root(fixture.request())
         .expect("inspect original DataRoot")
         .claim
@@ -116,8 +118,7 @@ fn explicit_claim_rejects_a_replacement_that_publishes_a_matching_record() {
 #[test]
 fn explicit_claim_accepts_a_matching_record_published_in_the_same_directory() {
     let fixture = Fixture::new();
-    fs::write(fixture.data_root.join("_entry.json"), "unbound")
-        .expect("write original record");
+    fs::write(fixture.data_root.join("_entry.json"), "unbound").expect("write original record");
     let expected = inspect_data_root(fixture.request())
         .expect("inspect original DataRoot")
         .claim

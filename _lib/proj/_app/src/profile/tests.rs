@@ -140,10 +140,7 @@ fn profile_document_and_variable_updates_share_the_atomic_store() {
 
     let ready = fixture
         .store
-        .update_environment_variable(
-            "SWAWKIT_PROJ_GIT_ID_EMAIL",
-            "dev@example.com".to_owned(),
-        )
+        .update_environment_variable("SWAWKIT_PROJ_GIT_ID_EMAIL", "dev@example.com".to_owned())
         .expect("update known environment variable");
     assert_eq!(ready.status, "ready");
     assert!(ready.revision.starts_with("sha256-"));

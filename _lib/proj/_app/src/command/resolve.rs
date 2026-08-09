@@ -14,13 +14,9 @@ pub(crate) struct ResolvedCommand {
 }
 
 impl ResolvedCommand {
-    pub(crate) fn from_catalog(
-        snapshot: &CatalogSnapshot,
-        address: &str,
-    ) -> CommandResult<Self> {
+    pub(crate) fn from_catalog(snapshot: &CatalogSnapshot, address: &str) -> CommandResult<Self> {
         let mut matches = snapshot.commands.iter().filter(|node| {
-            node.address == address
-                && (!address.is_empty() || node.source == CommandSource::Kernel)
+            node.address == address && (!address.is_empty() || node.source == CommandSource::Kernel)
         });
         let Some(node) = matches.next() else {
             return Err(CommandError::new(format!(

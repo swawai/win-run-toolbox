@@ -85,9 +85,9 @@ impl EntryRecordFingerprint {
         match state {
             EntryRecordState::Missing { .. } => Self::Missing,
             EntryRecordState::Invalid { error, .. } => Self::present(error.as_bytes()),
-            EntryRecordState::Valid { record, .. } => Self::present(
-                &serde_json::to_vec(record).expect("serialize fixture entry record"),
-            ),
+            EntryRecordState::Valid { record, .. } => {
+                Self::present(&serde_json::to_vec(record).expect("serialize fixture entry record"))
+            }
         }
     }
 }

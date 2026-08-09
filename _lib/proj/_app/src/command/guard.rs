@@ -33,10 +33,7 @@ pub(crate) struct GuardPlan {
 }
 
 impl GuardPlan {
-    pub(crate) fn discover(
-        kernel_root: &Path,
-        command: &ResolvedCommand,
-    ) -> CommandResult<Self> {
+    pub(crate) fn discover(kernel_root: &Path, command: &ResolvedCommand) -> CommandResult<Self> {
         let mut guards = Vec::new();
         if let Some(guard) = resolve_optional(kernel_root, "_global", GuardScope::Global)? {
             guards.push(guard);
@@ -67,9 +64,8 @@ fn resolve_optional(
         return Ok(None);
     };
     validate_directory(directory, directory_name, scope)?;
-    let entry = resolve_entry(&directory.path).map_err(|error| {
-        CommandError::new(format!("invalid {} guard: {error}", scope.as_str()))
-    })?;
+    let entry = resolve_entry(&directory.path)
+        .map_err(|error| CommandError::new(format!("invalid {} guard: {error}", scope.as_str())))?;
     let Some(entry) = entry else {
         return Err(CommandError::new(format!(
             "the {} guard has no executable run.* entry: {}",

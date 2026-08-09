@@ -64,7 +64,7 @@ function Invoke-ProjShellTest {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-. (Join-Path $PSScriptRoot 'runtime-fixture.ps1')
+. (Join-Path $PSScriptRoot '_lib\runtime-fixture.ps1')
 $Artifacts = Resolve-ProjCandidateRuntimeArtifacts `
     -LauncherPath $LauncherPath `
     -CorePath $CorePath

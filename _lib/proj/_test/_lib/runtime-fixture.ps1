@@ -1,7 +1,7 @@
 Set-StrictMode -Version 2.0
 
 $script:ProjRuntimeFixtureRepoRoot = [IO.Path]::GetFullPath(
-    (Join-Path $PSScriptRoot '..\..\..')
+    (Join-Path $PSScriptRoot '..\..\..\..')
 )
 . (Join-Path $script:ProjRuntimeFixtureRepoRoot (
     '_lib\proj\_toolchain\bootstrap-layout.ps1'

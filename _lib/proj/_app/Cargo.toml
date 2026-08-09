@@ -16,8 +16,11 @@ webbrowser = { version = "1.2.1", features = ["hardened"] }
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Com",
+    "Win32_System_Environment",
+    "Win32_System_JobObjects",
     "Win32_System_Threading",
 ] }
 winit = "0.30.13"

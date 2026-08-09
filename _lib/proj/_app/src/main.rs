@@ -7,6 +7,7 @@ mod tray;
 
 use std::error::Error;
 use swawkit_proj::{
+    command::CommandProcessMode,
     context::EntryContext,
     data_root::{DataRootSession, ResolveDataRootRequest},
     launch::{LaunchMode, LaunchRequest, clear_inherited_swawkit_environment},
@@ -33,7 +34,11 @@ fn run() -> Result<i32, Box<dyn Error>> {
     let context = EntryContext::from_launch(&request)?;
 
     match request.mode {
-        LaunchMode::Cli => cli::run(&context, &request.argv).map_err(Into::into),
+        LaunchMode::Cli => cli::run(&context, &request.argv, CommandProcessMode::InheritConsole)
+            .map_err(Into::into),
+        LaunchMode::Worker => {
+            cli::run(&context, &request.argv, CommandProcessMode::NoWindow).map_err(Into::into)
+        }
         LaunchMode::InternalHost => {
             let data_root = DataRootSession::new(ResolveDataRootRequest {
                 swawkit_home: &context.swawkit_home,

@@ -2,21 +2,28 @@ use std::env;
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
+use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 
 pub const ENTRY_FILE_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE";
 pub const LAUNCH_MODE_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_MODE";
+pub const LAUNCH_PROTOCOL_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_PROTOCOL";
+pub const LAUNCH_PROTOCOL_VERSION: &str = "2";
+pub const WORKER_PROTOCOL_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL";
+pub const WORKER_PROTOCOL_VERSION: &str = "1";
+pub const WORKER_JOB_NAME_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME";
+pub const WORKER_READY_EVENT_NAME_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME";
 const PROJECT_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_";
 const SWAWKIT_HOME_ENV: &str = "SWAWKIT_HOME";
 
 /// Selects the composition root without consuming a user argument.
 ///
 /// A native launcher passes user arguments directly and selects `cli` or
-/// `internal-host` without consuming a user argument.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// `worker` or `internal-host` without consuming a user argument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchMode {
-    #[default]
     Cli,
+    Worker,
     InternalHost,
 }
 
@@ -24,6 +31,7 @@ impl LaunchMode {
     pub const fn as_env_value(self) -> &'static str {
         match self {
             Self::Cli => "cli",
+            Self::Worker => "worker",
             Self::InternalHost => "internal-host",
         }
     }
@@ -58,6 +66,8 @@ impl LaunchRequest {
         invocation_dir: PathBuf,
         mut lookup: impl FnMut(&str) -> Option<OsString>,
     ) -> Result<Self, LaunchError> {
+        validate_launch_protocol(&mut lookup)?;
+        reject_unconsumed_worker_declarations(&mut lookup)?;
         let mode = read_mode(&mut lookup)?;
         let entry_file = read_entry_file(&mut lookup)?;
         let argv = direct_argv.into_iter().collect();
@@ -91,33 +101,89 @@ pub unsafe fn clear_inherited_swawkit_environment() {
     }
 }
 
-fn is_swawkit_environment_name(name: &OsStr) -> bool {
-    name.to_str().is_some_and(|name| {
-        name.eq_ignore_ascii_case(SWAWKIT_HOME_ENV)
-            || has_ascii_prefix(name, PROJECT_ENVIRONMENT_PREFIX)
+pub(crate) fn is_swawkit_environment_name(name: &OsStr) -> bool {
+    os_ascii_eq_ignore_case(name, SWAWKIT_HOME_ENV)
+        || os_has_ascii_prefix(name, PROJECT_ENVIRONMENT_PREFIX)
+}
+
+fn validate_launch_protocol(
+    lookup: &mut impl FnMut(&str) -> Option<OsString>,
+) -> Result<(), LaunchError> {
+    let value = lookup(LAUNCH_PROTOCOL_ENV).ok_or_else(|| {
+        LaunchError::new(format!(
+            "required native Launcher protocol is missing: {LAUNCH_PROTOCOL_ENV}; rebuild or replace the Entry Launcher"
+        ))
+    })?;
+    if value == OsStr::new(LAUNCH_PROTOCOL_VERSION) {
+        return Ok(());
+    }
+
+    Err(LaunchError::new(format!(
+        "unsupported {LAUNCH_PROTOCOL_ENV} value '{}'; expected '{LAUNCH_PROTOCOL_VERSION}'",
+        value.to_string_lossy()
+    )))
+}
+
+fn reject_unconsumed_worker_declarations(
+    lookup: &mut impl FnMut(&str) -> Option<OsString>,
+) -> Result<(), LaunchError> {
+    for name in [
+        WORKER_PROTOCOL_ENV,
+        WORKER_JOB_NAME_ENV,
+        WORKER_READY_EVENT_NAME_ENV,
+    ] {
+        if lookup(name).is_some() {
+            return Err(LaunchError::new(format!(
+                "the native Launcher did not consume its Web worker declaration: {name}; rebuild or replace the Entry Launcher"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn os_ascii_eq_ignore_case(value: &OsStr, expected: &str) -> bool {
+    let mut units = value.encode_wide();
+    expected.bytes().all(|expected| {
+        units
+            .next()
+            .is_some_and(|unit| ascii_unit_eq(unit, expected))
+    }) && units.next().is_none()
+}
+
+fn os_has_ascii_prefix(value: &OsStr, prefix: &str) -> bool {
+    let mut units = value.encode_wide();
+    prefix.bytes().all(|expected| {
+        units
+            .next()
+            .is_some_and(|unit| ascii_unit_eq(unit, expected))
     })
 }
 
-fn has_ascii_prefix(value: &str, prefix: &str) -> bool {
-    value
-        .get(..prefix.len())
-        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+fn ascii_unit_eq(unit: u16, expected: u8) -> bool {
+    u8::try_from(unit)
+        .ok()
+        .is_some_and(|unit| unit.eq_ignore_ascii_case(&expected))
 }
 
 fn read_mode(lookup: &mut impl FnMut(&str) -> Option<OsString>) -> Result<LaunchMode, LaunchError> {
-    let Some(value) = lookup(LAUNCH_MODE_ENV) else {
-        return Ok(LaunchMode::Cli);
-    };
+    let value = lookup(LAUNCH_MODE_ENV).ok_or_else(|| {
+        LaunchError::new(format!(
+            "required native Launcher declaration is missing: {LAUNCH_MODE_ENV}; rebuild or replace the Entry Launcher"
+        ))
+    })?;
 
     if value == OsStr::new(LaunchMode::Cli.as_env_value()) {
         return Ok(LaunchMode::Cli);
+    }
+    if value == OsStr::new(LaunchMode::Worker.as_env_value()) {
+        return Ok(LaunchMode::Worker);
     }
     if value == OsStr::new(LaunchMode::InternalHost.as_env_value()) {
         return Ok(LaunchMode::InternalHost);
     }
 
     Err(LaunchError::new(format!(
-        "unsupported {LAUNCH_MODE_ENV} value '{}'; expected 'cli' or 'internal-host'",
+        "unsupported {LAUNCH_MODE_ENV} value '{}'; expected 'cli', 'worker', or 'internal-host'",
         value.to_string_lossy()
     )))
 }
@@ -166,126 +232,4 @@ impl fmt::Display for LaunchError {
 impl Error for LaunchError {}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    fn request(
-        direct_argv: &[&str],
-        declarations: &[(&str, &str)],
-    ) -> Result<LaunchRequest, LaunchError> {
-        let declarations: HashMap<String, OsString> = declarations
-            .iter()
-            .map(|(name, value)| ((*name).to_owned(), OsString::from(value)))
-            .collect();
-
-        LaunchRequest::from_sources(
-            direct_argv.iter().map(OsString::from),
-            PathBuf::from(r"C:\work\project"),
-            |name| declarations.get(name).cloned(),
-        )
-    }
-
-    #[test]
-    fn native_launcher_arguments_are_preserved() {
-        let result = request(
-            &[".demo", "", "a&b|c", "带 空格"],
-            &[(ENTRY_FILE_ENV, r"C:\swaw\Favorites\项目.exe")],
-        )
-        .unwrap();
-
-        assert_eq!(result.mode, LaunchMode::Cli);
-        assert_eq!(
-            result.argv,
-            [".demo", "", "a&b|c", "带 空格"].map(OsString::from)
-        );
-        assert_eq!(result.invocation_dir, PathBuf::from(r"C:\work\project"));
-    }
-
-    #[test]
-    fn internal_host_mode_is_transport_metadata_not_a_user_argument() {
-        let result = request(
-            &["--swawkit-internal-host", ".demo"],
-            &[
-                (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
-                (LAUNCH_MODE_ENV, "internal-host"),
-            ],
-        )
-        .unwrap();
-
-        assert_eq!(result.mode, LaunchMode::InternalHost);
-        assert_eq!(
-            result.argv,
-            ["--swawkit-internal-host", ".demo"].map(OsString::from)
-        );
-    }
-
-    #[test]
-    fn explicit_cli_mode_is_accepted() {
-        let result = request(
-            &[],
-            &[
-                (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
-                (LAUNCH_MODE_ENV, "cli"),
-            ],
-        )
-        .unwrap();
-
-        assert_eq!(result.mode, LaunchMode::Cli);
-    }
-
-    #[test]
-    fn unknown_launch_mode_fails_closed() {
-        let error = request(
-            &[],
-            &[
-                (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
-                (LAUNCH_MODE_ENV, "daemon"),
-            ],
-        )
-        .unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("expected 'cli' or 'internal-host'")
-        );
-    }
-
-    #[test]
-    fn entry_file_is_required_and_absolute() {
-        let missing = request(&[], &[]).unwrap_err();
-        assert!(missing.to_string().contains(ENTRY_FILE_ENV));
-
-        let relative = request(&[], &[(ENTRY_FILE_ENV, "project.exe")]).unwrap_err();
-        assert!(relative.to_string().contains("must be absolute"));
-    }
-
-    #[test]
-    fn swawkit_environment_ownership_is_exact_and_case_insensitive() {
-        for owned_name in [
-            "SWAWKIT_HOME",
-            "swawkit_home",
-            "SWAWKIT_PROJ_",
-            "swawkit_proj_unknown",
-            "SwAwKiT_PrOj_Core_Command_Protocol",
-        ] {
-            assert!(
-                is_swawkit_environment_name(OsStr::new(owned_name)),
-                "expected an owned environment name: {owned_name}"
-            );
-        }
-
-        for foreign_name in [
-            "SWAWKIT",
-            "SWAWKIT_HOME_EXTRA",
-            "SWAWKIT_PROJECT",
-            "XSWAWKIT_PROJ_UNKNOWN",
-        ] {
-            assert!(
-                !is_swawkit_environment_name(OsStr::new(foreign_name)),
-                "expected a foreign environment name: {foreign_name}"
-            );
-        }
-    }
-}
+mod tests;

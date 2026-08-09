@@ -47,6 +47,7 @@ impl<'a> CommandExecutor<'a> {
                 &[],
                 &self.context.target_project_root,
                 &environment,
+                self.context.process_mode,
             )?;
             if exit_code != 0 {
                 return Ok(exit_code);
@@ -64,6 +65,7 @@ impl<'a> CommandExecutor<'a> {
             &invocation.arguments,
             &self.context.target_project_root,
             &environment,
+            self.context.process_mode,
         )
     }
 }

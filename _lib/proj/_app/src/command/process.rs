@@ -5,8 +5,9 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::catalog::{CommandAdapter, is_help_marker};
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
-use super::{CommandError, CommandResult, ProcessEnvironment};
+use super::{CommandError, CommandProcessMode, CommandResult, ProcessEnvironment};
 
 const ADAPTER_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_";
 const POWERSHELL_ARGUMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_";
@@ -68,6 +69,7 @@ pub(crate) fn run_process(
     arguments: &[OsString],
     working_directory: &Path,
     environment: &ProcessEnvironment,
+    process_mode: CommandProcessMode,
 ) -> CommandResult<i32> {
     validate_adapter(adapter)?;
     let mut command = match adapter {
@@ -77,6 +79,7 @@ pub(crate) fn run_process(
         CommandAdapter::Core | CommandAdapter::Bun | CommandAdapter::Python => unreachable!(),
     };
     command.current_dir(working_directory);
+    command.creation_flags(process_creation_flags(process_mode));
     environment.apply(&mut command);
     let status = command.status().map_err(|error| {
         CommandError::new(format!(
@@ -85,6 +88,13 @@ pub(crate) fn run_process(
         ))
     })?;
     Ok(status.code().unwrap_or(1))
+}
+
+fn process_creation_flags(process_mode: CommandProcessMode) -> u32 {
+    match process_mode {
+        CommandProcessMode::InheritConsole => 0,
+        CommandProcessMode::NoWindow => CREATE_NO_WINDOW,
+    }
 }
 
 pub(crate) fn validate_adapter(adapter: CommandAdapter) -> CommandResult<()> {
@@ -190,4 +200,21 @@ fn has_ascii_prefix(value: &str, prefix: &str) -> bool {
     value
         .get(..prefix.len())
         .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worker_mode_hides_the_window_without_changing_normal_cli() {
+        assert_eq!(
+            process_creation_flags(CommandProcessMode::InheritConsole),
+            0
+        );
+        assert_eq!(
+            process_creation_flags(CommandProcessMode::NoWindow),
+            CREATE_NO_WINDOW
+        );
+    }
 }

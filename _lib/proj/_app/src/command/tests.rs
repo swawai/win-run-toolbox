@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    CommandExecutionContext, CommandExecutor, ExecutionPhase, GuardPlan, GuardScope, Invocation,
-    ProcessEnvironment, ResolvedCommand, process::run_process,
+    CommandExecutionContext, CommandExecutor, CommandProcessMode, ExecutionPhase, GuardPlan,
+    GuardScope, Invocation, ProcessEnvironment, ResolvedCommand, process::run_process,
 };
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
@@ -82,6 +82,7 @@ impl Fixture {
             profile: EntryProfileRecord::default(),
             environment_input_revision: EntryProfileRecord::default().environment_input_revision(),
             profile_revision: format!("sha256-{}", "0".repeat(64)),
+            process_mode: CommandProcessMode::InheritConsole,
         }
     }
 }
@@ -388,6 +389,7 @@ fn exe_adapter_returns_the_exact_child_exit_code() {
         &arguments,
         &fixture.target_project_root,
         &environment,
+        CommandProcessMode::InheritConsole,
     )
     .unwrap();
 

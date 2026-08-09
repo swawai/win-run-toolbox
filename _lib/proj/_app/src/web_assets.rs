@@ -14,6 +14,7 @@ const EXPLORER_CSS: &str = include_str!("../web/styles/explorer.css");
 const DETAIL_CSS: &str = include_str!("../web/styles/detail.css");
 const ENTRY_PROFILE_CSS: &str = include_str!("../web/styles/entry-profile.css");
 const CLAIM_CSS: &str = include_str!("../web/styles/claim.css");
+const COMMAND_RUN_CSS: &str = include_str!("../web/styles/command-run.css");
 
 const APP_JS: &str = include_str!("../web/app.js");
 const CATALOG_MODEL_JS: &str = include_str!("../web/catalog-model.js");
@@ -21,6 +22,10 @@ const EXPLORER_JS: &str = include_str!("../web/explorer.js");
 const DETAIL_JS: &str = include_str!("../web/detail.js");
 const ENTRY_PROFILE_JS: &str = include_str!("../web/entry-profile.js");
 const CLAIM_JS: &str = include_str!("../web/claim.js");
+const COMMAND_RUN_JS: &str = include_str!("../web/command-run.js");
+const COMMAND_RUN_CLIENT_JS: &str = include_str!("../web/command-run-client.js");
+const COMMAND_RUN_MODEL_JS: &str = include_str!("../web/command-run-model.js");
+const COMMAND_RUN_OUTPUT_JS: &str = include_str!("../web/command-run-output.js");
 
 pub(crate) async fn index() -> Html<&'static str> {
     Html(INDEX_HTML)
@@ -36,12 +41,17 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "styles/detail.css" => Some(("text/css; charset=utf-8", DETAIL_CSS)),
         "styles/entry-profile.css" => Some(("text/css; charset=utf-8", ENTRY_PROFILE_CSS)),
         "styles/claim.css" => Some(("text/css; charset=utf-8", CLAIM_CSS)),
+        "styles/command-run.css" => Some(("text/css; charset=utf-8", COMMAND_RUN_CSS)),
         "app.js" => Some(("text/javascript; charset=utf-8", APP_JS)),
         "catalog-model.js" => Some(("text/javascript; charset=utf-8", CATALOG_MODEL_JS)),
         "explorer.js" => Some(("text/javascript; charset=utf-8", EXPLORER_JS)),
         "detail.js" => Some(("text/javascript; charset=utf-8", DETAIL_JS)),
         "entry-profile.js" => Some(("text/javascript; charset=utf-8", ENTRY_PROFILE_JS)),
         "claim.js" => Some(("text/javascript; charset=utf-8", CLAIM_JS)),
+        "command-run.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_JS)),
+        "command-run-client.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_CLIENT_JS)),
+        "command-run-model.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_MODEL_JS)),
+        "command-run-output.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_OUTPUT_JS)),
         _ => None,
     };
 

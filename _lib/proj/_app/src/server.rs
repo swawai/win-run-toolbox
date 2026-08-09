@@ -29,11 +29,15 @@ use crate::{
 };
 
 mod claim;
+mod command_run;
+
+use command_run::CommandRuns;
 
 #[derive(Clone)]
 struct ServerState {
     context: EntryContext,
     data_root: DataRootSession,
+    command_runs: CommandRuns,
 }
 
 #[derive(Debug)]
@@ -87,19 +91,48 @@ where
 
     notify_ready(url)?;
 
-    axum::serve(listener, router(authority, context, data_root))
-        .with_graceful_shutdown(async move {
-            let _ = shutdown.await;
-        })
+    let command_runs = CommandRuns::native();
+    let serve_result = axum::serve(
+        listener,
+        router_with_runs(authority, context, data_root, command_runs.clone()),
+    )
+    .with_graceful_shutdown(async move {
+        let _ = shutdown.await;
+    })
+    .await
+    .map_err(|error| error.to_string());
+    let shutdown_result = tokio::task::spawn_blocking(move || command_runs.shutdown())
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| format!("command worker shutdown failed: {error}"))
+        .and_then(|result| result);
+
+    match (serve_result, shutdown_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(serve_error), Err(shutdown_error)) => Err(format!("{serve_error}; {shutdown_error}")),
+    }
 }
 
 async fn bind_loopback() -> io::Result<TcpListener> {
     TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).await
 }
 
+#[cfg(test)]
 fn router(expected_authority: String, context: EntryContext, data_root: DataRootSession) -> Router {
+    router_with_runs(
+        expected_authority,
+        context,
+        data_root,
+        CommandRuns::native(),
+    )
+}
+
+fn router_with_runs(
+    expected_authority: String,
+    context: EntryContext,
+    data_root: DataRootSession,
+    command_runs: CommandRuns,
+) -> Router {
     Router::new()
         .route("/", get(web_assets::index))
         .route("/assets/{*path}", get(web_assets::asset))
@@ -110,6 +143,14 @@ fn router(expected_authority: String, context: EntryContext, data_root: DataRoot
         )
         .route("/api/v2/profile", get(get_profile))
         .route(
+            "/api/v2/command-runs",
+            axum::routing::post(command_run::post_command_run),
+        )
+        .route(
+            "/api/v2/command-runs/{id}",
+            get(command_run::get_command_run).delete(command_run::delete_command_run),
+        )
+        .route(
             "/api/v2/profile/variables/{name}",
             axum::routing::put(put_profile_variable),
         )
@@ -119,7 +160,11 @@ fn router(expected_authority: String, context: EntryContext, data_root: DataRoot
             Arc::<str>::from(expected_authority),
             enforce_authority,
         ))
-        .with_state(ServerState { context, data_root })
+        .with_state(ServerState {
+            context,
+            data_root,
+            command_runs,
+        })
 }
 
 async fn enforce_authority(

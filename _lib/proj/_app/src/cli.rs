@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 
 use swawkit_proj::{
     catalog::{CatalogSnapshot, is_help_marker},
-    command::{CommandExecutionContext, CommandExecutor},
+    command::{CommandExecutionContext, CommandExecutor, CommandProcessMode},
     context::EntryContext,
     data_root::{DataRootClaimApprover, ResolveDataRootRequest, resolve_data_root},
     help::{HelpRenderError, render_help},
@@ -18,24 +18,59 @@ use swawkit_proj::{
 };
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
-pub fn run(context: &EntryContext, argv: &[OsString]) -> Result<i32, CliError> {
+pub fn run(
+    context: &EntryContext,
+    argv: &[OsString],
+    process_mode: CommandProcessMode,
+) -> Result<i32, CliError> {
     let mut approver =
         |pending: &swawkit_proj::data_root::DataRootClaim| Err(claim::rejection(context, pending));
-    run_with_approver(context, argv, &mut approver)
+    let mut host_launcher = launch_entry_host;
+    run_with_dependencies(
+        context,
+        argv,
+        process_mode,
+        &mut approver,
+        &mut host_launcher,
+    )
 }
 
+#[cfg(test)]
 fn run_with_approver(
     context: &EntryContext,
     argv: &[OsString],
     approver: &mut impl DataRootClaimApprover,
 ) -> Result<i32, CliError> {
     let mut host_launcher = launch_entry_host;
-    run_with_host_launcher(context, argv, approver, &mut host_launcher)
+    run_with_dependencies(
+        context,
+        argv,
+        CommandProcessMode::InheritConsole,
+        approver,
+        &mut host_launcher,
+    )
 }
 
+#[cfg(test)]
 fn run_with_host_launcher(
     context: &EntryContext,
     argv: &[OsString],
+    approver: &mut impl DataRootClaimApprover,
+    host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
+) -> Result<i32, CliError> {
+    run_with_dependencies(
+        context,
+        argv,
+        CommandProcessMode::InheritConsole,
+        approver,
+        host_launcher,
+    )
+}
+
+fn run_with_dependencies(
+    context: &EntryContext,
+    argv: &[OsString],
+    process_mode: CommandProcessMode,
     approver: &mut impl DataRootClaimApprover,
     host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
 ) -> Result<i32, CliError> {
@@ -92,7 +127,8 @@ fn run_with_host_launcher(
             )));
         }
     };
-    let execution_context = CommandExecutionContext::new(context, &profile, resolved.path());
+    let execution_context =
+        CommandExecutionContext::new(context, &profile, resolved.path(), process_mode);
     CommandExecutor::new(&execution_context, &snapshot)
         .execute(argv)
         .map_err(|error| CliError::new(error.to_string()))

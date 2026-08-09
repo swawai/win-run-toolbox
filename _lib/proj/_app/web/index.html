@@ -166,6 +166,49 @@
                     <pre id="detail-help"></pre>
                   </section>
                 </article>
+
+                <section class="command-run-section" id="command-run-section"
+                  aria-labelledby="command-run-title" hidden>
+                  <header class="command-run-heading">
+                    <div>
+                      <h3 id="command-run-title">Web 执行</h3>
+                      <p>非交互执行；不提供 stdin 或终端会话，结束时会清理全部子进程。每一行都是一个原始参数。输出协议为 UTF-8；非 UTF-8 字节会显示为替换字符。</p>
+                    </div>
+                    <span class="command-run-state" id="command-run-state" aria-live="polite"></span>
+                  </header>
+
+                  <form class="command-run-form" id="command-run-form">
+                    <div class="command-run-arguments-heading">
+                      <span>参数</span>
+                      <button class="secondary-button command-run-add" id="command-run-add" type="button">
+                        添加参数
+                      </button>
+                    </div>
+                    <div class="command-run-arguments" id="command-run-arguments"></div>
+                    <p class="command-run-empty" id="command-run-empty">当前不传递参数。</p>
+                    <div class="command-run-actions">
+                      <button class="command-run-submit" id="command-run-submit" type="submit">执行</button>
+                      <button class="secondary-button command-run-cancel" id="command-run-cancel"
+                        type="button" hidden>
+                        终止进程
+                      </button>
+                    </div>
+                    <p class="command-run-feedback" id="command-run-feedback" aria-live="polite"></p>
+                  </form>
+
+                  <section class="command-run-result" id="command-run-result" aria-label="执行输出" hidden>
+                    <header>
+                      <code id="command-run-address"></code>
+                      <span id="command-run-exit-code"></span>
+                    </header>
+                    <span class="sr-only" id="command-run-stream-stdout">标准输出</span>
+                    <span class="sr-only" id="command-run-stream-stderr">标准错误</span>
+                    <pre class="command-run-output" id="command-run-output" role="log" aria-live="off" tabindex="0"></pre>
+                    <p class="command-run-truncated" id="command-run-truncated" role="status" aria-live="polite" hidden>
+                      输出已达到 Host 保留上限；超出部分不会显示，但不会因此终止进程。
+                    </p>
+                  </section>
+                </section>
               </aside>
             </div>
           </div>

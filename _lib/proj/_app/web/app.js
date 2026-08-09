@@ -1,5 +1,6 @@
 import { createCatalog } from "./catalog-model.js";
 import { createDataRootClaimView } from "./claim.js";
+import { createCommandRunView } from "./command-run.js";
 import { createDetailView } from "./detail.js";
 import { createExplorerView } from "./explorer.js";
 import { createEntryProfileView } from "./entry-profile.js";
@@ -22,6 +23,20 @@ const elements = {
   claimSubmit: document.querySelector("#claim-submit"),
   claimVolumeId: document.querySelector("#claim-volume-id"),
   commandDetail: document.querySelector("#command-detail"),
+  commandRunAdd: document.querySelector("#command-run-add"),
+  commandRunAddress: document.querySelector("#command-run-address"),
+  commandRunArguments: document.querySelector("#command-run-arguments"),
+  commandRunCancel: document.querySelector("#command-run-cancel"),
+  commandRunEmpty: document.querySelector("#command-run-empty"),
+  commandRunExitCode: document.querySelector("#command-run-exit-code"),
+  commandRunFeedback: document.querySelector("#command-run-feedback"),
+  commandRunForm: document.querySelector("#command-run-form"),
+  commandRunOutput: document.querySelector("#command-run-output"),
+  commandRunResult: document.querySelector("#command-run-result"),
+  commandRunSection: document.querySelector("#command-run-section"),
+  commandRunState: document.querySelector("#command-run-state"),
+  commandRunSubmit: document.querySelector("#command-run-submit"),
+  commandRunTruncated: document.querySelector("#command-run-truncated"),
   copyButton: document.querySelector("#copy-button"),
   copyFeedback: document.querySelector("#copy-feedback"),
   copyLabel: document.querySelector("#copy-label"),
@@ -56,6 +71,7 @@ const elements = {
 
 let catalog = null;
 const detail = createDetailView(elements);
+const commandRun = createCommandRunView(elements);
 const entryProfile = createEntryProfileView(elements, {
   async onProfileChanged(document, address) {
     explorer.setSetupRequired(!document.requiredComplete);
@@ -68,9 +84,12 @@ const explorer = createExplorerView({
   columns: elements.finderColumns,
   detailPanel: elements.detailPanel,
   onSelectCommand(command) {
-    if (!entryProfile.render(command)) {
-      detail.render(catalog, command);
+    if (entryProfile.render(command)) {
+      commandRun.select(null);
+      return;
     }
+    detail.render(catalog, command);
+    commandRun.select(command);
   },
 });
 const dataRootClaim = createDataRootClaimView(elements, {
@@ -160,4 +179,5 @@ elements.profileForm.addEventListener("submit", (event) => {
 elements.finderColumns.addEventListener("keydown", explorer.handleKeyboard);
 elements.retryButton.addEventListener("click", startApplication);
 
+void commandRun.restore();
 startApplication();

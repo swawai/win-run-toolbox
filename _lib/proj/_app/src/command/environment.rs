@@ -31,6 +31,14 @@ pub struct CommandExecutionContext {
     pub profile: EntryProfileRecord,
     pub environment_input_revision: String,
     pub profile_revision: String,
+    pub process_mode: CommandProcessMode,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CommandProcessMode {
+    #[default]
+    InheritConsole,
+    NoWindow,
 }
 
 impl CommandExecutionContext {
@@ -38,6 +46,7 @@ impl CommandExecutionContext {
         entry: &EntryContext,
         profile: &EntryProfile,
         data_root: impl Into<PathBuf>,
+        process_mode: CommandProcessMode,
     ) -> Self {
         let binding = profile.binding();
         Self {
@@ -52,6 +61,7 @@ impl CommandExecutionContext {
             profile: profile.record().clone(),
             environment_input_revision: profile.environment_input_revision().to_owned(),
             profile_revision: profile.profile_revision().to_owned(),
+            process_mode,
         }
     }
 }

@@ -1,0 +1,215 @@
+.command-run-section {
+  flex: 0 0 auto;
+  margin: 0 26px 27px;
+  padding-top: 22px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.command-run-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.command-run-heading h3,
+.command-run-heading p {
+  margin: 0;
+}
+
+.command-run-heading h3,
+.command-run-arguments-heading {
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-run-heading p {
+  margin-top: 7px;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.command-run-state {
+  min-width: max-content;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.command-run-state[data-state="success"] {
+  color: var(--ui-status-ok);
+}
+
+.command-run-state[data-state="warning"] {
+  color: var(--ui-status-warning);
+}
+
+.command-run-state[data-state="error"] {
+  color: var(--ui-status-error);
+}
+
+.command-run-form {
+  margin-top: 18px;
+}
+
+.command-run-arguments-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.command-run-add.secondary-button {
+  padding: 5px 9px;
+  font-size: 11px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.command-run-arguments {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.command-run-argument-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.command-run-argument {
+  width: 100%;
+  min-width: 0;
+  min-height: 37px;
+  padding: 7px 9px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--radius-control);
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.command-run-argument:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+.command-run-remove.secondary-button {
+  min-width: 37px;
+  padding: 7px 9px;
+}
+
+.command-run-empty {
+  margin: 9px 0 0;
+  color: var(--ui-text-subtle);
+  font-size: 11px;
+}
+
+.command-run-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.command-run-submit {
+  padding: 8px 16px;
+  border: 1px solid var(--ui-selection-bg);
+  border-radius: var(--radius-control);
+  color: var(--ui-selection-text);
+  background: var(--ui-selection-bg);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.command-run-submit:hover {
+  opacity: 0.9;
+}
+
+.command-run-submit:disabled,
+.command-run-section .secondary-button:disabled,
+.command-run-argument:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.command-run-feedback {
+  min-height: 17px;
+  margin: 7px 1px 0;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.command-run-feedback[data-state="error"] {
+  color: var(--ui-status-error);
+}
+
+.command-run-result {
+  margin-top: 18px;
+}
+
+.command-run-result > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+}
+
+.command-run-result > header code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.command-run-result > header span {
+  min-width: max-content;
+}
+
+.command-run-output {
+  min-height: 84px;
+  max-height: 300px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  color: var(--ui-text);
+  background: var(--ui-surface-muted);
+  font-size: 11px;
+  line-height: 1.55;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.command-run-output:empty::before {
+  color: var(--ui-text-subtle);
+  content: "暂无输出";
+}
+
+.command-run-output [data-stream="stderr"] {
+  color: var(--ui-status-error);
+}
+
+.command-run-truncated {
+  margin: 7px 1px 0;
+  color: var(--ui-status-warning);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 560px) {
+  .command-run-section {
+    margin-right: 18px;
+    margin-left: 18px;
+  }
+}

@@ -17,6 +17,8 @@ function Assert-ProjLauncherRuntimeTest {
     }
 }
 
+. (Join-Path $PSScriptRoot '_lib\windows-job-fixture.ps1')
+
 function Invoke-ProjLauncherRuntimeProcess {
     param(
         [Parameter(Mandatory = $true)][string]$Executable,
@@ -104,8 +106,10 @@ $RootDataRoot = Join-Path $RuntimeHome "data\proj.$RootEntryName"
 $TargetRoot = Join-Path $TemporaryRoot 'target'
 $ActionRoot = Join-Path $TargetRoot '.swaw'
 $ProbeRoot = Join-Path $ActionRoot 'probe'
+$HangRoot = Join-Path $ActionRoot 'hang'
 $InvocationRoot = Join-Path $TemporaryRoot 'invocation'
 $CapturePath = Join-Path $DataRoot 'modules\action\probe\capture.json'
+$HangMarkerPath = Join-Path $DataRoot 'modules\action\hang\started.txt'
 $NestedRoot = Join-Path $TemporaryRoot 'nested\level'
 $NestedEntry = Join-Path $NestedRoot 'outside-supported-layout.exe'
 $BootstrapHome = Join-Path $TemporaryRoot 'bootstrap-home'
@@ -127,6 +131,7 @@ $PoisonedVariables = @(
     'SWAWKIT_PROJ_LAUNCH_MODE',
     'SWAWKIT_PROJ_COMMAND_PROTOCOL',
     'SWAWKIT_PROJ_COMMAND_DATA_ROOT',
+    'SWAWKIT_PROJ_CORE_LAUNCH_PROTOCOL',
     'SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE',
     'SWAWKIT_PROJ_CORE_LAUNCH_MODE',
     'SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL',
@@ -159,6 +164,7 @@ try {
         (Join-Path $RuntimeKernelRoot '_help'),
         (Split-Path -Path $EntryPath -Parent),
         $ProbeRoot,
+        $HangRoot,
         $InvocationRoot,
         $NestedRoot,
         (Split-Path -Path $BootstrapScript -Parent)
@@ -185,7 +191,11 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
 [IO.File]::Copy($CmdPath, $RuntimePath, $false)
 [IO.File]::WriteAllText(
     (Join-Path $HomeRoot 'bootstrap-ran.txt'),
-    'ok',
+    ((@(
+        [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL
+        [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME
+        [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME
+    )) -join '|'),
     [Text.UTF8Encoding]::new($false)
 )
 '@
@@ -195,19 +205,22 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
         [Text.UTF8Encoding]::new($false)
     )
 
-    $Bootstrapped = Invoke-ProjLauncherRuntimeProcess `
+    $Bootstrapped = Invoke-ProjLauncherJobTestProcess `
         -Executable $BootstrapEntry `
         -Arguments '/d /c exit 0' `
         -WorkingDirectory $InvocationRoot
     Assert-ProjLauncherRuntimeTest `
         -Condition (
             $Bootstrapped.ExitCode -eq 0 -and
+            $Bootstrapped.InJob -and
             [IO.File]::Exists($BootstrapCore) -and
-            [IO.File]::Exists($BootstrapMarker)
+            [IO.File]::Exists($BootstrapMarker) -and
+            [IO.File]::ReadAllText($BootstrapMarker) -ceq '||'
         ) `
         -Message (
             'Launcher did not Bootstrap a missing shared Core: ' +
             "exit=$($Bootstrapped.ExitCode); " +
+            "job=$($Bootstrapped.InJob); " +
             "core=$([IO.File]::Exists($BootstrapCore)); " +
             "marker=$([IO.File]::Exists($BootstrapMarker)); " +
             "stdout=$($Bootstrapped.StandardOutput); " +
@@ -292,6 +305,10 @@ $Payload = [ordered]@{
     swawkitHome = [string]$env:SWAWKIT_HOME
     entryFile = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE
     launchEntryFile = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE
+    launchProtocol = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_PROTOCOL
+    workerProtocol = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL
+    workerJobName = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME
+    workerReadyEventName = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME
     legacyEntryFile = [string]$env:SWAWKIT_PROJ_ENTRY_FILE
     entryName = [string]$env:SWAWKIT_PROJ_ENTRY_COMMAND
     targetProjectRoot = [string]$env:SWAWKIT_PROJ_TARGET_PROJECT_ROOT
@@ -323,6 +340,21 @@ exit 37
 '@,
         [Text.UTF8Encoding]::new($false)
     )
+    [IO.File]::WriteAllText(
+        (Join-Path $HangRoot 'run.ps1'),
+        @'
+$ErrorActionPreference = 'Stop'
+$MarkerPath = Join-Path $env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT 'started.txt'
+[void][IO.Directory]::CreateDirectory((Split-Path -Path $MarkerPath -Parent))
+[IO.File]::WriteAllText(
+    $MarkerPath,
+    [string]$PID,
+    [Text.UTF8Encoding]::new($false)
+)
+Start-Sleep -Seconds 60
+'@,
+        [Text.UTF8Encoding]::new($false)
+    )
 
     $env:SWAWKIT_HOME = 'C:\foreign-home'
     $env:SWAWKIT_PROJ_PROTOCOL = 'foreign'
@@ -334,6 +366,7 @@ exit 37
     $env:SWAWKIT_PROJ_LAUNCH_MODE = 'internal-host'
     $env:SWAWKIT_PROJ_COMMAND_PROTOCOL = 'foreign'
     $env:SWAWKIT_PROJ_COMMAND_DATA_ROOT = 'C:\foreign-command-data'
+    $env:SWAWKIT_PROJ_CORE_LAUNCH_PROTOCOL = 'foreign'
     $env:SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE = 'C:\foreign-core-entry.exe'
     $env:SWAWKIT_PROJ_CORE_LAUNCH_MODE = 'internal-host'
     $env:SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE = 'C:\foreign-command-entry.exe'
@@ -369,6 +402,10 @@ exit 37
         swawkitHome = $RuntimeHome
         entryFile = $EntryPath
         launchEntryFile = ''
+        launchProtocol = ''
+        workerProtocol = ''
+        workerJobName = ''
+        workerReadyEventName = ''
         legacyEntryFile = ''
         entryName = $EntryName
         targetProjectRoot = $TargetRoot
@@ -411,6 +448,117 @@ exit 37
                 "unexpected ${RevisionName}: " +
                 "'$([string]$Capture.($RevisionName))'"
             )
+    }
+
+    $WorkerRun = Invoke-ProjLauncherJobTestProcess `
+        -Executable $EntryPath `
+        -Arguments 'probe worker-boundary' `
+        -WorkingDirectory $InvocationRoot
+    Assert-ProjLauncherRuntimeTest `
+        -Condition ($WorkerRun.ExitCode -eq 37 -and $WorkerRun.InJob) `
+        -Message (
+            'Launcher did not execute inside the declared Web worker job: ' +
+            "exit=$($WorkerRun.ExitCode); job=$($WorkerRun.InJob); " +
+            "stderr=$($WorkerRun.StandardError)"
+        )
+    $WorkerCapture = [IO.File]::ReadAllText($CapturePath) |
+        ConvertFrom-Json
+    Assert-ProjLauncherRuntimeTest `
+        -Condition (
+            @($WorkerCapture.arguments).Count -eq 1 -and
+            [string]$WorkerCapture.arguments[0] -ceq 'worker-boundary' -and
+            [string]::IsNullOrEmpty([string]$WorkerCapture.workerProtocol) -and
+            [string]::IsNullOrEmpty([string]$WorkerCapture.workerJobName) -and
+            [string]::IsNullOrEmpty(
+                [string]$WorkerCapture.workerReadyEventName
+            )
+        ) `
+        -Message 'Web worker launch declarations leaked into the command'
+
+    $RejectedWorkerDeclaration = Invoke-ProjLauncherRuntimeProcess `
+        -Executable $EntryPath `
+        -Arguments '--help' `
+        -WorkingDirectory $InvocationRoot `
+        -EnvironmentVariables @{
+            SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL = '1'
+        }
+    Assert-ProjLauncherRuntimeTest `
+        -Condition (
+            $RejectedWorkerDeclaration.ExitCode -eq 1 -and
+            $RejectedWorkerDeclaration.StandardError.Contains(
+                'Web worker process boundary'
+            )
+        ) `
+        -Message 'Launcher accepted an incomplete Web worker declaration'
+
+    $WorkerIdentity = [Guid]::NewGuid().ToString('N')
+    $WorkerJobName = "Local\SwawKit.Proj.Test.Job.$WorkerIdentity"
+    $WorkerReadyName = "Local\SwawKit.Proj.Test.Ready.$WorkerIdentity"
+    $WorkerJob = [IntPtr]::Zero
+    $WorkerReady = [IntPtr]::Zero
+    $WorkerProcess = $null
+    $CommandProcess = $null
+    try {
+        $WorkerJob = [ProjLauncherJobTest]::CreateKillOnCloseJob(
+            $WorkerJobName
+        )
+        $WorkerReady = [ProjLauncherJobTest]::CreateReadyEvent(
+            $WorkerReadyName
+        )
+        $WorkerProcess = Start-ProjLauncherRuntimeProcess `
+            -Executable $EntryPath `
+            -Arguments 'hang' `
+            -WorkingDirectory $InvocationRoot `
+            -EnvironmentVariables @{
+                SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL = '1'
+                SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME = $WorkerJobName
+                SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME = $WorkerReadyName
+            }
+        $WorkerOutput = $WorkerProcess.StandardOutput.ReadToEndAsync()
+        $WorkerError = $WorkerProcess.StandardError.ReadToEndAsync()
+        Assert-ProjLauncherRuntimeTest `
+            -Condition ([ProjLauncherJobTest]::WaitReady($WorkerReady, 5000)) `
+            -Message 'cancellable Launcher did not signal worker readiness'
+        $Deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not [IO.File]::Exists($HangMarkerPath) -and
+            [DateTime]::UtcNow -lt $Deadline) {
+            Start-Sleep -Milliseconds 25
+        }
+        Assert-ProjLauncherRuntimeTest `
+            -Condition ([IO.File]::Exists($HangMarkerPath)) `
+            -Message 'cancellable command did not start its descendant process'
+        $CommandProcess = [Diagnostics.Process]::GetProcessById(
+            [int][IO.File]::ReadAllText($HangMarkerPath)
+        )
+        Assert-ProjLauncherRuntimeTest `
+            -Condition ([ProjLauncherJobTest]::CloseHandle($WorkerJob)) `
+            -Message 'test could not close the worker Job handle'
+        $WorkerJob = [IntPtr]::Zero
+        Assert-ProjLauncherRuntimeTest `
+            -Condition (
+                $WorkerProcess.WaitForExit(5000) -and
+                $CommandProcess.WaitForExit(5000)
+            ) `
+            -Message 'closing the worker Job did not terminate the complete tree'
+        [void]$WorkerOutput.Result
+        [void]$WorkerError.Result
+    } finally {
+        if ($WorkerJob -ne [IntPtr]::Zero) {
+            [void][ProjLauncherJobTest]::CloseHandle($WorkerJob)
+        }
+        if ($null -ne $WorkerProcess) {
+            if (-not $WorkerProcess.HasExited) {
+                $WorkerProcess.Kill()
+                [void]$WorkerProcess.WaitForExit(5000)
+            }
+            $WorkerProcess.Dispose()
+        }
+        if ($null -ne $CommandProcess) {
+            $CommandProcess.Dispose()
+        }
+        if ($WorkerReady -ne [IntPtr]::Zero) {
+            [void][ProjLauncherJobTest]::CloseHandle($WorkerReady)
+        }
     }
 
     foreach ($ProtocolValue in @('', 'foreign')) {

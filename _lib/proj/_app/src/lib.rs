@@ -6,6 +6,7 @@ pub mod command;
 pub mod context;
 pub mod data_root;
 pub mod entry;
+mod entry_runner;
 pub mod help;
 pub mod launch;
 pub mod profile;

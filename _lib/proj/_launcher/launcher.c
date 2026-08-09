@@ -5,12 +5,26 @@
 
 #define TEXT_CAPACITY 32768u
 #define INVALID_INDEX 0xffffffffu
+#define LAUNCH_PROTOCOL_VALUE L"2"
+#define WORKER_PROTOCOL_VALUE L"1"
+
+static const WCHAR launch_protocol_name[] =
+    L"SWAWKIT_PROJ_CORE_LAUNCH_PROTOCOL";
+static const WCHAR worker_protocol_name[] =
+    L"SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL";
+static const WCHAR worker_job_name_name[] =
+    L"SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME";
+static const WCHAR worker_ready_event_name_name[] =
+    L"SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME";
 
 static WCHAR entry_path[TEXT_CAPACITY];
 static WCHAR core_path[TEXT_CAPACITY];
 static WCHAR bootstrap_path[TEXT_CAPACITY];
 static WCHAR powershell_path[TEXT_CAPACITY];
 static WCHAR child_command_line[TEXT_CAPACITY];
+static WCHAR worker_protocol[16u];
+static WCHAR worker_job_name[TEXT_CAPACITY];
+static WCHAR worker_ready_event_name[TEXT_CAPACITY];
 static STARTUPINFOW startup_info;
 static PROCESS_INFORMATION process_info;
 
@@ -71,6 +85,100 @@ static BOOL environment_variable_exists(const WCHAR *name)
     SetLastError(ERROR_SUCCESS);
     length = GetEnvironmentVariableW(name, &value, 1u);
     return length > 0u || GetLastError() != ERROR_ENVVAR_NOT_FOUND;
+}
+
+static BOOL read_environment_variable(
+    const WCHAR *name,
+    WCHAR *value,
+    DWORD capacity
+)
+{
+    DWORD length = GetEnvironmentVariableW(name, value, capacity);
+    return length > 0u && length < capacity;
+}
+
+static BOOL wide_equal(const WCHAR *left, const WCHAR *right)
+{
+    DWORD index = 0u;
+    while (left[index] != L'\0' && right[index] != L'\0') {
+        if (left[index] != right[index]) {
+            return FALSE;
+        }
+        ++index;
+    }
+    return left[index] == right[index];
+}
+
+static BOOL join_worker_job_if_declared(BOOL host_mode, BOOL *worker_mode)
+{
+    BOOL has_protocol = environment_variable_exists(worker_protocol_name);
+    BOOL has_job = environment_variable_exists(worker_job_name_name);
+    BOOL has_ready_event = environment_variable_exists(
+        worker_ready_event_name_name
+    );
+    HANDLE job;
+    HANDLE ready_event;
+
+    *worker_mode = FALSE;
+    if (!has_protocol && !has_job && !has_ready_event) {
+        return TRUE;
+    }
+    if (host_mode
+        || !has_protocol
+        || !has_job
+        || !has_ready_event
+        || !read_environment_variable(
+            worker_protocol_name,
+            worker_protocol,
+            16u
+        )
+        || !wide_equal(worker_protocol, WORKER_PROTOCOL_VALUE)
+        || !read_environment_variable(
+            worker_job_name_name,
+            worker_job_name,
+            TEXT_CAPACITY
+        )
+        || !read_environment_variable(
+            worker_ready_event_name_name,
+            worker_ready_event_name,
+            TEXT_CAPACITY
+        )) {
+        return FALSE;
+    }
+
+    job = OpenJobObjectW(
+        JOB_OBJECT_ASSIGN_PROCESS,
+        FALSE,
+        worker_job_name
+    );
+    if (job == NULL) {
+        return FALSE;
+    }
+    ready_event = OpenEventW(
+        EVENT_MODIFY_STATE,
+        FALSE,
+        worker_ready_event_name
+    );
+    if (ready_event == NULL) {
+        CloseHandle(job);
+        return FALSE;
+    }
+    if (!AssignProcessToJobObject(job, GetCurrentProcess())) {
+        CloseHandle(ready_event);
+        CloseHandle(job);
+        return FALSE;
+    }
+    if (!CloseHandle(job)
+        || !SetEnvironmentVariableW(worker_protocol_name, NULL)
+        || !SetEnvironmentVariableW(worker_job_name_name, NULL)
+        || !SetEnvironmentVariableW(worker_ready_event_name_name, NULL)
+        || !SetEvent(ready_event)) {
+        CloseHandle(ready_event);
+        return FALSE;
+    }
+    CloseHandle(ready_event);
+    *worker_mode = TRUE;
+    return TRUE;
 }
 
 static DWORD last_separator_before(const WCHAR *value, DWORD before)
@@ -197,9 +305,9 @@ static BOOL build_bootstrap_command_line(void)
     return TRUE;
 }
 
-static BOOL run_bootstrap(BOOL host_mode)
+static BOOL run_bootstrap(BOOL host_mode, BOOL worker_mode)
 {
-    DWORD creation_flags = host_mode ? CREATE_NO_WINDOW : 0u;
+    DWORD creation_flags = host_mode || worker_mode ? CREATE_NO_WINDOW : 0u;
     BOOL inherit_handles = host_mode ? FALSE : TRUE;
     DWORD wait_result;
     DWORD exit_code;
@@ -282,15 +390,21 @@ static BOOL build_child_command_line(const WCHAR *argument_tail)
     return TRUE;
 }
 
-static BOOL prepare_environment(BOOL host_mode)
+static BOOL prepare_environment(BOOL host_mode, BOOL worker_mode)
 {
     return SetEnvironmentVariableW(
+            launch_protocol_name,
+            LAUNCH_PROTOCOL_VALUE
+        )
+        && SetEnvironmentVariableW(
             L"SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE",
             entry_path
         )
         && SetEnvironmentVariableW(
             L"SWAWKIT_PROJ_CORE_LAUNCH_MODE",
-            host_mode ? L"internal-host" : L"cli"
+            host_mode
+                ? L"internal-host"
+                : (worker_mode ? L"worker" : L"cli")
         );
 }
 
@@ -298,9 +412,10 @@ void WINAPI launcher_entry(void)
 {
     const WCHAR *argument_tail = raw_argument_tail();
     BOOL host_mode = *argument_tail == L'\0';
+    BOOL worker_mode = FALSE;
     DWORD entry_length = GetModuleFileNameW(NULL, entry_path, TEXT_CAPACITY);
-    DWORD creation_flags = host_mode ? CREATE_NO_WINDOW : 0u;
-    BOOL inherit_handles = host_mode ? FALSE : TRUE;
+    DWORD creation_flags;
+    BOOL inherit_handles;
     DWORD wait_result;
     DWORD exit_code;
 
@@ -311,6 +426,13 @@ void WINAPI launcher_entry(void)
             FALSE,
             L"Cannot start a Swaw Kit Entry from inside another Entry command.",
             "[ERROR] Cannot start a Swaw Kit Entry from inside another Entry command.\r\n"
+        );
+    }
+    if (!join_worker_job_if_declared(host_mode, &worker_mode)) {
+        fail(
+            host_mode,
+            L"Cannot establish the Web worker process boundary.",
+            "[ERROR] Cannot establish the Web worker process boundary.\r\n"
         );
     }
 
@@ -330,7 +452,7 @@ void WINAPI launcher_entry(void)
             "Keep the Launcher in SWAWKIT_HOME or one of its direct child directories.\r\n"
         );
     }
-    if (!is_file(core_path) && !run_bootstrap(host_mode)) {
+    if (!is_file(core_path) && !run_bootstrap(host_mode, worker_mode)) {
         fail(
             host_mode,
             L"Bootstrap could not build the shared Swaw Kit Proj executable.",
@@ -344,7 +466,7 @@ void WINAPI launcher_entry(void)
             "[ERROR] The Launcher command line is too long.\r\n"
         );
     }
-    if (!prepare_environment(host_mode)) {
+    if (!prepare_environment(host_mode, worker_mode)) {
         fail(
             host_mode,
             L"Cannot prepare the shared Proj process environment.",
@@ -355,6 +477,8 @@ void WINAPI launcher_entry(void)
     if (host_mode) {
         FreeConsole();
     }
+    creation_flags = host_mode || worker_mode ? CREATE_NO_WINDOW : 0u;
+    inherit_handles = host_mode ? FALSE : TRUE;
     startup_info.cb = sizeof(startup_info);
     if (!CreateProcessW(
             core_path,

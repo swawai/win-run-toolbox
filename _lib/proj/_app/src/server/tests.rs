@@ -19,6 +19,8 @@ use crate::{
 };
 
 mod claim;
+mod command_run;
+mod command_run_native;
 mod profile;
 mod runtime;
 
@@ -153,7 +155,9 @@ async fn serves_only_the_declared_local_surface() {
     let body = to_bytes(index.into_body(), usize::MAX)
         .await
         .expect("index body");
-    assert!(String::from_utf8_lossy(&body).contains("Swaw Kit Proj"));
+    let index_html = String::from_utf8_lossy(&body);
+    assert!(index_html.contains("Swaw Kit Proj"));
+    assert!(index_html.contains("class=\"command-run-output\" id=\"command-run-output\""));
 
     for (path, content_type) in [
         ("/assets/app.css", "text/css; charset=utf-8"),
@@ -167,12 +171,26 @@ async fn serves_only_the_declared_local_surface() {
             "text/css; charset=utf-8",
         ),
         ("/assets/styles/claim.css", "text/css; charset=utf-8"),
+        ("/assets/styles/command-run.css", "text/css; charset=utf-8"),
         ("/assets/app.js", "text/javascript; charset=utf-8"),
         ("/assets/catalog-model.js", "text/javascript; charset=utf-8"),
         ("/assets/explorer.js", "text/javascript; charset=utf-8"),
         ("/assets/detail.js", "text/javascript; charset=utf-8"),
         ("/assets/entry-profile.js", "text/javascript; charset=utf-8"),
         ("/assets/claim.js", "text/javascript; charset=utf-8"),
+        (
+            "/assets/command-run-client.js",
+            "text/javascript; charset=utf-8",
+        ),
+        (
+            "/assets/command-run-output.js",
+            "text/javascript; charset=utf-8",
+        ),
+        (
+            "/assets/command-run-model.js",
+            "text/javascript; charset=utf-8",
+        ),
+        ("/assets/command-run.js", "text/javascript; charset=utf-8"),
     ] {
         let response = send(app.clone(), Method::GET, path, Some(AUTHORITY)).await;
         assert_eq!(response.status(), StatusCode::OK, "{path}");

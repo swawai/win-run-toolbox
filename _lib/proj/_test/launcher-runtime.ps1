@@ -46,6 +46,8 @@ function Invoke-ProjLauncherRuntimeProcess {
     $StartInfo.CreateNoWindow = $true
     $StartInfo.RedirectStandardOutput = $true
     $StartInfo.RedirectStandardError = $true
+    $StartInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $StartInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
     foreach ($Pair in $EnvironmentVariables.GetEnumerator()) {
         $StartInfo.EnvironmentVariables[[string]$Pair.Key] = [string]$Pair.Value
     }
@@ -336,6 +338,8 @@ $CapturePath = Join-Path $env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT 'capture.json'
     (($Payload | ConvertTo-Json -Depth 5) + "`n"),
     [Text.UTF8Encoding]::new($false)
 )
+Write-Output 'worker-stdout-sentinel'
+[Console]::Error.WriteLine('worker-stderr-sentinel')
 exit 37
 '@,
         [Text.UTF8Encoding]::new($false)
@@ -455,7 +459,12 @@ Start-Sleep -Seconds 60
         -Arguments 'probe worker-boundary' `
         -WorkingDirectory $InvocationRoot
     Assert-ProjLauncherRuntimeTest `
-        -Condition ($WorkerRun.ExitCode -eq 37 -and $WorkerRun.InJob) `
+        -Condition (
+            $WorkerRun.ExitCode -eq 37 -and
+            $WorkerRun.InJob -and
+            $WorkerRun.StandardOutput.Contains('worker-stdout-sentinel') -and
+            $WorkerRun.StandardError.Contains('worker-stderr-sentinel')
+        ) `
         -Message (
             'Launcher did not execute inside the declared Web worker job: ' +
             "exit=$($WorkerRun.ExitCode); job=$($WorkerRun.InJob); " +

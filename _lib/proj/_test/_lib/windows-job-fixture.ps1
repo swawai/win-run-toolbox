@@ -142,6 +142,8 @@ function Start-ProjLauncherRuntimeProcess {
     $StartInfo.CreateNoWindow = $true
     $StartInfo.RedirectStandardOutput = $true
     $StartInfo.RedirectStandardError = $true
+    $StartInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $StartInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
     $InheritedEnvironment = [Environment]::GetEnvironmentVariables(
         [EnvironmentVariableTarget]::Process
     )

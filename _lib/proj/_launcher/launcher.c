@@ -109,6 +109,32 @@ static BOOL wide_equal(const WCHAR *left, const WCHAR *right)
     return left[index] == right[index];
 }
 
+static BOOL prepare_startup_info(BOOL inherit_handles)
+{
+    startup_info.cb = sizeof(startup_info);
+    startup_info.dwFlags = 0u;
+    startup_info.hStdInput = NULL;
+    startup_info.hStdOutput = NULL;
+    startup_info.hStdError = NULL;
+    if (!inherit_handles) {
+        return TRUE;
+    }
+
+    startup_info.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    startup_info.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    startup_info.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    if (startup_info.hStdInput == NULL
+        || startup_info.hStdInput == INVALID_HANDLE_VALUE
+        || startup_info.hStdOutput == NULL
+        || startup_info.hStdOutput == INVALID_HANDLE_VALUE
+        || startup_info.hStdError == NULL
+        || startup_info.hStdError == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+    startup_info.dwFlags = STARTF_USESTDHANDLES;
+    return TRUE;
+}
+
 static BOOL join_worker_job_if_declared(BOOL host_mode, BOOL *worker_mode)
 {
     BOOL has_protocol = environment_variable_exists(worker_protocol_name);
@@ -317,8 +343,8 @@ static BOOL run_bootstrap(BOOL host_mode, BOOL worker_mode)
         || !build_bootstrap_command_line()) {
         return FALSE;
     }
-    startup_info.cb = sizeof(startup_info);
-    if (!CreateProcessW(
+    if (!prepare_startup_info(inherit_handles)
+        || !CreateProcessW(
             powershell_path,
             child_command_line,
             NULL,
@@ -479,8 +505,8 @@ void WINAPI launcher_entry(void)
     }
     creation_flags = host_mode || worker_mode ? CREATE_NO_WINDOW : 0u;
     inherit_handles = host_mode ? FALSE : TRUE;
-    startup_info.cb = sizeof(startup_info);
-    if (!CreateProcessW(
+    if (!prepare_startup_info(inherit_handles)
+        || !CreateProcessW(
             core_path,
             child_command_line,
             NULL,

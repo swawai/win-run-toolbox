@@ -94,9 +94,8 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn invocation_redirects_only_protocol_owned_help() {
+fn invocation_preserves_help_markers_for_the_cli_protocol_boundary() {
     let fixture = Fixture::new();
-    fixture.command(".help", "exit 0");
     let local = fixture.command(".local", "exit 0");
     fs::create_dir_all(local.join("_help")).unwrap();
     fs::write(local.join("_help/zh-CN.txt"), "Local help").unwrap();
@@ -104,14 +103,12 @@ fn invocation_redirects_only_protocol_owned_help() {
     let catalog = fixture.catalog();
 
     let local = Invocation::resolve(&catalog, &argv(&[".local", "--help"])).unwrap();
-    assert_eq!(local.command.address, ".help");
-    assert_eq!(local.help_target_address.as_deref(), Some(".local"));
-    assert!(local.arguments.is_empty());
+    assert_eq!(local.command.address, ".local");
+    assert_eq!(local.arguments, argv(&["--help"]));
 
     let owned = Invocation::resolve(&catalog, &argv(&[".owned", "--help"])).unwrap();
     assert_eq!(owned.command.address, ".owned");
     assert_eq!(owned.arguments, argv(&["--help"]));
-    assert_eq!(owned.help_target_address, None);
 }
 
 #[test]
@@ -148,7 +145,7 @@ fn process_environment_is_declarative_and_phase_specific() {
     let command = ResolvedCommand::from_catalog(&fixture.catalog(), ".tool").unwrap();
     let context = fixture.context();
 
-    let run = ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run, None)
+    let run = ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run)
         .expect("build run environment");
     assert_eq!(
         run.value("SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL"),
@@ -208,16 +205,11 @@ fn process_environment_is_declarative_and_phase_specific() {
         &context,
         &command,
         ExecutionPhase::Guard(GuardScope::Global),
-        Some(".target"),
     )
     .expect("build guard environment");
     assert_eq!(
         guard.value("SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE"),
         Some(Some(OsStr::new("global")))
-    );
-    assert_eq!(
-        guard.value("SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS"),
-        Some(Some(OsStr::new(".target")))
     );
 }
 
@@ -244,9 +236,12 @@ fn command_data_roots_are_isolated_by_catalog_source() {
         ("build", "action", "build"),
     ] {
         let command = ResolvedCommand::from_catalog(&catalog, address).unwrap();
-        let environment =
-            ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run, None)
-                .unwrap();
+        let environment = ProcessEnvironment::for_command(
+            &context,
+            &command,
+            ExecutionPhase::Run,
+        )
+        .unwrap();
         assert_eq!(
             environment.value("SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT"),
             Some(Some(
@@ -265,6 +260,17 @@ fn command_data_roots_are_isolated_by_catalog_source() {
 fn powershell_pipeline_preserves_arguments_environment_order_and_exit_code() {
     let fixture = Fixture::new();
     let trace = r#"
+$adapterNames = @([Environment]::GetEnvironmentVariables().Keys |
+    Where-Object {
+        ([string]$_).StartsWith(
+            'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_',
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    })
+if ($adapterNames.Count -ne 0) {
+    throw ('PowerShell adapter variables leaked: ' +
+        ([string[]]$adapterNames -join ', '))
+}
 $encoded = @($args | ForEach-Object {
     [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$_))
 }) -join ','

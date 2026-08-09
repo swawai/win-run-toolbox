@@ -12,11 +12,10 @@ use crate::{
 
 use super::{CommandError, CommandResult, GuardScope, ResolvedCommand};
 
-const TRANSIENT_ENVIRONMENT: [&str; 4] = [
+const TRANSIENT_ENVIRONMENT: [&str; 3] = [
     ENTRY_FILE_ENV,
     LAUNCH_MODE_ENV,
     "SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE",
-    "SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,7 +72,6 @@ impl ProcessEnvironment {
         context: &CommandExecutionContext,
         protocol_command: &ResolvedCommand,
         phase: ExecutionPhase,
-        help_target_address: Option<&str>,
     ) -> CommandResult<Self> {
         let mut environment = Self::default();
         for name in TRANSIENT_ENVIRONMENT {
@@ -98,9 +96,6 @@ impl ProcessEnvironment {
         );
         if let ExecutionPhase::Guard(scope) = phase {
             environment.set("SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE", scope.as_str());
-        }
-        if let Some(target) = help_target_address {
-            environment.set("SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS", target);
         }
         environment.set(
             "SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR",

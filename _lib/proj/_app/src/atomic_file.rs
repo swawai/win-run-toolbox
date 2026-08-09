@@ -21,25 +21,37 @@ pub(crate) fn publish(path: &Path, content: &[u8]) -> io::Result<()> {
     })?;
     let temporary = unique_sibling(directory, "tmp");
 
-    let result = publish_inner(path, &temporary, content);
-    let cleanup = cleanup(&temporary);
-    result.and(cleanup)
-}
-
-fn publish_inner(path: &Path, temporary: &Path, content: &[u8]) -> io::Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(temporary)?;
-    file.write_all(content)?;
-    file.sync_all()?;
+        .open(&temporary)?;
+    let prepared = file.write_all(content).and_then(|()| file.sync_all());
     drop(file);
-
-    if !path.exists() {
-        return fs::rename(temporary, path);
+    if let Err(error) = prepared {
+        let _ = cleanup(&temporary);
+        return Err(error);
     }
 
-    replace_file(path, temporary)
+    let committed = if path.exists() {
+        replace_file(path, &temporary)
+    } else {
+        fs::rename(&temporary, path)
+    };
+    match committed {
+        Ok(()) => cleanup(&temporary),
+        Err(error) => Err(commit_error(path, &temporary, error)),
+    }
+}
+
+fn commit_error(path: &Path, temporary: &Path, error: io::Error) -> io::Error {
+    io::Error::new(
+        error.kind(),
+        format!(
+            "cannot commit atomic publication to '{}': {error}; recovery temporary: '{}'",
+            path.display(),
+            temporary.display()
+        ),
+    )
 }
 
 fn replace_file(path: &Path, temporary: &Path) -> io::Result<()> {
@@ -83,4 +95,96 @@ fn unique_sibling(directory: &Path, suffix: &str) -> PathBuf {
 
 fn null_terminated(value: &OsStr) -> Vec<u16> {
     value.encode_wide().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+
+    struct Fixture {
+        root: PathBuf,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "swawkit-atomic-file-{}-{sequence}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&root).expect("create atomic publication fixture");
+            Self { root }
+        }
+
+        fn recovery_files(&self) -> Vec<PathBuf> {
+            fs::read_dir(&self.root)
+                .expect("read atomic publication fixture")
+                .map(|entry| entry.expect("read fixture entry").path())
+                .filter(|path| {
+                    path.file_name().is_some_and(|name| {
+                        let name = name.to_string_lossy();
+                        name.starts_with(".swawkit.") && name.ends_with(".tmp")
+                    })
+                })
+                .collect()
+        }
+
+        fn assert_recovery(&self, error: &io::Error, content: &[u8]) {
+            let recovery = self.recovery_files();
+            assert_eq!(recovery.len(), 1);
+            assert_eq!(fs::read(&recovery[0]).unwrap(), content);
+            assert!(
+                error
+                    .to_string()
+                    .contains(&recovery[0].display().to_string())
+            );
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn successful_create_and_replace_leave_no_temporary_file() {
+        let fixture = Fixture::new();
+        let target = fixture.root.join("state.json");
+
+        publish(&target, b"first").expect("create publication");
+        assert_eq!(fs::read(&target).unwrap(), b"first");
+        assert!(fixture.recovery_files().is_empty());
+
+        publish(&target, b"second").expect("replace publication");
+        assert_eq!(fs::read(&target).unwrap(), b"second");
+        assert!(fixture.recovery_files().is_empty());
+    }
+
+    #[test]
+    fn failed_rename_preserves_the_complete_recovery_file() {
+        let fixture = Fixture::new();
+        let target = fixture.root.join("invalid:name");
+        let content = b"complete replacement";
+
+        let error = publish(&target, content).unwrap_err();
+
+        assert!(!target.exists());
+        fixture.assert_recovery(&error, content);
+    }
+
+    #[test]
+    fn failed_replace_preserves_the_complete_recovery_file() {
+        let fixture = Fixture::new();
+        let target = fixture.root.join("directory-target");
+        let content = b"complete replacement";
+        fs::create_dir(&target).expect("create invalid replacement target");
+
+        let error = publish(&target, content).unwrap_err();
+
+        assert!(target.is_dir());
+        fixture.assert_recovery(&error, content);
+    }
 }

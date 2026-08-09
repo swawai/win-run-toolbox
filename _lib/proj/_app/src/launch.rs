@@ -4,8 +4,8 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::PathBuf;
 
-pub const ENTRY_FILE_ENV: &str = "SWAWKIT_PROJ_ENTRY_FILE";
-pub const LAUNCH_MODE_ENV: &str = "SWAWKIT_PROJ_LAUNCH_MODE";
+pub const ENTRY_FILE_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE";
+pub const LAUNCH_MODE_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_MODE";
 
 /// Selects the composition root without consuming a user argument.
 ///

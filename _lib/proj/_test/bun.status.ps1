@@ -9,14 +9,13 @@ $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot '_lib\bun-fixture.ps1')
 
 $EnvironmentNames = @(
-    'SWAWKIT_PROJ_PROTOCOL',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL',
     'SWAWKIT_HOME',
     'SWAWKIT_PROJ_TARGET_PROJECT_ROOT',
     'SWAWKIT_PROJ_ACTION_ROOT',
     'SWAWKIT_PROJ_DATA_ROOT',
     'SWAWKIT_PROJ_ENTRY_COMMAND',
-    'SWAWKIT_PROJ_ENTRY_FILE',
-    'SWAWKIT_PROJ_INVOCATION_DIR',
+    'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256'
@@ -43,18 +42,15 @@ try {
     $ProjectRoot = Join-Path $TemporaryRoot 'project'
     $ActionRoot = Join-Path $ProjectRoot '.swaw'
     [void][IO.Directory]::CreateDirectory($ActionRoot)
-    $EntryFile = Join-Path $ProjectRoot "$EntryName.cmd"
-    [IO.File]::WriteAllText($EntryFile, '@echo off')
     [void][IO.Directory]::CreateDirectory($DataRoot)
     Set-ProjBunProcessEnvironment -Values @{
-        SWAWKIT_PROJ_PROTOCOL = '1'
+        SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL = '1'
         SWAWKIT_HOME = $ControlHome
         SWAWKIT_PROJ_TARGET_PROJECT_ROOT = $ProjectRoot
         SWAWKIT_PROJ_ACTION_ROOT = $ActionRoot
         SWAWKIT_PROJ_DATA_ROOT = $DataRoot
         SWAWKIT_PROJ_ENTRY_COMMAND = 'swawkit'
-        SWAWKIT_PROJ_ENTRY_FILE = $EntryFile
-        SWAWKIT_PROJ_INVOCATION_DIR = $ProjectRoot
+        SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR = $ProjectRoot
         SWAWKIT_PROJ_BUN_MODE = 'managed'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
         SWAWKIT_PROJ_BUN_SHA256 = ''
@@ -112,10 +108,7 @@ try {
         ) `
         -Message ".dev.setup did not preserve non-blocking trust: $($SetupResult.Output)"
 
-    $PinnedEntryFile = Join-Path $ProjectRoot "$PinnedEntryName.cmd"
-    [IO.File]::WriteAllText($PinnedEntryFile, '@echo off')
     $env:SWAWKIT_PROJ_DATA_ROOT = $PinnedDataRoot
-    $env:SWAWKIT_PROJ_ENTRY_FILE = $PinnedEntryFile
     $env:SWAWKIT_PROJ_BUN_SHA256 = 'e' * 64
     $PinnedStatus = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `

@@ -280,19 +280,19 @@ function Add-ProjDevBunEnvironment {
         -Definition $Definition
     Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_DEV_BUN_MODE' `
+        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_MODE' `
         -Value ([string]$Definition.Mode)
     Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_DEV_BUN_VERSION' `
+        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_VERSION' `
         -Value ([string]$Definition.Version)
     Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_DEV_BUN_SIGNATURE' `
+        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_SIGNATURE' `
         -Value (Get-ProjDevDefinitionSignature -Definition $Definition)
     Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_DEV_BUN_HOME' `
+        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_HOME' `
         -Value $InstallRoot
     Add-ProjDevEnvironmentPath -Plan $Plan -Path $InstallRoot
 }
@@ -308,20 +308,20 @@ function Assert-ProjDevBunEnvironmentCurrent {
         -Definition $Definition
     $ExpectedSignature = Get-ProjDevDefinitionSignature `
         -Definition $Definition
-    if ([string]$env:SWAWKIT_PROJ_DEV_BUN_MODE -cne
+    $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
+    if ([string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_MODE -cne
             [string]$Definition.Mode -or
-        [string]$env:SWAWKIT_PROJ_DEV_BUN_VERSION -cne
+        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_VERSION -cne
             [string]$Definition.Version -or
-        [string]$env:SWAWKIT_PROJ_DEV_BUN_SIGNATURE -cne
+        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_SIGNATURE -cne
             $ExpectedSignature -or
-        [string]::IsNullOrWhiteSpace([string]$env:SWAWKIT_PROJ_DEV_BUN_HOME) -or
+        [string]::IsNullOrWhiteSpace([string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_HOME) -or
         -not (Get-ProjDevCanonicalPath -Path (
-            [string]$env:SWAWKIT_PROJ_DEV_BUN_HOME
+            [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_HOME
         )).Equals(
             (Get-ProjDevCanonicalPath -Path $InstallRoot),
             [StringComparison]::OrdinalIgnoreCase
         )) {
-        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The generated Bun environment does not match the project ' +
             "declaration. Run '$Repair'."
@@ -346,8 +346,8 @@ function Assert-ProjDevBunEnvironmentCurrent {
         [StringComparison]::OrdinalIgnoreCase
     )) {
         throw (
-            'The managed Bun directory is not first in PATH. Exit this shell ' +
-            'and start a new project shell.'
+            'The managed Bun directory is not first in PATH. Run ' +
+            "'$Repair'."
         )
     }
 }

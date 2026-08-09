@@ -16,6 +16,10 @@ function Assert-ProjDevelopmentCommandLayout {
 }
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+Assert-ProjDevelopmentCommandLayout `
+    -Condition (-not [IO.Directory]::Exists((Join-Path $ProjRoot '_global'))) `
+    -Message 'the removed no-op global guard directory still exists'
+
 foreach ($Name in @('bun', 'cargo', 'cl', 'rustc', 'cmd', 'ps')) {
     $LegacyPath = Join-Path $ProjRoot ".$Name"
     $EntryPath = Join-Path $ProjRoot ".dev\$Name\run.ps1"

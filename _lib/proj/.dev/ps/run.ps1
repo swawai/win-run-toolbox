@@ -55,17 +55,17 @@ if ($Mode -ieq '-File') {
     throw ".dev.ps accepts only -File or -Command; received: $Mode"
 }
 
-$ModeName = 'SWAWKIT_PROJ_INTERNAL_PS_EXEC_MODE'
-$TargetName = 'SWAWKIT_PROJ_INTERNAL_PS_EXEC_TARGET'
-$CountName = 'SWAWKIT_PROJ_INTERNAL_PS_EXEC_ARGC'
-$ArgumentPrefix = 'SWAWKIT_PROJ_INTERNAL_PS_EXEC_ARG_'
+$ModeName = 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_PS_MODE'
+$TargetName = 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_PS_TARGET'
+$CountName = 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_PS_ARG_COUNT'
+$ArgumentPrefix = 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_PS_ARG_'
 $ProcessEnvironment = [Environment]::GetEnvironmentVariables(
     [EnvironmentVariableTarget]::Process
 )
 foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
     if ($Name.StartsWith(
         $ArgumentPrefix,
-        [StringComparison]::Ordinal
+        [StringComparison]::OrdinalIgnoreCase
     )) {
         [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
     }

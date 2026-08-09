@@ -2,7 +2,7 @@ Set-StrictMode -Version 2.0
 
 foreach ($File in @(
     'declaration.ps1',
-    'generation.ps1',
+    'revision.ps1',
     'foundation.ps1',
     'command-export.ps1',
     'state.ps1',

@@ -108,12 +108,15 @@ function New-ProjDevContext {
 }
 
 function New-ProjDevContextFromEnvironment {
-    if ([string]$env:SWAWKIT_PROJ_PROTOCOL -cne '1') {
-        throw 'Unsupported or missing SWAWKIT_PROJ_PROTOCOL. Expected protocol version 1.'
+    if ([string]$env:SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL -cne '1') {
+        throw (
+            'Unsupported or missing SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL. ' +
+            'Expected protocol version 1.'
+        )
     }
 
     $InvocationDirectory = [Environment]::GetEnvironmentVariable(
-        'SWAWKIT_PROJ_INVOCATION_DIR',
+        'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
         [EnvironmentVariableTarget]::Process
     )
     $ProjHome = Get-ProjDevFullPath -Path (
@@ -128,70 +131,6 @@ function New-ProjDevContextFromEnvironment {
         -CacheDataRoot (Join-Path $ProjHome 'data\proj_cache') `
         -EntryCommand (Get-ProjDevRequiredEnvironmentValue -Name 'SWAWKIT_PROJ_ENTRY_COMMAND') `
         -InvocationDirectory $InvocationDirectory
-}
-
-function Assert-ProjDevActiveEnvironmentCompatible {
-    param([Parameter(Mandatory = $true)][object]$Context)
-
-    $ActiveProjectRoot = [Environment]::GetEnvironmentVariable(
-        'SWAWKIT_PROJ_DEV_PROJECT_ROOT',
-        [EnvironmentVariableTarget]::Process
-    )
-    $ActiveEnvironmentRoot = [Environment]::GetEnvironmentVariable(
-        'SWAWKIT_PROJ_DEV_ENV_ROOT',
-        [EnvironmentVariableTarget]::Process
-    )
-    if ([string]::IsNullOrWhiteSpace($ActiveProjectRoot) -and
-        [string]::IsNullOrWhiteSpace($ActiveEnvironmentRoot)) {
-        $ProcessEnvironment = [Environment]::GetEnvironmentVariables(
-            [EnvironmentVariableTarget]::Process
-        )
-        $HasOwnedState = @($ProcessEnvironment.Keys | Where-Object {
-            ([string]$_).StartsWith(
-                'SWAWKIT_PROJ_DEV_',
-                [StringComparison]::OrdinalIgnoreCase
-            )
-        }).Count -gt 0
-        if ($HasOwnedState) {
-            throw (
-                'An incomplete Swaw Kit development environment is already ' +
-                'active. Exit that shell before continuing.'
-            )
-        }
-        return $false
-    }
-    if ([string]::IsNullOrWhiteSpace($ActiveProjectRoot) -or
-        [string]::IsNullOrWhiteSpace($ActiveEnvironmentRoot)) {
-        throw (
-            'An incomplete Swaw Kit development environment is already active. ' +
-            'Exit that shell before continuing.'
-        )
-    }
-
-    try {
-        $SameProject = (Get-ProjDevCanonicalPath -Path $ActiveProjectRoot).
-            Equals(
-                $Context.CanonicalProjectRoot,
-                [StringComparison]::OrdinalIgnoreCase
-            )
-        $SameEnvironment = (Get-ProjDevCanonicalPath `
-            -Path $ActiveEnvironmentRoot).Equals(
-                (Get-ProjDevCanonicalPath -Path $Context.EnvironmentRoot),
-                [StringComparison]::OrdinalIgnoreCase
-            )
-    } catch {
-        throw (
-            'The active Swaw Kit development environment has invalid paths. ' +
-            'Exit that shell before continuing.'
-        )
-    }
-    if (-not $SameProject -or -not $SameEnvironment) {
-        throw (
-            "Another project's development environment is already active: " +
-            "$ActiveProjectRoot. Exit that shell before continuing."
-        )
-    }
-    return $true
 }
 
 function Get-ProjDevSha256Text {

@@ -4,10 +4,11 @@
   {{INVOCATION}}
 
 该模块展示框架的去中心化前提协议：
-  1. Core 只发现并依次执行 _global、命令 _guard 和命令入口。
+  1. Core 只发现并依次执行命令 _guard 和命令入口。
   2. _guard 在执行目标前校验声明及已发布环境，但不负责注入环境。
-  3. run.ps1 显式加载环境并读取 SWAWKIT_PROJ_DEV_MSVC_*，自行决定工具来源。
-  4. managed-only 模块还要验证实际工具位于受管 MSVC_HOME 内，
+  3. run.ps1 通过共享依赖函数加载并验证 .dev.setup export，再从返回的
+     依赖对象取得受管根目录，而不把 export 元数据暴露给后续工具。
+  4. managed-only 模块还要验证实际工具位于派生出的受管根目录内，
      不能因系统 PATH 中存在同名工具而静默降级。
 
 允许使用系统工具的模块可以直接解析 PATH；优先受管但允许系统

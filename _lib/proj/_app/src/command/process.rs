@@ -8,25 +8,39 @@ use crate::catalog::{CommandAdapter, is_help_marker};
 
 use super::{CommandError, CommandResult, ProcessEnvironment};
 
-const POWERSHELL_ARGUMENT_PREFIX: &str = "SWAWKIT_PROJ_INTERNAL_PS_ARG_";
-const POWERSHELL_ENTRY_ENV: &str = "SWAWKIT_PROJ_INTERNAL_PS_ENTRY_PATH";
-const POWERSHELL_COUNT_ENV: &str = "SWAWKIT_PROJ_INTERNAL_PS_ARGC";
-const CMD_ENTRY_ENV: &str = "SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH";
+const ADAPTER_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_ADAPTER_";
+const POWERSHELL_ARGUMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_";
+const POWERSHELL_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ENTRY_PATH";
+const POWERSHELL_COUNT_ENV: &str = "SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_COUNT";
+const CMD_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_ADAPTER_CMD_ENTRY_PATH";
 
 const POWERSHELL_RUNNER: &str = r#"
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 try {
-    $entryPath = [Environment]::GetEnvironmentVariable('SWAWKIT_PROJ_INTERNAL_PS_ENTRY_PATH', 'Process')
-    $countText = [Environment]::GetEnvironmentVariable('SWAWKIT_PROJ_INTERNAL_PS_ARGC', 'Process')
+    $entryPathName = 'SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ENTRY_PATH'
+    $countName = 'SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_COUNT'
+    $argumentPrefix = 'SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_'
+    $entryPath = [Environment]::GetEnvironmentVariable($entryPathName, 'Process')
+    $countText = [Environment]::GetEnvironmentVariable($countName, 'Process')
     $count = [int]::Parse($countText, [Globalization.CultureInfo]::InvariantCulture)
     [string[]]$entryArguments = @()
     for ($index = 0; $index -lt $count; $index++) {
         $entryArguments += [Environment]::GetEnvironmentVariable(
-            ('SWAWKIT_PROJ_INTERNAL_PS_ARG_' + $index),
+            ($argumentPrefix + $index),
             'Process'
         )
+    }
+    $processEnvironment = [Environment]::GetEnvironmentVariables(
+        [EnvironmentVariableTarget]::Process
+    )
+    foreach ($name in [string[]]@($processEnvironment.Keys)) {
+        if ($name.Equals($entryPathName, [StringComparison]::OrdinalIgnoreCase) -or
+            $name.Equals($countName, [StringComparison]::OrdinalIgnoreCase) -or
+            $name.StartsWith($argumentPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+        }
     }
     $global:LASTEXITCODE = 0
     & $entryPath @entryArguments
@@ -88,6 +102,7 @@ pub(crate) fn validate_adapter(adapter: CommandAdapter) -> CommandResult<()> {
 
 fn executable_command(entry_path: &Path, arguments: &[OsString]) -> Command {
     let mut command = Command::new(entry_path);
+    remove_inherited_adapter_environment(&mut command);
     command.args(arguments);
     command
 }
@@ -109,6 +124,7 @@ fn powershell_command(entry_path: &Path, arguments: &[OsString]) -> CommandResul
     }
 
     let mut command = Command::new(executable);
+    remove_inherited_adapter_environment(&mut command);
     command.args([
         OsStr::new("-NoLogo"),
         OsStr::new("-NoProfile"),
@@ -147,11 +163,31 @@ fn cmd_command(entry_path: &Path, arguments: &[OsString]) -> CommandResult<Comma
     }
 
     let command_line = match marker {
-        Some(marker) => format!("/d /s /v:off /c \"\"%{CMD_ENTRY_ENV}%\" {marker}\""),
-        None => format!("/d /s /v:off /c \"\"%{CMD_ENTRY_ENV}%\"\""),
+        Some(marker) => {
+            format!("/d /s /v:off /c \"set \"{CMD_ENTRY_ENV}=\" & \"%{CMD_ENTRY_ENV}%\" {marker}\"")
+        }
+        None => format!("/d /s /v:off /c \"set \"{CMD_ENTRY_ENV}=\" & \"%{CMD_ENTRY_ENV}%\"\""),
     };
     let mut command = Command::new(executable);
+    remove_inherited_adapter_environment(&mut command);
     command.raw_arg(command_line);
     command.env(CMD_ENTRY_ENV, entry_path);
     Ok(command)
+}
+
+fn remove_inherited_adapter_environment(command: &mut Command) {
+    for (name, _value) in env::vars_os() {
+        if name
+            .to_str()
+            .is_some_and(|name| has_ascii_prefix(name, ADAPTER_ENVIRONMENT_PREFIX))
+        {
+            command.env_remove(name);
+        }
+    }
+}
+
+fn has_ascii_prefix(value: &str, prefix: &str) -> bool {
+    value
+        .get(..prefix.len())
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
 }

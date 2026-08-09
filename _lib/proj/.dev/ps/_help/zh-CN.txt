@@ -8,7 +8,7 @@
 选择 pwsh.exe。未来的 .dev.pwsh 将作为独立命令提供。
 
 脚本以项目根目录为当前目录，并继承由 Proj Core 验证和激活的
-SWAWKIT_PROJ_*、SWAWKIT_PROJ_DEV_* 与开发工具 PATH。
+项目命令上下文与开发工具 PATH；.dev.setup 的内部 export 元数据不会透传。
 
 相对脚本路径从项目根目录解析。PowerShell 固定使用 -NoProfile、
 -NonInteractive 和进程级 ExecutionPolicy Bypass；不会修改系统策略。

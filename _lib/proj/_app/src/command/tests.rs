@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
     catalog::{CatalogSnapshot, CommandAdapter},
+    launch::{ENTRY_FILE_ENV, LAUNCH_MODE_ENV},
     profile::EntryProfileRecord,
 };
 
@@ -32,7 +33,7 @@ impl Fixture {
             .nth(3)
             .expect("workspace root");
         let root = workspace_root
-            .join("data/proj_cache/tests")
+            .join("data/proj_cache/tests/command %PATH% & fixtures")
             .join(format!("swawkit-command-{}-{sequence}", std::process::id()));
         let kernel_root = root.join("_lib/proj");
         let target_project_root = root.join("project");
@@ -147,16 +148,29 @@ fn process_environment_is_declarative_and_phase_specific() {
     let run = ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run, None)
         .expect("build run environment");
     assert_eq!(
-        run.value("SWAWKIT_PROJ_COMMAND_PHASE"),
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL"),
+        Some(Some(OsStr::new("1")))
+    );
+    assert_eq!(run.value(ENTRY_FILE_ENV), Some(None));
+    assert_eq!(run.value(LAUNCH_MODE_ENV), Some(None));
+    assert_eq!(
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE"),
+        Some(Some(context.entry_file.as_os_str()))
+    );
+    assert_eq!(
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_PHASE"),
         Some(Some(OsStr::new("run")))
     );
-    assert_eq!(run.value("SWAWKIT_PROJ_GUARD_SCOPE"), Some(None));
     assert_eq!(
-        run.value("SWAWKIT_PROJ_COMMAND_ADDRESS"),
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE"),
+        Some(None)
+    );
+    assert_eq!(
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_ADDRESS"),
         Some(Some(OsStr::new(".tool")))
     );
     assert_eq!(
-        run.value("SWAWKIT_PROJ_COMMAND_DATA_ROOT"),
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT"),
         Some(Some(
             fixture
                 .data_root
@@ -187,11 +201,11 @@ fn process_environment_is_declarative_and_phase_specific() {
     )
     .expect("build guard environment");
     assert_eq!(
-        guard.value("SWAWKIT_PROJ_GUARD_SCOPE"),
+        guard.value("SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE"),
         Some(Some(OsStr::new("global")))
     );
     assert_eq!(
-        guard.value("SWAWKIT_PROJ_HELP_TARGET_ADDRESS"),
+        guard.value("SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS"),
         Some(Some(OsStr::new(".target")))
     );
 }
@@ -223,7 +237,7 @@ fn command_data_roots_are_isolated_by_catalog_source() {
             ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run, None)
                 .unwrap();
         assert_eq!(
-            environment.value("SWAWKIT_PROJ_COMMAND_DATA_ROOT"),
+            environment.value("SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT"),
             Some(Some(
                 fixture
                     .data_root
@@ -243,8 +257,9 @@ fn powershell_pipeline_preserves_arguments_environment_order_and_exit_code() {
 $encoded = @($args | ForEach-Object {
     [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$_))
 }) -join ','
-$line = '__LABEL__|' + $env:SWAWKIT_PROJ_COMMAND_PHASE + '|' +
-    $env:SWAWKIT_PROJ_GUARD_SCOPE + '|' + $env:SWAWKIT_PROJ_COMMAND_ADDRESS + '|' + $encoded
+$line = '__LABEL__|' + $env:SWAWKIT_PROJ_CORE_COMMAND_PHASE + '|' +
+    $env:SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE + '|' +
+    $env:SWAWKIT_PROJ_CORE_COMMAND_ADDRESS + '|' + $encoded
 $tracePath = Join-Path $env:SWAWKIT_PROJ_DATA_ROOT 'trace.txt'
 [IO.File]::AppendAllText($tracePath, $line + [Environment]::NewLine)
 __EXIT__
@@ -271,14 +286,14 @@ __EXIT__
     );
     let catalog = fixture.catalog();
     let context = fixture.context();
-    let before = env::var_os("SWAWKIT_PROJ_COMMAND_PHASE");
+    let before = env::var_os("SWAWKIT_PROJ_CORE_COMMAND_PHASE");
 
     let exit_code = CommandExecutor::new(&context, &catalog)
         .execute(&argv(&[".tool", "", "a b", "quote\"x"]))
         .unwrap();
 
     assert_eq!(exit_code, 23);
-    assert_eq!(env::var_os("SWAWKIT_PROJ_COMMAND_PHASE"), before);
+    assert_eq!(env::var_os("SWAWKIT_PROJ_CORE_COMMAND_PHASE"), before);
     let lines = fs::read_to_string(fixture.data_root.join("trace.txt")).unwrap();
     let lines: Vec<&str> = lines.lines().collect();
     assert_eq!(lines[0], "global|guard|global|.tool|");
@@ -312,8 +327,9 @@ fn cmd_adapter_allows_only_one_standalone_help_selector() {
     fs::write(
         directory.join("run.cmd"),
         "@echo off\r\n\
+         if defined SWAWKIT_PROJ_CORE_ADAPTER_CMD_ENTRY_PATH exit /b 91\r\n\
          > \"%SWAWKIT_PROJ_DATA_ROOT%\\cmd.txt\" \
-         echo %~1^|%SWAWKIT_PROJ_COMMAND_ADDRESS%\r\n\
+         echo %~1^|%SWAWKIT_PROJ_CORE_COMMAND_ADDRESS%\r\n\
          exit /b 31\r\n",
     )
     .unwrap();

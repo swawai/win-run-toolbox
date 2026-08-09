@@ -23,16 +23,17 @@ $BunDefinition = Get-ProjDevBunResolvedDefinition `
     -Definition $BunDefinition
 
 Assert-ProjDevWindowsX64 -ToolName 'Bun'
-$AlreadyActive = Assert-ProjDevActiveEnvironmentCompatible -Context $Context
 Assert-ProjDevBunReady `
     -Context $Context `
     -Definition $BunDefinition
-Import-ProjDevGeneratedEnvironment `
-    -Context $Context `
-    -AlreadyActive $AlreadyActive | Out-Null
-Assert-ProjDevBunEnvironmentCurrent `
-    -Context $Context `
-    -Definition $BunDefinition
+try {
+    Import-ProjDevGeneratedEnvironment -Context $Context | Out-Null
+    Assert-ProjDevBunEnvironmentCurrent `
+        -Context $Context `
+        -Definition $BunDefinition
+} finally {
+    Clear-ProjDevSetupExportMetadata
+}
 
 $BunRoot = Get-ProjDevInstallRoot `
     -Context $Context `
@@ -44,11 +45,11 @@ $BunExecutable = Resolve-ProjDevChildPath `
 [string[]]$BunArguments = @($args)
 $BunWorkingDirectory = $Context.InvocationDirectory
 $RuntimeWorkingDirectory = [Environment]::GetEnvironmentVariable(
-    'SWAWKIT_PROJ_INTERNAL_RUNTIME_WORKING_DIR',
+    'SWAWKIT_PROJ_CORE_COMMAND_RUNTIME_WORKING_DIR',
     [EnvironmentVariableTarget]::Process
 )
 [Environment]::SetEnvironmentVariable(
-    'SWAWKIT_PROJ_INTERNAL_RUNTIME_WORKING_DIR',
+    'SWAWKIT_PROJ_CORE_COMMAND_RUNTIME_WORKING_DIR',
     $null,
     [EnvironmentVariableTarget]::Process
 )

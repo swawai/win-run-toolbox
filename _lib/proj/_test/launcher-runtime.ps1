@@ -20,7 +20,8 @@ function Invoke-ProjLauncherRuntimeProcess {
     param(
         [Parameter(Mandatory = $true)][string]$Executable,
         [Parameter(Mandatory = $true)][string]$Arguments,
-        [Parameter(Mandatory = $true)][string]$WorkingDirectory
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Collections.IDictionary]$EnvironmentVariables = @{}
     )
 
     $StartInfo = [Diagnostics.ProcessStartInfo]::new()
@@ -28,9 +29,14 @@ function Invoke-ProjLauncherRuntimeProcess {
     $StartInfo.Arguments = $Arguments
     $StartInfo.WorkingDirectory = $WorkingDirectory
     $StartInfo.UseShellExecute = $false
+    # Windows PowerShell lazily materializes this collection.
+    [void]$StartInfo.EnvironmentVariables
     $StartInfo.CreateNoWindow = $true
     $StartInfo.RedirectStandardOutput = $true
     $StartInfo.RedirectStandardError = $true
+    foreach ($Pair in $EnvironmentVariables.GetEnumerator()) {
+        $StartInfo.EnvironmentVariables[[string]$Pair.Key] = [string]$Pair.Value
+    }
     $Process = [Diagnostics.Process]::new()
     $Process.StartInfo = $StartInfo
     try {
@@ -102,7 +108,15 @@ $PoisonedVariables = @(
     'SWAWKIT_PROJ_ACTION_ROOT',
     'SWAWKIT_PROJ_DATA_ROOT',
     'SWAWKIT_PROJ_ENTRY_COMMAND',
+    'SWAWKIT_PROJ_ENTRY_FILE',
     'SWAWKIT_PROJ_LAUNCH_MODE',
+    'SWAWKIT_PROJ_COMMAND_PROTOCOL',
+    'SWAWKIT_PROJ_COMMAND_DATA_ROOT',
+    'SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE',
+    'SWAWKIT_PROJ_CORE_LAUNCH_MODE',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL',
+    'SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE',
+    'SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT',
     'SWAWKIT_PROJ_TEST_LAUNCHER_CAPTURE'
 )
 $SavedEnvironment = @{}
@@ -112,19 +126,11 @@ foreach ($Name in $PoisonedVariables) {
         [EnvironmentVariableTarget]::Process
     )
 }
-$SavedDevelopmentEnvironment = @{}
-$ProcessEnvironment = [Environment]::GetEnvironmentVariables(
+[Environment]::SetEnvironmentVariable(
+    'SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL',
+    $null,
     [EnvironmentVariableTarget]::Process
 )
-foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
-    if ($Name.StartsWith(
-        'SWAWKIT_PROJ_DEV_',
-        [StringComparison]::OrdinalIgnoreCase
-    )) {
-        $SavedDevelopmentEnvironment[$Name] = [string]$ProcessEnvironment[$Name]
-        [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
-    }
-}
 
 try {
     foreach ($Directory in @(
@@ -144,8 +150,9 @@ try {
 $ErrorActionPreference = 'Stop'
 $HomeRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $RuntimePath = Join-Path $HomeRoot '_lib\proj\_bin\swawkit-proj.exe'
+$CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
 [void][IO.Directory]::CreateDirectory((Split-Path -Path $RuntimePath -Parent))
-[IO.File]::Copy($env:ComSpec, $RuntimePath, $false)
+[IO.File]::Copy($CmdPath, $RuntimePath, $false)
 [IO.File]::WriteAllText(
     (Join-Path $HomeRoot 'bootstrap-ran.txt'),
     'ok',
@@ -252,12 +259,19 @@ $RuntimePath = Join-Path $HomeRoot '_lib\proj\_bin\swawkit-proj.exe'
 $ErrorActionPreference = 'Stop'
 $Payload = [ordered]@{
     arguments = [string[]]@($args)
-    entryFile = [string]$env:SWAWKIT_PROJ_ENTRY_FILE
+    entryFile = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE
+    launchEntryFile = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE
+    legacyEntryFile = [string]$env:SWAWKIT_PROJ_ENTRY_FILE
     entryName = [string]$env:SWAWKIT_PROJ_ENTRY_COMMAND
     targetProjectRoot = [string]$env:SWAWKIT_PROJ_TARGET_PROJECT_ROOT
     dataRoot = [string]$env:SWAWKIT_PROJ_DATA_ROOT
-    invocationDirectory = [string]$env:SWAWKIT_PROJ_INVOCATION_DIR
-    launchMode = [string]$env:SWAWKIT_PROJ_LAUNCH_MODE
+    commandProtocol = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL
+    commandDataRoot = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT
+    legacyCommandProtocol = [string]$env:SWAWKIT_PROJ_COMMAND_PROTOCOL
+    legacyCommandDataRoot = [string]$env:SWAWKIT_PROJ_COMMAND_DATA_ROOT
+    invocationDirectory = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR
+    launchMode = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_MODE
+    legacyLaunchMode = [string]$env:SWAWKIT_PROJ_LAUNCH_MODE
     bunVersion = [string]$env:SWAWKIT_PROJ_BUN_VERSION
 }
 [IO.File]::WriteAllText(
@@ -276,7 +290,14 @@ exit 37
     $env:SWAWKIT_PROJ_ACTION_ROOT = 'C:\foreign-project\.swaw'
     $env:SWAWKIT_PROJ_DATA_ROOT = 'C:\foreign-data'
     $env:SWAWKIT_PROJ_ENTRY_COMMAND = 'foreign-entry'
+    $env:SWAWKIT_PROJ_ENTRY_FILE = 'C:\foreign-entry.exe'
     $env:SWAWKIT_PROJ_LAUNCH_MODE = 'internal-host'
+    $env:SWAWKIT_PROJ_COMMAND_PROTOCOL = 'foreign'
+    $env:SWAWKIT_PROJ_COMMAND_DATA_ROOT = 'C:\foreign-command-data'
+    $env:SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE = 'C:\foreign-core-entry.exe'
+    $env:SWAWKIT_PROJ_CORE_LAUNCH_MODE = 'internal-host'
+    $env:SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE = 'C:\foreign-command-entry.exe'
+    $env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT = 'C:\foreign-core-command-data'
     $env:SWAWKIT_PROJ_TEST_LAUNCHER_CAPTURE = $CapturePath
 
     $Run = Invoke-ProjLauncherRuntimeProcess `
@@ -300,11 +321,18 @@ exit 37
         -Message 'Launcher did not preserve empty, metacharacter, and Unicode argv'
     $Expectations = [ordered]@{
         entryFile = $EntryPath
+        launchEntryFile = ''
+        legacyEntryFile = ''
         entryName = $EntryName
         targetProjectRoot = $TargetRoot
         dataRoot = $DataRoot
+        commandProtocol = '1'
+        commandDataRoot = (Join-Path $DataRoot 'modules\action\probe')
+        legacyCommandProtocol = ''
+        legacyCommandDataRoot = ''
         invocationDirectory = $InvocationRoot
-        launchMode = 'cli'
+        launchMode = ''
+        legacyLaunchMode = ''
         bunVersion = '1.2.15'
     }
     foreach ($Expectation in $Expectations.GetEnumerator()) {
@@ -319,6 +347,30 @@ exit 37
             )
     }
 
+    foreach ($ProtocolValue in @('', 'foreign')) {
+        $RejectedNestedEntry = Invoke-ProjLauncherRuntimeProcess `
+            -Executable $EntryPath `
+            -Arguments '--help' `
+            -WorkingDirectory $InvocationRoot `
+            -EnvironmentVariables @{
+                SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL = $ProtocolValue
+            }
+        Assert-ProjLauncherRuntimeTest `
+            -Condition (
+                $RejectedNestedEntry.ExitCode -eq 1 -and
+                $RejectedNestedEntry.StandardError.Contains(
+                    'inside another Entry command'
+                )
+            ) `
+            -Message (
+                'Launcher did not reject nested Entry startup when the ' +
+                'command protocol variable existed: ' +
+                "value='$ProtocolValue'; " +
+                "exit=$($RejectedNestedEntry.ExitCode); " +
+                "stderr=$($RejectedNestedEntry.StandardError)"
+            )
+    }
+
     $RejectedLayout = Invoke-ProjLauncherRuntimeProcess `
         -Executable $NestedEntry `
         -Arguments '--help' `
@@ -330,24 +382,6 @@ exit 37
         ) `
         -Message 'Launcher accepted a path deeper than the supported layout'
 } finally {
-    $CurrentEnvironment = [Environment]::GetEnvironmentVariables(
-        [EnvironmentVariableTarget]::Process
-    )
-    foreach ($Name in [string[]]@($CurrentEnvironment.Keys)) {
-        if ($Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
-            [StringComparison]::OrdinalIgnoreCase
-        )) {
-            [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
-        }
-    }
-    foreach ($Name in $SavedDevelopmentEnvironment.Keys) {
-        [Environment]::SetEnvironmentVariable(
-            $Name,
-            [string]$SavedDevelopmentEnvironment[$Name],
-            [EnvironmentVariableTarget]::Process
-        )
-    }
     foreach ($Name in $PoisonedVariables) {
         [Environment]::SetEnvironmentVariable(
             $Name,

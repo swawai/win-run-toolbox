@@ -25,8 +25,6 @@ function Resolve-ProjDevRustCommand {
         )
     }
     Assert-ProjDevWindowsX64 -ToolName 'Rust'
-    $AlreadyActive = Assert-ProjDevActiveEnvironmentCompatible `
-        -Context $Context
     [void](Get-ProjRequiredCommandExport `
         -DataRoot ([string]$Context.DataRoot) `
         -ProviderAddress ([string]$Context.EnvironmentProviderAddress) `
@@ -37,15 +35,17 @@ function Resolve-ProjDevRustCommand {
     Assert-ProjDevRustReady `
         -Context $Context `
         -Definition $Definition
-    Import-ProjDevGeneratedEnvironment `
-        -Context $Context `
-        -AlreadyActive $AlreadyActive | Out-Null
-    Assert-ProjDevMsvcEnvironmentCurrent `
-        -Context $Context `
-        -Definition $MsvcDefinition
-    Assert-ProjDevRustEnvironmentCurrent `
-        -Context $Context `
-        -Definition $Definition
+    try {
+        Import-ProjDevGeneratedEnvironment -Context $Context | Out-Null
+        Assert-ProjDevMsvcEnvironmentCurrent `
+            -Context $Context `
+            -Definition $MsvcDefinition
+        Assert-ProjDevRustEnvironmentCurrent `
+            -Context $Context `
+            -Definition $Definition
+    } finally {
+        Clear-ProjDevSetupExportMetadata
+    }
 
     $InstallRoot = Get-ProjDevRustInstallRoot `
         -Context $Context `

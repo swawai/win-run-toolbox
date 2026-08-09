@@ -247,14 +247,14 @@ try {
             -Definition $InstallDefinition)) `
         -Message 'valid fixture installation was needlessly replaced'
 
-    $Plan = New-ProjDevEnvironmentPlan -Context $Context
+    $Plan = New-ProjDevEnvironmentPlan
     Add-ProjDevPwshEnvironment `
         -Context $Context `
         -Definition $InstallDefinition `
         -Plan $Plan
     Assert-ProjPwshTest `
         -Condition (
-            [string]$Plan.Variables['SWAWKIT_PROJ_DEV_PWSH_VERSION'] -ceq
+            [string]$Plan.Variables['SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_PWSH_VERSION'] -ceq
                 '7.6.4' -and
             $Plan.PathPrefixes.Count -eq 1 -and
             [string]$Plan.PathPrefixes[0] -ceq

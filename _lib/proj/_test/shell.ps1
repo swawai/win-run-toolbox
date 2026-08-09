@@ -28,7 +28,7 @@ function Invoke-ProjShellTest {
     )
     foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
         if ($Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
             [StringComparison]::OrdinalIgnoreCase
         )) {
             $OwnedEnvironment[$Name] = [string]$ProcessEnvironment[$Name]
@@ -73,6 +73,12 @@ $TemporaryRoot = Join-Path $TestRoot (
 )
 $UserPathBefore = [Environment]::GetEnvironmentVariable('PATH', 'User')
 $MachinePathBefore = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+$PoisonedAdapterEnvironment = [ordered]@{
+    swawkit_proj_core_adapter_powershell_arg_4095 = 'foreign-core-argument'
+    SwAwKiT_PrOj_CoRe_AdApTeR_CmD_EnTrY_PaTh = 'C:\foreign-run.cmd'
+    SwAwKiT_PrOj_MoDuLe_KeRnEl_DeV_Ps_ArG_4095 = 'foreign-module-argument'
+}
+$SavedAdapterEnvironment = @{}
 if (-not [IO.File]::Exists($SourceEntry)) {
     & (Join-Path $RepoRoot '_lib\proj\build.ps1')
 }
@@ -80,6 +86,18 @@ if (-not [IO.File]::Exists($SourceEntry)) {
 [void][IO.Directory]::CreateDirectory($TemporaryRoot)
 
 try {
+    foreach ($Name in $PoisonedAdapterEnvironment.Keys) {
+        $SavedAdapterEnvironment[$Name] = [Environment]::GetEnvironmentVariable(
+            $Name,
+            [EnvironmentVariableTarget]::Process
+        )
+        [Environment]::SetEnvironmentVariable(
+            $Name,
+            [string]$PoisonedAdapterEnvironment[$Name],
+            [EnvironmentVariableTarget]::Process
+        )
+    }
+
     $SetupOutput = @(
         & $script:ProjShellEntry `
             '..entry.env.project.SWAWKIT_PROJ_TARGET_PROJECT_ROOT' `
@@ -120,8 +138,9 @@ try {
     $CmdCommand = [string]::Join(' & ', @(
         'echo SHELL_KIND=cmd'
         'echo ENTRY_NAME=%SWAWKIT_PROJ_ENTRY_COMMAND%'
-        'echo COMMAND_ADDRESS=%SWAWKIT_PROJ_COMMAND_ADDRESS%'
-        'echo COMMAND_DATA_ROOT=%SWAWKIT_PROJ_COMMAND_DATA_ROOT%'
+        'echo COMMAND_PROTOCOL=%SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL%'
+        'echo COMMAND_ADDRESS=%SWAWKIT_PROJ_CORE_COMMAND_ADDRESS%'
+        'echo COMMAND_DATA_ROOT=%SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT%'
         'echo GIT_ID_NAME=%SWAWKIT_PROJ_GIT_ID_NAME%'
         'echo PROJ_HOME=%SWAWKIT_HOME%'
         'echo DATA_ROOT=%SWAWKIT_PROJ_DATA_ROOT%'
@@ -142,6 +161,7 @@ try {
         'SHELL_KIND=cmd',
         'JOINED_COMMAND=ok',
         "ENTRY_NAME=$EntryName",
+        'COMMAND_PROTOCOL=1',
         'COMMAND_ADDRESS=.dev.cmd',
         "COMMAND_DATA_ROOT=$DataRoot\modules\kernel\.dev\cmd",
         'GIT_ID_NAME=Shell Fixture',
@@ -167,8 +187,9 @@ try {
         'Write-Output "PS_HOME=$PSHOME"'
         'Write-Output "POLICY=$((Get-ExecutionPolicy -Scope Process))"'
         'Write-Output "ENTRY_NAME=$env:SWAWKIT_PROJ_ENTRY_COMMAND"'
-        'Write-Output "COMMAND_ADDRESS=$env:SWAWKIT_PROJ_COMMAND_ADDRESS"'
-        'Write-Output "COMMAND_DATA_ROOT=$env:SWAWKIT_PROJ_COMMAND_DATA_ROOT"'
+        'Write-Output "COMMAND_PROTOCOL=$env:SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL"'
+        'Write-Output "COMMAND_ADDRESS=$env:SWAWKIT_PROJ_CORE_COMMAND_ADDRESS"'
+        'Write-Output "COMMAND_DATA_ROOT=$env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT"'
         'Write-Output "GIT_ID_NAME=$env:SWAWKIT_PROJ_GIT_ID_NAME"'
         'Write-Output "PROJ_HOME=$env:SWAWKIT_HOME"'
         'Write-Output "DATA_ROOT=$env:SWAWKIT_PROJ_DATA_ROOT"'
@@ -193,6 +214,7 @@ try {
         "PS_HOME=$ExpectedPsHome",
         'POLICY=Bypass',
         "ENTRY_NAME=$EntryName",
+        'COMMAND_PROTOCOL=1',
         'COMMAND_ADDRESS=.dev.ps',
         "COMMAND_DATA_ROOT=$DataRoot\modules\kernel\.dev\ps",
         'GIT_ID_NAME=Shell Fixture',
@@ -224,16 +246,27 @@ Write-Output ('PS_MAJOR=' + $PSVersionTable.PSVersion.Major)
 Write-Output ('POLICY=' + (Get-ExecutionPolicy -Scope Process))
 Write-Output ('WORKING_DIR=' + (Get-Location).ProviderPath)
 Write-Output ('RUNTIME_BIN=' + $env:SWAWKIT_PROJ_RUNTIME_BIN)
-$InternalNames = @(
-    [Environment]::GetEnvironmentVariables('Process').Keys |
-        Where-Object {
-            ([string]$_).StartsWith(
-                'SWAWKIT_PROJ_INTERNAL_PS_EXEC_',
-                [StringComparison]::Ordinal
-            )
-        }
+$ProcessEnvironmentNames = [string[]]@(
+    [Environment]::GetEnvironmentVariables('Process').Keys
 )
-Write-Output ('INTERNAL_COUNT=' + $InternalNames.Count)
+$CoreAdapterNames = @(
+    $ProcessEnvironmentNames | Where-Object {
+        $_.StartsWith(
+            'SWAWKIT_PROJ_CORE_ADAPTER_',
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    }
+)
+$ModuleNames = @(
+    $ProcessEnvironmentNames | Where-Object {
+        $_.StartsWith(
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_PS_',
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    }
+)
+Write-Output ('CORE_ADAPTER_INTERNAL_COUNT=' + $CoreAdapterNames.Count)
+Write-Output ('MODULE_INTERNAL_COUNT=' + $ModuleNames.Count)
 Write-Output ('UNDEFINED=' + [string]$ProjUndefinedVariable)
 exit 33
 '@
@@ -264,7 +297,8 @@ exit 33
         'POLICY=Bypass',
         "WORKING_DIR=$RepoRoot",
         "RUNTIME_BIN=$RuntimeBin",
-        'INTERNAL_COUNT=0',
+        'CORE_ADAPTER_INTERNAL_COUNT=0',
+        'MODULE_INTERNAL_COUNT=0',
         'UNDEFINED='
     )) {
         Assert-ProjShellTest `
@@ -274,6 +308,30 @@ exit 33
             ) -ge 0) `
             -Message ".dev.ps -File did not preserve '$Expected': $($PowerShellFile.Text)"
     }
+
+    $NestedCmd = Invoke-ProjShellTest `
+        -Address '.dev.cmd' `
+        -Arguments @("`"$script:ProjShellEntry`"", '--help')
+    Assert-ProjShellTest `
+        -Condition (
+            $NestedCmd.ExitCode -eq 1 -and
+            $NestedCmd.Text.Contains('inside another Entry command')
+        ) `
+        -Message ".dev.cmd allowed a nested Entry: $($NestedCmd.Text)"
+
+    $NestedEntryLiteral = $script:ProjShellEntry.Replace("'", "''")
+    $NestedPowerShell = Invoke-ProjShellTest `
+        -Address '.dev.ps' `
+        -Arguments @(
+            '-Command',
+            "& '$NestedEntryLiteral' --help; exit `$LASTEXITCODE"
+        )
+    Assert-ProjShellTest `
+        -Condition (
+            $NestedPowerShell.ExitCode -eq 1 -and
+            $NestedPowerShell.Text.Contains('inside another Entry command')
+        ) `
+        -Message ".dev.ps allowed a nested Entry: $($NestedPowerShell.Text)"
 
     $InvalidInvocations = @(
         @{ Address = '.dev.cmd'; Arguments = [string[]]@(); Name = 'no command' },
@@ -325,6 +383,13 @@ exit 33
         ) `
         -Message 'project shell commands changed persistent PATH'
 } finally {
+    foreach ($Name in $PoisonedAdapterEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable(
+            $Name,
+            $SavedAdapterEnvironment[$Name],
+            [EnvironmentVariableTarget]::Process
+        )
+    }
     if ([IO.File]::Exists($script:ProjShellEntry)) {
         [IO.File]::Delete($script:ProjShellEntry)
     }

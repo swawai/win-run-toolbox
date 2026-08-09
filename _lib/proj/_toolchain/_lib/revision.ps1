@@ -1,10 +1,10 @@
 Set-StrictMode -Version 2.0
 
-$script:ProjDevelopmentEnvironmentGenerationPlaceholder =
-    '__SWAWKIT_PROJ_DEV_GENERATION_ID__'
+$script:ProjDevelopmentEnvironmentRevisionPlaceholder =
+    '__SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_EXPORT_REVISION__'
 
-function Get-ProjDevelopmentEnvironmentGenerationPlaceholder {
-    return $script:ProjDevelopmentEnvironmentGenerationPlaceholder
+function Get-ProjDevelopmentEnvironmentRevisionPlaceholder {
+    return $script:ProjDevelopmentEnvironmentRevisionPlaceholder
 }
 
 function Assert-ProjDevelopmentEnvironmentControlledRoot {
@@ -36,7 +36,7 @@ function Assert-ProjDevelopmentEnvironmentControlledRoot {
     return $FullPath
 }
 
-function Get-ProjDevelopmentEnvironmentContentGenerationId {
+function Get-ProjDevelopmentEnvironmentContentRevision {
     param(
         [Parameter(Mandatory = $true)][string]$CmdContent,
         [Parameter(Mandatory = $true)][string]$Ps1Content
@@ -55,19 +55,19 @@ function Get-ProjDevelopmentEnvironmentContentGenerationId {
     }
 }
 
-function Restore-ProjDevelopmentEnvironmentGenerationPlaceholder {
+function Restore-ProjDevelopmentEnvironmentRevisionPlaceholder {
     param(
         [Parameter(Mandatory = $true)][string]$Content,
         [Parameter(Mandatory = $true)][Text.RegularExpressions.Match]$Match
     )
 
-    $GenerationGroup = $Match.Groups[1]
-    return $Content.Substring(0, $GenerationGroup.Index) +
-        (Get-ProjDevelopmentEnvironmentGenerationPlaceholder) +
-        $Content.Substring($GenerationGroup.Index + $GenerationGroup.Length)
+    $RevisionGroup = $Match.Groups[1]
+    return $Content.Substring(0, $RevisionGroup.Index) +
+        (Get-ProjDevelopmentEnvironmentRevisionPlaceholder) +
+        $Content.Substring($RevisionGroup.Index + $RevisionGroup.Length)
 }
 
-function Get-ProjPublishedDevelopmentEnvironmentGeneration {
+function Get-ProjPublishedDevelopmentEnvironmentRevision {
     param([Parameter(Mandatory = $true)][object]$Context)
 
     $EnvironmentRoot = Assert-ProjDevPathInsideDataRoot `
@@ -94,41 +94,41 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
 
     $CmdContent = [IO.File]::ReadAllText($CmdPath)
     $Ps1Content = [IO.File]::ReadAllText($Ps1Path)
+    $VariableName =
+        'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_EXPORT_REVISION'
     $CmdMatches = [regex]::Matches(
         $CmdContent,
-        '(?im)^set "SWAWKIT_PROJ_DEV_GENERATION_ID=([a-f0-9]{16})"\s*$'
+        "(?im)^set `"$VariableName=([a-f0-9]{16})`"\s*$"
     )
     $Ps1Matches = [regex]::Matches(
         $Ps1Content,
-        "(?im)^\`$env:SWAWKIT_PROJ_DEV_GENERATION_ID = '([a-f0-9]{16})'\s*$"
+        "(?im)^\`$env:$VariableName = '([a-f0-9]{16})'\s*$"
     )
     if ($CmdMatches.Count -ne 1 -or $Ps1Matches.Count -ne 1) {
         throw (
             'The published development environment files do not contain ' +
-            "one canonical generation ID. Run '$Repair'."
+            "one canonical export revision. Run '$Repair'."
         )
     }
     $CmdMatch = $CmdMatches[0]
     $Ps1Match = $Ps1Matches[0]
-    if (
-        $CmdMatch.Groups[1].Value -cne $Ps1Match.Groups[1].Value) {
+    if ($CmdMatch.Groups[1].Value -cne $Ps1Match.Groups[1].Value) {
         throw (
             'The published development environment files do not match. Run ' +
             "'$Repair'."
         )
     }
-    $GenerationId = $CmdMatch.Groups[1].Value
-    $UnversionedCmd = Restore-ProjDevelopmentEnvironmentGenerationPlaceholder `
+    $Revision = $CmdMatch.Groups[1].Value
+    $UnversionedCmd = Restore-ProjDevelopmentEnvironmentRevisionPlaceholder `
         -Content $CmdContent `
         -Match $CmdMatch
-    $UnversionedPs1 = Restore-ProjDevelopmentEnvironmentGenerationPlaceholder `
+    $UnversionedPs1 = Restore-ProjDevelopmentEnvironmentRevisionPlaceholder `
         -Content $Ps1Content `
         -Match $Ps1Match
-    $ContentGenerationId =
-        Get-ProjDevelopmentEnvironmentContentGenerationId `
-            -CmdContent $UnversionedCmd `
-            -Ps1Content $UnversionedPs1
-    if ($ContentGenerationId -cne $GenerationId) {
+    $ContentRevision = Get-ProjDevelopmentEnvironmentContentRevision `
+        -CmdContent $UnversionedCmd `
+        -Ps1Content $UnversionedPs1
+    if ($ContentRevision -cne $Revision) {
         throw (
             'The published development environment files were modified or ' +
             "damaged. Run '$Repair'."
@@ -140,7 +140,7 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
     } catch {
         throw "$($_.Exception.Message) Run '$Repair'."
     }
-    if ([string]$State.GenerationId -cne $GenerationId) {
+    if ([string]$State.Revision -cne $Revision) {
         throw (
             'The published development environment state does not match ' +
             "env.cmd and env.ps1. Run '$Repair'."
@@ -154,7 +154,7 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
                 [StringComparison]::OrdinalIgnoreCase
             )
         $SameEnvironment = (Get-ProjDevCanonicalPath `
-            -Path ([string]$State.EnvironmentRoot)).Equals(
+            -Path ([string]$State.ExportRoot)).Equals(
                 (Get-ProjDevCanonicalPath -Path $EnvironmentRoot),
                 [StringComparison]::OrdinalIgnoreCase
             )
@@ -171,15 +171,15 @@ function Get-ProjPublishedDevelopmentEnvironmentGeneration {
         )
     }
 
-    return $GenerationId
+    return $Revision
 }
 
-function Get-ProjDevelopmentEnvironmentGeneration {
+function Get-ProjDevelopmentEnvironmentRevision {
     param([Parameter(Mandatory = $true)][object]$Context)
 
-    $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
+    $Revision = Get-ProjPublishedDevelopmentEnvironmentRevision `
         -Context $Context
-    if ($null -eq $GenerationId) {
+    if ($null -eq $Revision) {
         return $null
     }
     $State = Read-ProjDevelopmentEnvironmentState `
@@ -203,5 +203,5 @@ function Get-ProjDevelopmentEnvironmentGeneration {
         [void]$Lines.Add("Run '$Repair'.")
         throw [string]::Join([Environment]::NewLine, $Lines)
     }
-    return $GenerationId
+    return $Revision
 }

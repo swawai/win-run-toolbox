@@ -16,7 +16,6 @@ use swawkit_proj::{
     context::EntryContext,
     data_root::{DataRootClaimApprover, ResolveDataRootRequest, resolve_data_root},
     help::{HelpRenderError, render_help},
-    launch::{ENTRY_FILE_ENV, LAUNCH_MODE_ENV, LaunchMode},
     profile::{EntryProfileState, EntryProfileStore},
 };
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
@@ -138,13 +137,7 @@ fn run_with_host_launcher(
 }
 
 fn launch_entry_host(context: &EntryContext) -> Result<i32, CliError> {
-    let executable = env::current_exe().map_err(|error| {
-        CliError::new(format!(
-            "cannot locate the shared Proj executable for the Entry Host: {error}"
-        ))
-    })?;
-    let inherited_names = env::vars_os().map(|(name, _value)| name);
-    let mut command = host_process_command(context, &executable, inherited_names);
+    let mut command = host_process_command(context);
     command.spawn().map_err(|error| {
         CliError::new(format!(
             "cannot start the Entry Host for '{}': {error}",
@@ -154,60 +147,15 @@ fn launch_entry_host(context: &EntryContext) -> Result<i32, CliError> {
     Ok(0)
 }
 
-fn host_process_command(
-    context: &EntryContext,
-    executable: &std::path::Path,
-    inherited_names: impl IntoIterator<Item = OsString>,
-) -> Command {
-    const CONTEXT_ENVIRONMENT: [&str; 15] = [
-        "SWAWKIT_HOME",
-        "SWAWKIT_PROJ_PROTOCOL",
-        "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
-        "SWAWKIT_PROJ_ACTION_ROOT",
-        "SWAWKIT_PROJ_DATA_ROOT",
-        "SWAWKIT_PROJ_ENTRY_COMMAND",
-        "SWAWKIT_PROJ_COMMAND_PROTOCOL",
-        "SWAWKIT_PROJ_COMMAND_PHASE",
-        "SWAWKIT_PROJ_COMMAND_ADDRESS",
-        "SWAWKIT_PROJ_COMMAND_DIR",
-        "SWAWKIT_PROJ_COMMAND_DATA_ROOT",
-        "SWAWKIT_PROJ_GUARD_SCOPE",
-        "SWAWKIT_PROJ_HELP_TARGET_ADDRESS",
-        "SWAWKIT_PROJ_INVOCATION_DIR",
-        "SWAWKIT_PROJ_INTERNAL_RUNTIME_WORKING_DIR",
-    ];
-    const INTERNAL_PREFIXES: [&str; 2] =
-        ["SWAWKIT_PROJ_INTERNAL_PS_", "SWAWKIT_PROJ_INTERNAL_CMD_"];
-
-    let mut command = Command::new(executable);
+fn host_process_command(context: &EntryContext) -> Command {
+    let mut command = Command::new(&context.entry_file);
     command
         .current_dir(&context.invocation_directory)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW);
-    for name in CONTEXT_ENVIRONMENT {
-        command.env_remove(name);
-    }
-    for name in inherited_names {
-        if name.to_str().is_some_and(|name| {
-            INTERNAL_PREFIXES
-                .iter()
-                .any(|prefix| has_ascii_prefix(name, prefix))
-        }) {
-            command.env_remove(name);
-        }
-    }
     command
-        .env(ENTRY_FILE_ENV, &context.entry_file)
-        .env(LAUNCH_MODE_ENV, LaunchMode::InternalHost.as_env_value());
-    command
-}
-
-fn has_ascii_prefix(value: &str, prefix: &str) -> bool {
-    value
-        .get(..prefix.len())
-        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
 }
 
 fn protocol_help(

@@ -274,7 +274,7 @@ try {
             -Definition $Definition)) `
         -Message 'healthy moving-channel setup did not remain pinned'
 
-    $Plan = New-ProjDevEnvironmentPlan -Context $Context
+    $Plan = New-ProjDevEnvironmentPlan
     Add-ProjDevRustEnvironment `
         -Context $Context `
         -Definition $Definition `
@@ -315,7 +315,7 @@ try {
     $env:SWAWKIT_PROJ_BUN_MODE = 'disabled'
     [void](Publish-ProjDevEnvironmentState `
         -Context $Context `
-        -GenerationId ([string]$Scripts.GenerationId))
+        -Revision ([string]$Scripts.Revision))
     $env:SWAWKIT_PROJ_BUN_MODE = 'managed'
     $env:SWAWKIT_PROJ_BUN_VERSION = '9.9.9'
     [void](Import-ProjDevGeneratedEnvironment -Context $Context)

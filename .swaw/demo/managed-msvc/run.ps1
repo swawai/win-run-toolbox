@@ -10,20 +10,12 @@ $KernelRoot = [IO.Path]::GetFullPath(
     (Join-Path ([string]$env:SWAWKIT_HOME) '_lib\proj')
 )
 . (Join-Path $KernelRoot '_toolchain\_modules\msvc\runtime.ps1')
-[void](Import-ProjDevMsvcCommandEnvironment)
+$Requirement = Import-ProjDevMsvcCommandEnvironment
 
 # Command-owned precondition policy:
 # This module requires project-managed MSVC. A different module may
 # intentionally accept an ambient tool instead; Core does not decide for it.
-if ([string]$env:SWAWKIT_PROJ_DEV_ENV_SCHEMA -cne
-        'swawkit.proj-dev.environment.v0' -or
-    [string]$env:SWAWKIT_PROJ_DEV_MSVC_MODE -cne 'managed' -or
-    [string]::IsNullOrWhiteSpace(
-        [string]$env:SWAWKIT_PROJ_DEV_MSVC_HOME
-    ) -or
-    [string]::IsNullOrWhiteSpace(
-        [string]$env:SWAWKIT_PROJ_DEV_MSVC_SIGNATURE
-    )) {
+if ([string]$Requirement.Definition.Mode -cne 'managed') {
     throw (
         'demo.managed-msvc requires the project-managed MSVC environment. ' +
         "Enable it and run " +
@@ -31,9 +23,11 @@ if ([string]$env:SWAWKIT_PROJ_DEV_ENV_SCHEMA -cne
     )
 }
 
-$ManagedRoot = [IO.Path]::GetFullPath(
-    [string]$env:SWAWKIT_PROJ_DEV_MSVC_HOME
-).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+$ManagedRoot = Get-ProjDevMsvcInstallRoot `
+    -Context $Requirement.Context `
+    -Definition $Requirement.Definition
+$ManagedRoot = [IO.Path]::GetFullPath($ManagedRoot).TrimEnd('\', '/') +
+    [IO.Path]::DirectorySeparatorChar
 $ResolvedTools = foreach ($Name in @('cl.exe', 'link.exe')) {
     $Command = Get-Command $Name `
         -CommandType Application `

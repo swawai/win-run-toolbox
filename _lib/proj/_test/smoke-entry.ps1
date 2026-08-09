@@ -51,9 +51,9 @@ $PoisonedEnvironment = [ordered]@{
     SWAWKIT_PROJ_ENTRY_COMMAND = 'foreign-entry'
     SWAWKIT_PROJ_ENTRY_FILE = 'C:\foreign-entry.cmd'
     SWAWKIT_PROJ_LAUNCH_MODE = 'internal-host'
-    SWAWKIT_PROJ_INTERNAL_PS_ARGC = '99'
-    SWAWKIT_PROJ_INTERNAL_PS_ARG_47 = 'foreign-argument'
-    SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH = 'C:\foreign-run.cmd'
+    SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_COUNT = '99'
+    SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_47 = 'foreign-argument'
+    SWAWKIT_PROJ_CORE_ADAPTER_CMD_ENTRY_PATH = 'C:\foreign-run.cmd'
 }
 $SavedEnvironment = @{}
 
@@ -122,6 +122,23 @@ try {
             $DotHelp.Text.Contains('Control Plane:')
         ) `
         -Message ".help leaked into its fail-closed adapter: $($DotHelp.Text)"
+
+    $InvocationDirectory = (Get-Location).ProviderPath
+    $Info = Invoke-ProjEntrySmoke `
+        -EntryPath $EntryPath `
+        -Arguments @('.info')
+    Assert-ProjEntrySmoke `
+        -Condition (
+            $Info.ExitCode -eq 0 -and
+            $Info.Text.Contains(".info") -and
+            $Info.Text.Contains((Join-Path $RepoRoot '_lib\proj\.info')) -and
+            $Info.Text.Contains($EntryName) -and
+            $Info.Text.Contains($EntryPath) -and
+            $Info.Text.Contains($RepoRoot) -and
+            $Info.Text.Contains($DataRoot) -and
+            $Info.Text.Contains($InvocationDirectory)
+        ) `
+        -Message ".info did not expose the Core command context: $($Info.Text)"
 
     $LegacyWeb = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `

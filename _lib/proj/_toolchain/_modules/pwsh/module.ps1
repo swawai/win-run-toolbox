@@ -283,19 +283,19 @@ function Add-ProjDevPwshEnvironment {
         -Definition $Definition
     Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_DEV_PWSH_MODE' `
+        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_PWSH_MODE' `
         -Value ([string]$Definition.Mode)
     Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_DEV_PWSH_VERSION' `
+        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_PWSH_VERSION' `
         -Value ([string]$Definition.Version)
     Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_DEV_PWSH_SIGNATURE' `
+        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_PWSH_SIGNATURE' `
         -Value (Get-ProjDevDefinitionSignature -Definition $Definition)
     Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_DEV_PWSH_HOME' `
+        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_PWSH_HOME' `
         -Value $InstallRoot
     Add-ProjDevEnvironmentPath -Plan $Plan -Path $InstallRoot
 }

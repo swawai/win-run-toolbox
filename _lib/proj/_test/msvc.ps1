@@ -116,12 +116,12 @@ $PreviousChannel = [Environment]::GetEnvironmentVariable(
     'Process'
 )
 $RuntimeEnvironmentNames = @(
-    'SWAWKIT_PROJ_PROTOCOL',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL',
     'SWAWKIT_HOME',
     'SWAWKIT_PROJ_TARGET_PROJECT_ROOT',
     'SWAWKIT_PROJ_DATA_ROOT',
     'SWAWKIT_PROJ_ENTRY_COMMAND',
-    'SWAWKIT_PROJ_INVOCATION_DIR',
+    'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256'
@@ -136,7 +136,7 @@ $PreviousDevelopmentEnvironment = @{}
 $ProcessEnvironment = [Environment]::GetEnvironmentVariables('Process')
 foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
     if ($Name.StartsWith(
-        'SWAWKIT_PROJ_DEV_',
+        'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
         [StringComparison]::OrdinalIgnoreCase
     )) {
         $PreviousDevelopmentEnvironment[$Name] =
@@ -371,7 +371,7 @@ try {
             -Definition $Definition) `
         -Message 'published MSVC fixture was not trusted'
 
-    $Plan = New-ProjDevEnvironmentPlan -Context $Context
+    $Plan = New-ProjDevEnvironmentPlan
     Add-ProjDevMsvcEnvironment `
         -Context $Context `
         -Definition $Definition `
@@ -381,7 +381,7 @@ try {
         -Condition (
             $Scripts.Cmd -like '*VCToolsVersion=14.44.35228*' -and
             $Scripts.Cmd -like '*WindowsSDKVersion=10.0.26100.0\*' -and
-            $Scripts.Ps1 -like '*SWAWKIT_PROJ_DEV_MSVC_HOME*' -and
+            $Scripts.Ps1 -like '*SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_MSVC_HOME*' -and
             $Plan.PathPrefixes.Count -eq 3
         ) `
         -Message 'generated MSVC environment lost the baseline contract'
@@ -394,20 +394,20 @@ try {
         -Scripts $Scripts)
     [void](Publish-ProjDevEnvironmentState `
         -Context $Context `
-        -GenerationId ([string]$Scripts.GenerationId))
-    $env:SWAWKIT_PROJ_PROTOCOL = '1'
+        -Revision ([string]$Scripts.Revision))
+    $env:SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL = '1'
     $env:SWAWKIT_HOME = [IO.Path]::GetFullPath(
         (Join-Path $ProjRoot '..\..')
     )
     $env:SWAWKIT_PROJ_TARGET_PROJECT_ROOT = $ProjectRoot
     $env:SWAWKIT_PROJ_DATA_ROOT = $DataRoot
     $env:SWAWKIT_PROJ_ENTRY_COMMAND = 'fixture'
-    $env:SWAWKIT_PROJ_INVOCATION_DIR = $ProjectRoot
+    $env:SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR = $ProjectRoot
     foreach ($Name in [string[]]@(
         [Environment]::GetEnvironmentVariables('Process').Keys
     )) {
         if ($Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
             [StringComparison]::OrdinalIgnoreCase
         )) {
             [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
@@ -419,9 +419,13 @@ try {
     Assert-ProjMsvcTest `
         -Condition (
             [string]$RuntimeRequirement.Definition.Channel -ceq '17' -and
-            [string]$env:SWAWKIT_PROJ_DEV_MSVC_HOME -ceq $TargetRoot
+            [string]::IsNullOrWhiteSpace(
+                [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_MSVC_HOME
+            )
         ) `
-        -Message 'an unrelated Bun declaration change blocked managed MSVC'
+        -Message (
+            'an unrelated declaration blocked MSVC or export metadata leaked'
+        )
 
     [IO.File]::AppendAllText(
         (Join-Path $TargetRoot (
@@ -441,7 +445,7 @@ try {
     $CurrentEnvironment = [Environment]::GetEnvironmentVariables('Process')
     foreach ($Name in [string[]]@($CurrentEnvironment.Keys)) {
         if ($Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
             [StringComparison]::OrdinalIgnoreCase
         )) {
             [Environment]::SetEnvironmentVariable($Name, $null, 'Process')

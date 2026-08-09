@@ -11,9 +11,9 @@ if (@($args).Count -gt 0) {
 $Context = New-ProjDevContextFromEnvironment
 $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
 try {
-    $GenerationId = Get-ProjDevelopmentEnvironmentGeneration `
+    $Revision = Get-ProjDevelopmentEnvironmentRevision `
         -Context $Context
-    if ($null -eq $GenerationId) {
+    if ($null -eq $Revision) {
         $Enabled = @(
             Get-ProjEnabledDevelopmentDeclarationNames `
                 -Declarations (Get-ProjDevelopmentDeclarationSnapshot)

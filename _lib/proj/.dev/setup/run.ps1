@@ -25,10 +25,6 @@ if ($null -ne $BunDefinition -or
     $null -ne $RustDefinition) {
     Assert-ProjDevWindowsX64 -ToolName 'Managed development tools'
 }
-$ActiveGenerationId = [string]$env:SWAWKIT_PROJ_DEV_GENERATION_ID
-$ActiveEnvironment = Assert-ProjDevActiveEnvironmentCompatible `
-    -Context $Context
-
 $Declarations = Get-ProjDevelopmentDeclarationSnapshot
 $PendingModules = @(
     Get-ProjPendingDevelopmentSetupModuleNames -Declarations $Declarations
@@ -54,7 +50,7 @@ try {
             -Context $Context `
             -Definition $PwshDefinition
     }
-    $Plan = New-ProjDevEnvironmentPlan -Context $Context
+    $Plan = New-ProjDevEnvironmentPlan
     $BunChanged = $false
     $PwshChanged = $false
     $MsvcChanged = $false
@@ -112,7 +108,7 @@ try {
         -Scripts $Scripts
     $StateChanged = Publish-ProjDevEnvironmentState `
         -Context $Context `
-        -GenerationId ([string]$Scripts.GenerationId)
+        -Revision ([string]$Scripts.Revision)
     $EnvironmentChanged = $EnvironmentChanged -or $StateChanged
 
     $BunVersionLabel = if ($null -ne $BunDefinition -and
@@ -184,13 +180,6 @@ try {
     if ($EnvironmentChanged) {
         Write-Host "[ENV] $($Context.EnvCmdPath)" -ForegroundColor DarkGray
         Write-Host "[ENV] $($Context.EnvPs1Path)" -ForegroundColor DarkGray
-    }
-    if ($ActiveEnvironment -and
-        $ActiveGenerationId -cne [string]$Scripts.GenerationId) {
-        Write-Warning (
-            'The parent shell still has an older environment generation. ' +
-            'Start a new project shell to use the published environment.'
-        )
     }
 } finally {
     $SetupLock.Dispose()

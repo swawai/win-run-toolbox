@@ -141,7 +141,7 @@ try {
     [IO.File]::WriteAllText($IncompletePath, '@rem incomplete')
     $IncompleteMessage = ''
     try {
-        [void](Get-ProjDevelopmentEnvironmentGeneration -Context $Context)
+        [void](Get-ProjDevelopmentEnvironmentRevision -Context $Context)
     } catch {
         $IncompleteMessage = $_.Exception.Message
     }
@@ -153,20 +153,48 @@ try {
         -Message 'an incomplete export was treated as ready'
     [IO.File]::Delete($IncompletePath)
 
-    $Plan = New-ProjDevEnvironmentPlan -Context $Context
+    $Plan = New-ProjDevEnvironmentPlan
     $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
     [void](Publish-ProjDevEnvironmentScripts `
         -Context $Context `
         -Scripts $Scripts)
     [void](Publish-ProjDevEnvironmentState `
         -Context $Context `
-        -GenerationId ([string]$Scripts.GenerationId))
+        -Revision ([string]$Scripts.Revision))
     Assert-ProjCommandExportTest `
         -Condition (
-            (Get-ProjDevelopmentEnvironmentGeneration -Context $Context) -ceq
-            [string]$Scripts.GenerationId
+            (Get-ProjDevelopmentEnvironmentRevision -Context $Context) -ceq
+            [string]$Scripts.Revision
         ) `
         -Message 'a complete export was not recognized'
+    $PublishedStateJson = [IO.File]::ReadAllText(
+        $Context.EnvironmentStatePath,
+        [Text.Encoding]::UTF8
+    ) | ConvertFrom-Json
+    $PublishedStateNames = @(
+        $PublishedStateJson.PSObject.Properties.Name
+    )
+    Assert-ProjCommandExportTest `
+        -Condition (
+            $PublishedStateNames -contains 'revision' -and
+            $PublishedStateNames -contains 'exportRoot' -and
+            $PublishedStateNames -notcontains 'generationId' -and
+            $PublishedStateNames -notcontains 'environmentRoot'
+        ) `
+        -Message 'the v2 export state did not use canonical field names'
+    [void](Import-ProjDevOptionalGeneratedEnvironment -Context $Context)
+    $LeakedExportMetadata = @(
+        [Environment]::GetEnvironmentVariables('Process').Keys |
+            Where-Object {
+                ([string]$_).StartsWith(
+                    'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
+                    [StringComparison]::OrdinalIgnoreCase
+                )
+            }
+    )
+    Assert-ProjCommandExportTest `
+        -Condition ($LeakedExportMetadata.Count -eq 0) `
+        -Message 'optional activation leaked .dev.setup export metadata'
 
     $SentinelPath = Join-Path $ExpectedExport 'tool-sentinel.bin'
     [IO.File]::WriteAllBytes($SentinelPath, [byte[]](1, 2, 3, 4))
@@ -175,7 +203,7 @@ try {
         $StatePath,
         [Text.Encoding]::UTF8
     ) | ConvertFrom-Json
-    $LegacyState.schema = 'swawkit.proj-dev.environment-state.v0'
+    $LegacyState.schema = 'swawkit.proj-dev.environment-state.v1'
     [IO.File]::WriteAllText(
         $StatePath,
         ($LegacyState | ConvertTo-Json -Depth 10),
@@ -183,7 +211,7 @@ try {
     )
     $LegacyMessage = ''
     try {
-        [void](Get-ProjDevelopmentEnvironmentGeneration -Context $Context)
+        [void](Get-ProjDevelopmentEnvironmentRevision -Context $Context)
     } catch {
         $LegacyMessage = $_.Exception.Message
     }
@@ -193,17 +221,17 @@ try {
             $LegacyMessage -like "*'fixture .dev.setup'*" -and
             [IO.File]::ReadAllBytes($SentinelPath).Length -eq 4
         ) `
-        -Message 'a v0 state did not fail closed without deleting module data'
+        -Message 'a v1 state did not fail closed without deleting module data'
     [void](Publish-ProjDevEnvironmentState `
         -Context $Context `
-        -GenerationId ([string]$Scripts.GenerationId))
+        -Revision ([string]$Scripts.Revision))
     Assert-ProjCommandExportTest `
         -Condition (
-            (Get-ProjDevelopmentEnvironmentGeneration -Context $Context) -ceq
-            [string]$Scripts.GenerationId -and
+            (Get-ProjDevelopmentEnvironmentRevision -Context $Context) -ceq
+            [string]$Scripts.Revision -and
             [IO.File]::ReadAllBytes($SentinelPath).Length -eq 4
         ) `
-        -Message 'v1 republishing did not safely upgrade the export state'
+        -Message 'v2 republishing did not safely upgrade the export state'
 
     $MovedDataRoot = Join-Path $TemporaryRoot 'moved-data'
     [IO.Directory]::Move($DataRoot, $MovedDataRoot)
@@ -214,7 +242,7 @@ try {
         -EntryCommand 'fixture'
     $MovedMessage = ''
     try {
-        [void](Get-ProjDevelopmentEnvironmentGeneration `
+        [void](Get-ProjDevelopmentEnvironmentRevision `
             -Context $MovedContext)
     } catch {
         $MovedMessage = $_.Exception.Message
@@ -233,18 +261,18 @@ try {
         ) `
         -Message 'stale detection modified opaque module data'
 
-    $MovedPlan = New-ProjDevEnvironmentPlan -Context $MovedContext
+    $MovedPlan = New-ProjDevEnvironmentPlan
     $MovedScripts = ConvertTo-ProjDevEnvironmentScripts -Plan $MovedPlan
     [void](Publish-ProjDevEnvironmentScripts `
         -Context $MovedContext `
         -Scripts $MovedScripts)
     [void](Publish-ProjDevEnvironmentState `
         -Context $MovedContext `
-        -GenerationId ([string]$MovedScripts.GenerationId))
+        -Revision ([string]$MovedScripts.Revision))
     Assert-ProjCommandExportTest `
         -Condition (
-            (Get-ProjDevelopmentEnvironmentGeneration `
-                -Context $MovedContext) -ceq [string]$MovedScripts.GenerationId
+            (Get-ProjDevelopmentEnvironmentRevision `
+                -Context $MovedContext) -ceq [string]$MovedScripts.Revision
         ) `
         -Message 'republishing did not recover a moved export'
 
@@ -257,7 +285,7 @@ try {
         -EntryCommand 'fixture'
     $OtherProjectMessage = ''
     try {
-        [void](Get-ProjDevelopmentEnvironmentGeneration `
+        [void](Get-ProjDevelopmentEnvironmentRevision `
             -Context $OtherProjectContext)
     } catch {
         $OtherProjectMessage = $_.Exception.Message

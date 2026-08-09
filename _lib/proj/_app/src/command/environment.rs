@@ -6,15 +6,18 @@ use std::process::Command;
 use crate::{
     catalog::CommandSource,
     context::EntryContext,
+    launch::{ENTRY_FILE_ENV, LAUNCH_MODE_ENV},
     profile::{EntryProfile, EntryProfileRecord},
 };
 
 use super::{CommandError, CommandResult, GuardScope, ResolvedCommand};
 
-const OPTIONAL_ENVIRONMENT: [&str; 3] = [
-    "SWAWKIT_PROJ_GUARD_SCOPE",
-    "SWAWKIT_PROJ_INTERNAL_RUNTIME_WORKING_DIR",
-    "SWAWKIT_PROJ_HELP_TARGET_ADDRESS",
+const TRANSIENT_ENVIRONMENT: [&str; 5] = [
+    ENTRY_FILE_ENV,
+    LAUNCH_MODE_ENV,
+    "SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE",
+    "SWAWKIT_PROJ_CORE_COMMAND_RUNTIME_WORKING_DIR",
+    "SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,31 +73,36 @@ impl ProcessEnvironment {
         help_target_address: Option<&str>,
     ) -> CommandResult<Self> {
         let mut environment = Self::default();
-        for name in OPTIONAL_ENVIRONMENT {
+        for name in TRANSIENT_ENVIRONMENT {
             environment.remove(name);
         }
-        environment.set("SWAWKIT_PROJ_COMMAND_PROTOCOL", "1");
+        environment.set("SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL", "1");
         environment.set(
-            "SWAWKIT_PROJ_COMMAND_PHASE",
+            "SWAWKIT_PROJ_CORE_COMMAND_PHASE",
             match phase {
                 ExecutionPhase::Run => "run",
                 ExecutionPhase::Guard(_) => "guard",
             },
         );
-        environment.set("SWAWKIT_PROJ_COMMAND_ADDRESS", &protocol_command.address);
-        environment.set("SWAWKIT_PROJ_COMMAND_DIR", &protocol_command.directory);
         environment.set(
-            "SWAWKIT_PROJ_COMMAND_DATA_ROOT",
+            "SWAWKIT_PROJ_CORE_COMMAND_ADDRESS",
+            &protocol_command.address,
+        );
+        environment.set("SWAWKIT_PROJ_CORE_COMMAND_DIR", &protocol_command.directory);
+        environment.set(
+            "SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT",
             command_data_root(context, protocol_command)?,
         );
         if let ExecutionPhase::Guard(scope) = phase {
-            environment.set("SWAWKIT_PROJ_GUARD_SCOPE", scope.as_str());
+            environment.set("SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE", scope.as_str());
         }
         if let Some(target) = help_target_address {
-            environment.set("SWAWKIT_PROJ_HELP_TARGET_ADDRESS", target);
+            environment.set("SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS", target);
         }
-        environment.set("SWAWKIT_PROJ_INVOCATION_DIR", &context.invocation_directory);
-        environment.set("SWAWKIT_PROJ_PROTOCOL", "1");
+        environment.set(
+            "SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR",
+            &context.invocation_directory,
+        );
         environment.set("SWAWKIT_HOME", &context.swawkit_home);
         environment.set(
             "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
@@ -103,7 +111,7 @@ impl ProcessEnvironment {
         environment.set("SWAWKIT_PROJ_ACTION_ROOT", &context.action_root);
         environment.set("SWAWKIT_PROJ_DATA_ROOT", &context.data_root);
         environment.set("SWAWKIT_PROJ_ENTRY_COMMAND", &context.entry_name);
-        environment.set("SWAWKIT_PROJ_ENTRY_FILE", &context.entry_file);
+        environment.set("SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE", &context.entry_file);
         environment.apply_profile(&context.profile);
         Ok(environment)
     }

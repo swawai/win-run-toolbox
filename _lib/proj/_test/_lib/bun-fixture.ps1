@@ -20,7 +20,7 @@ function Enter-ProjBunIsolatedEnvironment {
             'SWAWKIT_PROJ_',
             [StringComparison]::OrdinalIgnoreCase
         ) -and -not $Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
             [StringComparison]::OrdinalIgnoreCase
         )) {
             [void]$OwnedProjectNames.Add($Name)
@@ -39,7 +39,7 @@ function Enter-ProjBunIsolatedEnvironment {
     $DevelopmentValues = @{}
     foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
         if ($Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
             [StringComparison]::OrdinalIgnoreCase
         )) {
             $DevelopmentValues[$Name] = [string]$ProcessEnvironment[$Name]
@@ -60,7 +60,7 @@ function Exit-ProjBunIsolatedEnvironment {
     )
     foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
         if ($Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
             [StringComparison]::OrdinalIgnoreCase
         )) {
             [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
@@ -119,6 +119,7 @@ function New-ProjBunFixtureExecutable {
     $ClassName = "ProjBunFixture$([Guid]::NewGuid().ToString('N'))"
     $Source = @"
 using System;
+using System.Collections;
 using System.IO;
 
 public static class $ClassName
@@ -131,14 +132,28 @@ public static class $ClassName
             return 0;
         }
 
+        if (args.Length == 1 && args[0] == "assert-no-export-metadata")
+        {
+            foreach (DictionaryEntry item in Environment.GetEnvironmentVariables())
+            {
+                if (((string)item.Key).StartsWith(
+                    "SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    return 91;
+                }
+            }
+            return 0;
+        }
+
         string capture = Environment.GetEnvironmentVariable("SWAWKIT_PROJ_TEST_BUN_CAPTURE");
         if (!String.IsNullOrEmpty(capture))
         {
             string[] lines = new string[args.Length + 4];
             lines[0] = Environment.CurrentDirectory;
-            lines[1] = Environment.GetEnvironmentVariable("SWAWKIT_PROJ_INVOCATION_DIR");
-            lines[2] = Environment.GetEnvironmentVariable("SWAWKIT_PROJ_COMMAND_ADDRESS");
-            lines[3] = Environment.GetEnvironmentVariable("SWAWKIT_PROJ_COMMAND_DIR");
+            lines[1] = Environment.GetEnvironmentVariable("SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR");
+            lines[2] = Environment.GetEnvironmentVariable("SWAWKIT_PROJ_CORE_COMMAND_ADDRESS");
+            lines[3] = Environment.GetEnvironmentVariable("SWAWKIT_PROJ_CORE_COMMAND_DIR");
             Array.Copy(args, 0, lines, 4, args.Length);
             File.WriteAllLines(capture, lines);
         }

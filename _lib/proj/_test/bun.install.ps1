@@ -9,14 +9,13 @@ $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot '_lib\bun-fixture.ps1')
 
 $EnvironmentNames = @(
-    'SWAWKIT_PROJ_PROTOCOL',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL',
     'SWAWKIT_HOME',
     'SWAWKIT_PROJ_TARGET_PROJECT_ROOT',
     'SWAWKIT_PROJ_ACTION_ROOT',
     'SWAWKIT_PROJ_DATA_ROOT',
     'SWAWKIT_PROJ_ENTRY_COMMAND',
-    'SWAWKIT_PROJ_ENTRY_FILE',
-    'SWAWKIT_PROJ_INVOCATION_DIR',
+    'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256',
@@ -41,7 +40,6 @@ $TemporaryRoot = Join-Path $TestTemporaryBase (
     "swawkit-proj-bun-$([Guid]::NewGuid().ToString('N'))"
 )
 $ControlHome = [IO.Path]::GetFullPath((Join-Path $ProjRoot '..\..'))
-$SetupEntryName = "test-bun-setup-$([Guid]::NewGuid().ToString('N'))"
 $SystemPowerShell = Join-Path $env:SystemRoot (
     'System32\WindowsPowerShell\v1.0\powershell.exe'
 )
@@ -98,7 +96,7 @@ try {
         ) -ceq $ExpectedBunx) `
         -Message 'bunx.cmd shim is not byte-compatible with the baseline'
 
-    $Plan = New-ProjDevEnvironmentPlan -Context $Context
+    $Plan = New-ProjDevEnvironmentPlan
     Add-ProjDevBunEnvironment `
         -Context $Context `
         -Definition $Definition `
@@ -115,14 +113,14 @@ try {
     Assert-ProjBunTest `
         -Condition (Publish-ProjDevEnvironmentState `
             -Context $Context `
-            -GenerationId ([string]$Scripts.GenerationId)) `
+            -Revision ([string]$Scripts.Revision)) `
         -Message 'first environment state publication was skipped'
     $PublishedState = Read-ProjDevelopmentEnvironmentState `
         -EnvironmentRoot $Context.EnvironmentRoot
     Assert-ProjBunTest `
         -Condition (
-            [string]$PublishedState.GenerationId -ceq
-                [string]$Scripts.GenerationId -and
+            [string]$PublishedState.Revision -ceq
+                [string]$Scripts.Revision -and
             [string]$PublishedState.Declarations.SWAWKIT_PROJ_BUN_MODE -ceq
                 'managed' -and
             [string]$PublishedState.Declarations.SWAWKIT_PROJ_BUN_VERSION -ceq
@@ -149,7 +147,7 @@ try {
     Assert-ProjBunTest `
         -Condition (-not (Publish-ProjDevEnvironmentState `
             -Context $Context `
-            -GenerationId ([string]$Scripts.GenerationId))) `
+            -Revision ([string]$Scripts.Revision))) `
         -Message 'byte-stable environment state was needlessly rewritten'
     Assert-ProjBunTest `
         -Condition (
@@ -295,17 +293,14 @@ try {
 
     $ActionRoot = Join-Path $ProjectRoot '.swaw'
     [void][IO.Directory]::CreateDirectory($ActionRoot)
-    $EntryFile = Join-Path $ProjectRoot "$SetupEntryName.cmd"
-    [IO.File]::WriteAllText($EntryFile, '@echo off')
     Set-ProjBunProcessEnvironment -Values @{
-        SWAWKIT_PROJ_PROTOCOL = '1'
+        SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL = '1'
         SWAWKIT_HOME = $ControlHome
         SWAWKIT_PROJ_TARGET_PROJECT_ROOT = $ProjectRoot
         SWAWKIT_PROJ_ACTION_ROOT = $ActionRoot
         SWAWKIT_PROJ_DATA_ROOT = $null
         SWAWKIT_PROJ_ENTRY_COMMAND = 'swawkit'
-        SWAWKIT_PROJ_ENTRY_FILE = $EntryFile
-        SWAWKIT_PROJ_INVOCATION_DIR = $InvocationRoot
+        SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR = $InvocationRoot
         SWAWKIT_PROJ_BUN_MODE = 'disabled'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }

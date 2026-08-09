@@ -63,6 +63,16 @@ static void fail(BOOL host_mode, const WCHAR *dialog_text, const CHAR *console_t
     ExitProcess(1u);
 }
 
+static BOOL environment_variable_exists(const WCHAR *name)
+{
+    WCHAR value;
+    DWORD length;
+
+    SetLastError(ERROR_SUCCESS);
+    length = GetEnvironmentVariableW(name, &value, 1u);
+    return length > 0u || GetLastError() != ERROR_ENVVAR_NOT_FOUND;
+}
+
 static DWORD last_separator_before(const WCHAR *value, DWORD before)
 {
     while (before > 0u) {
@@ -281,14 +291,26 @@ static BOOL prepare_environment(BOOL host_mode)
         L"SWAWKIT_PROJ_ACTION_ROOT",
         L"SWAWKIT_PROJ_DATA_ROOT",
         L"SWAWKIT_PROJ_ENTRY_COMMAND",
+        L"SWAWKIT_PROJ_ENTRY_FILE",
+        L"SWAWKIT_PROJ_LAUNCH_MODE",
         L"SWAWKIT_PROJ_COMMAND_PROTOCOL",
         L"SWAWKIT_PROJ_COMMAND_PHASE",
         L"SWAWKIT_PROJ_COMMAND_ADDRESS",
         L"SWAWKIT_PROJ_COMMAND_DIR",
+        L"SWAWKIT_PROJ_COMMAND_DATA_ROOT",
         L"SWAWKIT_PROJ_GUARD_SCOPE",
         L"SWAWKIT_PROJ_HELP_TARGET_ADDRESS",
         L"SWAWKIT_PROJ_INVOCATION_DIR",
-        L"SWAWKIT_PROJ_INTERNAL_RUNTIME_WORKING_DIR"
+        L"SWAWKIT_PROJ_INTERNAL_RUNTIME_WORKING_DIR",
+        L"SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE",
+        L"SWAWKIT_PROJ_CORE_COMMAND_PHASE",
+        L"SWAWKIT_PROJ_CORE_COMMAND_ADDRESS",
+        L"SWAWKIT_PROJ_CORE_COMMAND_DIR",
+        L"SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT",
+        L"SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE",
+        L"SWAWKIT_PROJ_CORE_COMMAND_HELP_TARGET_ADDRESS",
+        L"SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR",
+        L"SWAWKIT_PROJ_CORE_COMMAND_RUNTIME_WORKING_DIR"
     };
     DWORD index;
 
@@ -297,9 +319,12 @@ static BOOL prepare_environment(BOOL host_mode)
             return FALSE;
         }
     }
-    return SetEnvironmentVariableW(L"SWAWKIT_PROJ_ENTRY_FILE", entry_path)
+    return SetEnvironmentVariableW(
+            L"SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE",
+            entry_path
+        )
         && SetEnvironmentVariableW(
-            L"SWAWKIT_PROJ_LAUNCH_MODE",
+            L"SWAWKIT_PROJ_CORE_LAUNCH_MODE",
             host_mode ? L"internal-host" : L"cli"
         );
 }
@@ -313,6 +338,16 @@ void WINAPI launcher_entry(void)
     BOOL inherit_handles = host_mode ? FALSE : TRUE;
     DWORD wait_result;
     DWORD exit_code;
+
+    if (environment_variable_exists(
+            L"SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL"
+        )) {
+        fail(
+            FALSE,
+            L"Cannot start a Swaw Kit Entry from inside another Entry command.",
+            "[ERROR] Cannot start a Swaw Kit Entry from inside another Entry command.\r\n"
+        );
+    }
 
     if (entry_length == 0u || entry_length >= TEXT_CAPACITY - 1u) {
         fail(

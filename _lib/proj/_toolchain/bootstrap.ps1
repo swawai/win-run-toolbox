@@ -63,7 +63,7 @@ function Write-ProjBootstrapToolchainState {
         [Parameter(Mandatory = $true)][object]$Contract,
         [Parameter(Mandatory = $true)][object]$MsvcDefinition,
         [Parameter(Mandatory = $true)][object]$RustDefinition,
-        [Parameter(Mandatory = $true)][string]$GenerationId
+        [Parameter(Mandatory = $true)][string]$Revision
     )
 
     $Msvc = Get-ProjDevMsvcValidMetadata `
@@ -76,13 +76,13 @@ function Write-ProjBootstrapToolchainState {
         throw 'Cannot record an invalid Bootstrap toolchain.'
     }
     $State = [ordered]@{
-        schema = 'swawkit.proj-bootstrap-state/v1'
+        schema = 'swawkit.proj-bootstrap-state/v2'
         contract = [ordered]@{
             schema = [string]$Contract.Schema
             rustToolchain = [string]$Contract.RustToolchain
             msvcChannel = [string]$Contract.MsvcChannel
         }
-        environmentGeneration = $GenerationId
+        environmentRevision = $Revision
         rust = [ordered]@{
             rustcVersion = [string]$Rust.rustcVersion
             cargoVersion = [string]$Rust.cargoVersion
@@ -132,7 +132,7 @@ function Initialize-ProjBootstrapToolchain {
         [void](Install-ProjDevRust `
             -Context $Context `
             -Definition $RustDefinition)
-        $Plan = New-ProjDevEnvironmentPlan -Context $Context
+        $Plan = New-ProjDevEnvironmentPlan
         Add-ProjDevMsvcEnvironment `
             -Context $Context `
             -Definition $MsvcDefinition `
@@ -150,22 +150,25 @@ function Initialize-ProjBootstrapToolchain {
             -Contract $Contract `
             -MsvcDefinition $MsvcDefinition `
             -RustDefinition $RustDefinition `
-            -GenerationId ([string]$Scripts.GenerationId)
+            -Revision ([string]$Scripts.Revision)
     } finally {
         $SetupLock.Dispose()
     }
 
-    Clear-ProjDevProcessEnvironmentVariables
-    . $Context.EnvPs1Path
-    Assert-ProjDevActivatedEnvironmentIdentity `
-        -Context $Context `
-        -GenerationId ([string]$Scripts.GenerationId)
-    Assert-ProjDevMsvcEnvironmentCurrent `
-        -Context $Context `
-        -Definition $MsvcDefinition
-    Assert-ProjDevRustEnvironmentCurrent `
-        -Context $Context `
-        -Definition $RustDefinition
+    Clear-ProjDevSetupExportMetadata
+    try {
+        . $Context.EnvPs1Path
+        Assert-ProjDevLoadedEnvironmentRevision `
+            -Revision ([string]$Scripts.Revision)
+        Assert-ProjDevMsvcEnvironmentCurrent `
+            -Context $Context `
+            -Definition $MsvcDefinition
+        Assert-ProjDevRustEnvironmentCurrent `
+            -Context $Context `
+            -Definition $RustDefinition
+    } finally {
+        Clear-ProjDevSetupExportMetadata
+    }
 
     $RustRoot = Get-ProjDevRustInstallRoot `
         -Context $Context `

@@ -1,6 +1,11 @@
 Set-StrictMode -Version 2.0
 
-function Get-ProjDevGeneratedEnvironmentGeneration {
+$script:ProjDevSetupExportVariablePrefix =
+    'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_'
+$script:ProjDevSetupExportRevisionVariable =
+    'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_EXPORT_REVISION'
+
+function Get-ProjDevGeneratedEnvironmentRevision {
     param([Parameter(Mandatory = $true)][object]$Context)
 
     [void](Get-ProjRequiredCommandExport `
@@ -9,25 +14,25 @@ function Get-ProjDevGeneratedEnvironmentGeneration {
         -EntryCommand ([string]$Context.EntryCommand))
     # Command modules own declaration freshness. Shared activation only proves
     # that the environment publication is complete and internally consistent.
-    $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
+    $Revision = Get-ProjPublishedDevelopmentEnvironmentRevision `
         -Context $Context
-    if ($null -eq $GenerationId) {
+    if ($null -eq $Revision) {
         $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The project development environment is not configured. Run ' +
             "'$Repair'."
         )
     }
-    return $GenerationId
+    return $Revision
 }
 
-function Clear-ProjDevProcessEnvironmentVariables {
+function Clear-ProjDevSetupExportMetadata {
     $ProcessEnvironment = [Environment]::GetEnvironmentVariables(
         [EnvironmentVariableTarget]::Process
     )
     foreach ($Name in [string[]]@($ProcessEnvironment.Keys)) {
         if ($Name.StartsWith(
-            'SWAWKIT_PROJ_DEV_',
+            $script:ProjDevSetupExportVariablePrefix,
             [StringComparison]::OrdinalIgnoreCase
         )) {
             [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
@@ -35,108 +40,39 @@ function Clear-ProjDevProcessEnvironmentVariables {
     }
 }
 
-function Assert-ProjDevActivatedEnvironmentIdentity {
-    param(
-        [Parameter(Mandatory = $true)][object]$Context,
-        [Parameter(Mandatory = $true)][string]$GenerationId
-    )
+function Assert-ProjDevLoadedEnvironmentRevision {
+    param([Parameter(Mandatory = $true)][string]$Revision)
 
-    $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
-    if ([string]$env:SWAWKIT_PROJ_DEV_GENERATION_ID -cne $GenerationId) {
+    $LoadedRevision = [Environment]::GetEnvironmentVariable(
+        $script:ProjDevSetupExportRevisionVariable,
+        [EnvironmentVariableTarget]::Process
+    )
+    if ([string]$LoadedRevision -cne $Revision) {
         throw (
-            'The active development environment generation is stale. ' +
-            'Exit this shell and start a new project shell.'
+            'The loaded development environment does not match its published ' +
+            'export revision.'
         )
-    }
-    if ([string]$env:SWAWKIT_PROJ_DEV_ENV_SCHEMA -cne
-        'swawkit.proj-dev.environment.v0') {
-        throw "Unsupported generated environment schema. Run '$Repair'."
-    }
-    foreach ($Name in @(
-        'SWAWKIT_PROJ_DEV_PROJECT_ROOT',
-        'SWAWKIT_PROJ_DEV_ENV_ROOT'
-    )) {
-        if ([string]::IsNullOrWhiteSpace(
-            [Environment]::GetEnvironmentVariable($Name, 'Process')
-        )) {
-            throw "Generated environment is missing $Name. Run '$Repair'."
-        }
-    }
-    if (-not (Get-ProjDevCanonicalPath -Path (
-            [string]$env:SWAWKIT_PROJ_DEV_PROJECT_ROOT
-        )).Equals(
-            $Context.CanonicalProjectRoot,
-            [StringComparison]::OrdinalIgnoreCase
-        ) -or
-        -not (Get-ProjDevCanonicalPath -Path (
-            [string]$env:SWAWKIT_PROJ_DEV_ENV_ROOT
-        )).Equals(
-            (Get-ProjDevCanonicalPath -Path $Context.EnvironmentRoot),
-            [StringComparison]::OrdinalIgnoreCase
-        )) {
-        throw 'The generated environment belongs to another project or data root.'
     }
 }
 
 function Import-ProjDevGeneratedEnvironment {
-    param(
-        [Parameter(Mandatory = $true)][object]$Context,
-        [bool]$AlreadyActive = $false
-    )
-
-    $GenerationId = Get-ProjDevGeneratedEnvironmentGeneration `
-        -Context $Context
-    if (-not $AlreadyActive) {
-        Clear-ProjDevProcessEnvironmentVariables
-        . $Context.EnvPs1Path
-    }
-    Assert-ProjDevActivatedEnvironmentIdentity `
-        -Context $Context `
-        -GenerationId $GenerationId
-
-    return [pscustomobject][ordered]@{
-        GenerationId = $GenerationId
-        ProjectRoot = [string]$env:SWAWKIT_PROJ_DEV_PROJECT_ROOT
-        EnvironmentRoot = [string]$env:SWAWKIT_PROJ_DEV_ENV_ROOT
-    }
-}
-
-function Assert-ProjDevActiveEnvironmentPublished {
     param([Parameter(Mandatory = $true)][object]$Context)
 
-    if (-not (Assert-ProjDevActiveEnvironmentCompatible -Context $Context)) {
-        return $false
+    $Revision = Get-ProjDevGeneratedEnvironmentRevision -Context $Context
+    Clear-ProjDevSetupExportMetadata
+    . $Context.EnvPs1Path
+    Assert-ProjDevLoadedEnvironmentRevision -Revision $Revision
+
+    return [pscustomobject][ordered]@{
+        Revision = $Revision
     }
-    $GenerationId = Get-ProjPublishedDevelopmentEnvironmentGeneration `
-        -Context $Context
-    if ($null -eq $GenerationId) {
-        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
-        throw (
-            'A project development environment is active, but no environment ' +
-            'is published. Exit this shell and run ' +
-            "'$Repair'."
-        )
-    }
-    Assert-ProjDevActivatedEnvironmentIdentity `
-        -Context $Context `
-        -GenerationId $GenerationId
-    return $true
 }
 
 function Import-ProjDevOptionalGeneratedEnvironment {
     param([Parameter(Mandatory = $true)][object]$Context)
 
-    $AlreadyActive = Assert-ProjDevActiveEnvironmentCompatible `
-        -Context $Context
-    $GenerationId = Get-ProjDevelopmentEnvironmentGeneration `
-        -Context $Context
-    if ($null -eq $GenerationId) {
-        if ($AlreadyActive) {
-            throw (
-                'A managed development environment is active, but this ' +
-                'project has no published environment. Exit this shell.'
-            )
-        }
+    $Revision = Get-ProjDevelopmentEnvironmentRevision -Context $Context
+    if ($null -eq $Revision) {
         $Enabled = @(
             Get-ProjEnabledDevelopmentDeclarationNames `
                 -Declarations (Get-ProjDevelopmentDeclarationSnapshot)
@@ -156,12 +92,13 @@ function Import-ProjDevOptionalGeneratedEnvironment {
         }
         return $false
     }
-    if (-not $AlreadyActive) {
-        Clear-ProjDevProcessEnvironmentVariables
+
+    Clear-ProjDevSetupExportMetadata
+    try {
         . $Context.EnvPs1Path
+        Assert-ProjDevLoadedEnvironmentRevision -Revision $Revision
+    } finally {
+        Clear-ProjDevSetupExportMetadata
     }
-    Assert-ProjDevActivatedEnvironmentIdentity `
-        -Context $Context `
-        -GenerationId $GenerationId
     return $true
 }

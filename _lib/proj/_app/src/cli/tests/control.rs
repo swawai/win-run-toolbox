@@ -34,53 +34,20 @@ fn control_web_command_launches_the_entry_before_profile_gating() {
 }
 
 #[test]
-fn host_process_uses_the_shared_core_with_a_clean_launch_envelope() {
+fn host_process_uses_the_entry_launcher_as_the_process_boundary() {
     let fixture = Fixture::new();
-    let executable = fixture
-        .context
-        .swawkit_home
-        .join("_lib/proj/_bin/swawkit-proj.exe");
-    let inherited_names = [
-        "SWAWKIT_PROJ_INTERNAL_PS_ARG_8",
-        "SWAWKIT_PROJ_INTERNAL_PS_ARGC",
-        "SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH",
-        "SWAWKIT_PROJ_COMMAND_DATA_ROOT",
-        "SWAWKIT_PROJ_BUN_VERSION",
-    ]
-    .map(OsString::from);
-
-    let command = host_process_command(&fixture.context, &executable, inherited_names);
-    assert_eq!(command.get_program(), executable.as_os_str());
+    let command = host_process_command(&fixture.context);
+    assert_eq!(
+        command.get_program(),
+        fixture.context.entry_file.as_os_str()
+    );
     assert_eq!(
         command.get_current_dir(),
         Some(fixture.context.invocation_directory.as_path())
     );
     assert_eq!(command.get_args().count(), 0);
 
-    let environment = command
-        .get_envs()
-        .map(|(name, value)| (name.to_os_string(), value.map(OsString::from)))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    for name in [
-        "SWAWKIT_HOME",
-        "SWAWKIT_PROJ_DATA_ROOT",
-        "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
-        "SWAWKIT_PROJ_COMMAND_DATA_ROOT",
-        "SWAWKIT_PROJ_INTERNAL_PS_ARG_8",
-        "SWAWKIT_PROJ_INTERNAL_PS_ARGC",
-        "SWAWKIT_PROJ_INTERNAL_CMD_ENTRY_PATH",
-    ] {
-        assert_eq!(environment.get(std::ffi::OsStr::new(name)), Some(&None));
-    }
-    assert_eq!(
-        environment.get(std::ffi::OsStr::new(ENTRY_FILE_ENV)),
-        Some(&Some(fixture.context.entry_file.as_os_str().to_os_string()))
-    );
-    assert_eq!(
-        environment.get(std::ffi::OsStr::new(LAUNCH_MODE_ENV)),
-        Some(&Some(OsString::from("internal-host")))
-    );
-    assert!(!environment.contains_key(std::ffi::OsStr::new("SWAWKIT_PROJ_BUN_VERSION")));
+    assert_eq!(command.get_envs().count(), 0);
 }
 
 #[test]

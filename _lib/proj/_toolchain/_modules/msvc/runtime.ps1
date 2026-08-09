@@ -30,31 +30,25 @@ function Get-ProjDevMsvcCommandRequirement {
 
 function Assert-ProjDevMsvcCommandReady {
     $Requirement = Get-ProjDevMsvcCommandRequirement
-    $GenerationId = Get-ProjDevGeneratedEnvironmentGeneration `
-        -Context $Requirement.Context
     Assert-ProjDevMsvcReady `
         -Context $Requirement.Context `
         -Definition $Requirement.Definition
     return [pscustomobject][ordered]@{
         Context = $Requirement.Context
         Definition = $Requirement.Definition
-        GenerationId = $GenerationId
     }
 }
 
 function Import-ProjDevMsvcCommandEnvironment {
     $Requirement = Assert-ProjDevMsvcCommandReady
-    $AlreadyActive = Assert-ProjDevActiveEnvironmentCompatible `
-        -Context $Requirement.Context
-    if (-not $AlreadyActive) {
-        Clear-ProjDevProcessEnvironmentVariables
-        . $Requirement.Context.EnvPs1Path
+    try {
+        Import-ProjDevGeneratedEnvironment `
+            -Context $Requirement.Context | Out-Null
+        Assert-ProjDevMsvcEnvironmentCurrent `
+            -Context $Requirement.Context `
+            -Definition $Requirement.Definition
+    } finally {
+        Clear-ProjDevSetupExportMetadata
     }
-    Assert-ProjDevActivatedEnvironmentIdentity `
-        -Context $Requirement.Context `
-        -GenerationId ([string]$Requirement.GenerationId)
-    Assert-ProjDevMsvcEnvironmentCurrent `
-        -Context $Requirement.Context `
-        -Definition $Requirement.Definition
     return $Requirement
 }

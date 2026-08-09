@@ -42,17 +42,17 @@ function Add-ProjDevRustEnvironment {
     $Rustc = Join-Path $ToolchainBin 'rustc.exe'
     $Rustdoc = Join-Path $ToolchainBin 'rustdoc.exe'
     $Variables = [ordered]@{
-        SWAWKIT_PROJ_DEV_RUST_MODE = [string]$Definition.Mode
-        SWAWKIT_PROJ_DEV_RUST_TOOLCHAIN = [string]$Definition.Toolchain
-        SWAWKIT_PROJ_DEV_RUST_TOOLCHAIN_NAME = [string]$Definition.ToolchainName
-        SWAWKIT_PROJ_DEV_RUST_PROFILE = [string]$Definition.Profile
-        SWAWKIT_PROJ_DEV_RUST_HOST = [string]$Definition.Host
-        SWAWKIT_PROJ_DEV_RUST_RUSTC_VERSION = [string]$Metadata.rustcVersion
-        SWAWKIT_PROJ_DEV_RUST_CARGO_VERSION = [string]$Metadata.cargoVersion
-        SWAWKIT_PROJ_DEV_RUST_RUSTFMT_VERSION = `
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_MODE = [string]$Definition.Mode
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_TOOLCHAIN = [string]$Definition.Toolchain
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_TOOLCHAIN_NAME = [string]$Definition.ToolchainName
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_PROFILE = [string]$Definition.Profile
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_HOST = [string]$Definition.Host
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_RUSTC_VERSION = [string]$Metadata.rustcVersion
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_CARGO_VERSION = [string]$Metadata.cargoVersion
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_RUSTFMT_VERSION = `
             [string]$Metadata.rustfmtVersion
-        SWAWKIT_PROJ_DEV_RUST_HOME = $InstallRoot
-        SWAWKIT_PROJ_DEV_RUST_SIGNATURE = Get-ProjDevRustRuntimeSignature `
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_HOME = $InstallRoot
+        SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_SIGNATURE = Get-ProjDevRustRuntimeSignature `
             -Definition $Definition `
             -Metadata $Metadata
         RUSTUP_HOME = $RustupHome
@@ -103,22 +103,22 @@ function Assert-ProjDevRustEnvironmentCurrent {
     $ExpectedSignature = Get-ProjDevRustRuntimeSignature `
         -Definition $Definition `
         -Metadata $Metadata
+    $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
     $ValuesMatch =
-        [string]$env:SWAWKIT_PROJ_DEV_RUST_MODE -ceq
+        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_MODE -ceq
             [string]$Definition.Mode -and
-        [string]$env:SWAWKIT_PROJ_DEV_RUST_TOOLCHAIN -ceq
+        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_TOOLCHAIN -ceq
             [string]$Definition.Toolchain -and
-        [string]$env:SWAWKIT_PROJ_DEV_RUST_TOOLCHAIN_NAME -ceq
+        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_TOOLCHAIN_NAME -ceq
             [string]$Definition.ToolchainName -and
-        [string]$env:SWAWKIT_PROJ_DEV_RUST_PROFILE -ceq
+        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_PROFILE -ceq
             [string]$Definition.Profile -and
-        [string]$env:SWAWKIT_PROJ_DEV_RUST_HOST -ceq
+        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_HOST -ceq
             [string]$Definition.Host -and
-        [string]$env:SWAWKIT_PROJ_DEV_RUST_SIGNATURE -ceq $ExpectedSignature -and
+        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_SIGNATURE -ceq $ExpectedSignature -and
         [string]$env:RUSTUP_TOOLCHAIN -ceq
             [string]$Definition.ToolchainName
     if (-not $ValuesMatch) {
-        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
             'The generated Rust environment does not match the project ' +
             "declaration. Run '$Repair'."
@@ -176,8 +176,7 @@ function Assert-ProjDevRustEnvironmentCurrent {
             [StringComparison]::OrdinalIgnoreCase
         )) {
         throw (
-            'The managed Cargo proxy is not active. Exit this shell and ' +
-            'start a new project shell.'
+            "The managed Cargo proxy is not selected. Run '$Repair'."
         )
     }
 }

@@ -165,21 +165,14 @@ try {
         ) `
         -Message 'channel declaration did not produce a stable definition'
 
-    $Channel = [pscustomobject]@{
-        channelItems = @(
-            [pscustomobject]@{
-                id = 'Microsoft.VisualStudio.Manifests.VisualStudio'
-                payloads = @(
-                    New-ProjMsvcPayloadFixture `
-                        -FileName 'VisualStudio.vsman'
-                )
-            }
-        )
-    }
+    $ManifestPayload = ConvertTo-ProjDevMsvcPayload `
+        -Payload (New-ProjMsvcPayloadFixture `
+            -FileName 'VisualStudio.vsman') `
+        -Description 'Visual Studio manifest fixture'
     $Manifest = New-ProjMsvcManifestFixture -Definition $Definition
     $Recipe = Resolve-ProjDevMsvcManifest `
         -Definition $Definition `
-        -ChannelData $Channel `
+        -ManifestPayload $ManifestPayload `
         -VisualStudioManifest $Manifest
     Assert-ProjMsvcTest `
         -Condition (

@@ -15,6 +15,7 @@ foreach ($File in @(
     'msvc\module.ps1',
     'msvc\payload.ps1',
     'msvc\manifest.ps1',
+    'msvc\release.ps1',
     'msvc\install.ps1',
     'msvc\environment.ps1',
     'rust\module.ps1',

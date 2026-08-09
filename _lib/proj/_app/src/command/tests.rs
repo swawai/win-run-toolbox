@@ -80,6 +80,9 @@ impl Fixture {
             entry_file: self.root.join("fixture.exe"),
             invocation_directory: self.target_project_root.clone(),
             profile: EntryProfileRecord::default(),
+            environment_input_revision: EntryProfileRecord::default()
+                .environment_input_revision(),
+            profile_revision: format!("sha256-{}", "0".repeat(64)),
         }
     }
 }
@@ -156,6 +159,14 @@ fn process_environment_is_declarative_and_phase_specific() {
     assert_eq!(
         run.value("SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE"),
         Some(Some(context.entry_file.as_os_str()))
+    );
+    assert_eq!(
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION"),
+        Some(Some(OsStr::new(&context.environment_input_revision)))
+    );
+    assert_eq!(
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION"),
+        Some(Some(OsStr::new(&context.profile_revision)))
     );
     assert_eq!(
         run.value("SWAWKIT_PROJ_CORE_COMMAND_PHASE"),

@@ -37,10 +37,7 @@ pub(crate) fn publish(path: &Path, content: &[u8]) -> io::Result<()> {
     } else {
         fs::rename(&temporary, path)
     };
-    match committed {
-        Ok(()) => cleanup(&temporary),
-        Err(error) => Err(commit_error(path, &temporary, error)),
-    }
+    committed.map_err(|error| commit_error(path, &temporary, error))
 }
 
 fn commit_error(path: &Path, temporary: &Path, error: io::Error) -> io::Error {

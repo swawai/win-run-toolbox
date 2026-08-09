@@ -11,20 +11,12 @@ if (@($args).Count -gt 0) {
 $Context = New-ProjDevContextFromEnvironment
 $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
 try {
-    $Revision = Get-ProjDevelopmentEnvironmentRevision `
+    $Publication = Get-ProjDevGeneratedEnvironmentPublication `
         -Context $Context
-    if ($null -eq $Revision) {
-        $Enabled = @(
-            Get-ProjEnabledDevelopmentDeclarationNames `
-                -Declarations (Get-ProjDevelopmentDeclarationSnapshot)
-        )
-        if ($Enabled.Count -gt 0) {
-            Write-Host (
-                '[OUTDATED] no environment has been published; run ' +
-                "'$Repair'"
-            ) -ForegroundColor Red
-        }
-    }
+    Write-Host (
+        '[READY] .dev.setup publication ' +
+        ([string]$Publication.Token).Substring(0, 8)
+    ) -ForegroundColor Green
 } catch {
     Write-Host "[OUTDATED] $($_.Exception.Message)" -ForegroundColor Red
 }

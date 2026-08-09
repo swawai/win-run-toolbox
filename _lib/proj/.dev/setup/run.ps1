@@ -9,37 +9,33 @@ if (@($args).Count -gt 0) {
 . (Join-Path $PSScriptRoot '..\..\_toolchain\setup.ps1')
 
 $Context = New-ProjDevContextFromEnvironment
-$BunDefinition = Get-ProjDevBunDefinition
-$PwshDefinition = Get-ProjDevPwshDefinition
-$MsvcDefinition = Get-ProjDevMsvcDefinition
-$RustDefinition = Get-ProjDevRustDefinition
-if ($null -ne $RustDefinition -and $null -eq $MsvcDefinition) {
-    throw (
-        'Rust V0 with the x86_64-pc-windows-msvc host requires the managed ' +
-        'MSVC module.'
-    )
-}
-if ($null -ne $BunDefinition -or
-    $null -ne $PwshDefinition -or
-    $null -ne $MsvcDefinition -or
-    $null -ne $RustDefinition) {
-    Assert-ProjDevWindowsX64 -ToolName 'Managed development tools'
-}
-$Declarations = Get-ProjDevelopmentDeclarationSnapshot
-$PendingModules = @(
-    Get-ProjPendingDevelopmentSetupModuleNames -Declarations $Declarations
-)
-if (@($PendingModules).Count -gt 0) {
-    throw (
-        '.dev.setup does not yet handle these enabled declarations: ' +
-        "$([string]::Join(', ', $PendingModules))."
-    )
-}
-
 $SetupLock = Enter-ProjDevFileLock `
     -Path $Context.SetupLockPath `
     -ControlledRoot $Context.DataRoot
 try {
+    $PublicationAttempt = Start-ProjDevSetupProviderPublication `
+        -Context $Context
+
+    $BunDefinition = Get-ProjDevBunDefinition
+    $PwshDefinition = Get-ProjDevPwshDefinition
+    $MsvcDefinition = Get-ProjDevMsvcDefinition
+    $RustDefinition = Get-ProjDevRustDefinition
+    if ($null -ne $RustDefinition -and $null -eq $MsvcDefinition) {
+        throw (
+            'Rust V0 with the x86_64-pc-windows-msvc host requires the ' +
+            'managed MSVC module.'
+        )
+    }
+    if ($null -ne $BunDefinition -or
+        $null -ne $PwshDefinition -or
+        $null -ne $MsvcDefinition -or
+        $null -ne $RustDefinition) {
+        Assert-ProjDevWindowsX64 -ToolName 'Managed development tools'
+    }
+    $Declarations = Get-ProjDevelopmentDeclarationSnapshot
+    Assert-ProjDevelopmentSetupDeclarationsSupported `
+        -Declarations $Declarations
+
     if ($null -ne $BunDefinition) {
         $BunDefinition = Resolve-ProjDevBunDefinitionForSetup `
             -Context $Context `
@@ -102,14 +98,30 @@ try {
             -Plan $Plan
     }
 
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+        -Plan $Plan `
+        -PublicationToken ([string]$PublicationAttempt.Token)
     $EnvironmentChanged = Publish-ProjDevEnvironmentScripts `
         -Context $Context `
         -Scripts $Scripts
-    $StateChanged = Publish-ProjDevEnvironmentState `
+    Complete-ProjDevSetupProviderPublication `
         -Context $Context `
-        -Revision ([string]$Scripts.Revision)
-    $EnvironmentChanged = $EnvironmentChanged -or $StateChanged
+        -Attempt $PublicationAttempt
+
+    if ([IO.File]::Exists([string]$Context.LegacyEnvironmentStatePath)) {
+        try {
+            $LegacyStatePath = Assert-ProjDevPathInsideDataRoot `
+                -Path ([string]$Context.LegacyEnvironmentStatePath) `
+                -DataRoot ([string]$Context.DataRoot) `
+                -Activity 'removing legacy development environment state'
+            [IO.File]::Delete($LegacyStatePath)
+        } catch {
+            Write-Warning (
+                'The ignored legacy export state could not be removed: ' +
+                $_.Exception.Message
+            )
+        }
+    }
 
     $BunVersionLabel = if ($null -ne $BunDefinition -and
         [string]$BunDefinition.RequestedVersion -ceq 'latest') {

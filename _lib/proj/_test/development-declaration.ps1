@@ -89,22 +89,6 @@ try {
         -Condition ([string]::Join(',', $Pending) -ceq 'go,python,uv') `
         -Message 'the setup fence was not derived from module manifests'
 
-    $Differences = @(
-        Compare-ProjDevelopmentDeclarations `
-            -Applied $Applied `
-            -Declared $Declared
-    )
-    $ChangedNames = [string[]]@($Differences | ForEach-Object Name)
-    foreach ($ModeVariable in @(
-        'SWAWKIT_PROJ_GO_MODE',
-        'SWAWKIT_PROJ_PYTHON_MODE',
-        'SWAWKIT_PROJ_UV_MODE'
-    )) {
-        Assert-ProjDevelopmentDeclarationTest `
-            -Condition ($ChangedNames -ccontains $ModeVariable) `
-            -Message "$ModeVariable disabled-to-enabled change did not stale state"
-    }
-
     Write-Host '[PASS] Proj development declaration test' `
         -ForegroundColor Green
 } finally {

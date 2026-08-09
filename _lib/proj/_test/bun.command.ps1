@@ -20,6 +20,8 @@ $EnvironmentNames = @(
     'SWAWKIT_PROJ_CORE_COMMAND_ADDRESS',
     'SWAWKIT_PROJ_CORE_COMMAND_DIR',
     'SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT',
+    'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256',
@@ -54,12 +56,20 @@ try {
         [void][IO.Directory]::CreateDirectory($Directory)
     }
     [void][IO.Directory]::CreateDirectory($ConsumerDataRoot)
+    $InputRevision = 'sha256-' + ('a' * 64)
+    $ProfilePath = Join-Path $ConsumerDataRoot '_profile.json'
+    [IO.File]::WriteAllText($ProfilePath, '{}')
+    $ProfileRevision = 'sha256-' + (
+        Get-ProjDevFileSha256 -Path $ProfilePath
+    )
     $ConsumerContext = New-ProjDevContext `
         -ProjectRoot $ProjectRoot `
         -DataRoot $ConsumerDataRoot `
         -CacheDataRoot (Join-Path $TemporaryRoot 'shared cache') `
         -EntryCommand 'swawkit' `
-        -InvocationDirectory $InvocationRoot
+        -InvocationDirectory $InvocationRoot `
+        -EnvironmentInputRevision $InputRevision `
+        -CommandProfileRevision $ProfileRevision
     Set-ProjBunProcessEnvironment -Values @{
         SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL = '1'
         SWAWKIT_HOME = $ControlHome
@@ -72,6 +82,8 @@ try {
         SWAWKIT_PROJ_CORE_COMMAND_ADDRESS = '.dev.bun'
         SWAWKIT_PROJ_CORE_COMMAND_DIR = (Join-Path $ProjRoot '.dev\bun')
         SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT = (Join-Path $ConsumerDataRoot 'modules\kernel\.dev\bun')
+        SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION = $InputRevision
+        SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION = $ProfileRevision
         SWAWKIT_PROJ_BUN_MODE = 'managed'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }
@@ -126,6 +138,7 @@ try {
         -Arguments @('--version')
     Assert-ProjBunTest `
         -Condition ($MissingEnvironmentResult.ExitCode -eq 1 -and
+            $MissingEnvironmentResult.Output -like "*'.dev.setup'*" -and
             -not [IO.File]::Exists($ConsumerContext.EnvCmdPath) -and
             -not [IO.File]::Exists($ConsumerContext.EnvPs1Path)) `
         -Message '.dev.bun did not require the generated project environment'
@@ -135,13 +148,17 @@ try {
         -Context $ConsumerContext `
         -Definition $Definition `
         -Plan $Plan
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
+    $Attempt = Start-ProjDevSetupProviderPublication `
+        -Context $ConsumerContext
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+        -Plan $Plan `
+        -PublicationToken ([string]$Attempt.Token)
     [void](Publish-ProjDevEnvironmentScripts `
         -Context $ConsumerContext `
         -Scripts $Scripts)
-    [void](Publish-ProjDevEnvironmentState `
+    Complete-ProjDevSetupProviderPublication `
         -Context $ConsumerContext `
-        -Revision ([string]$Scripts.Revision))
+        -Attempt $Attempt
 
     $env:SWAWKIT_PROJ_PWSH_MODE = 'managed'
     $env:SWAWKIT_PROJ_PWSH_VERSION = '7.6.4'
@@ -152,7 +169,10 @@ try {
         -Arguments @('unrelated-declaration-probe')
     Assert-ProjBunTest `
         -Condition ($UnrelatedDeclaration.ExitCode -eq 0) `
-        -Message 'an unrelated PowerShell declaration change blocked Bun'
+        -Message (
+            'an unrelated PowerShell declaration change blocked Bun: ' +
+            $UnrelatedDeclaration.Output
+        )
 
     $MetadataIsolation = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `

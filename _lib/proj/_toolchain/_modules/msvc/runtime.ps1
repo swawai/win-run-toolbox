@@ -21,29 +21,21 @@ function Get-ProjDevMsvcCommandRequirement {
             "'$Repair'."
         )
     }
-    Assert-ProjDevWindowsX64 -ToolName 'Managed MSVC command'
     return [pscustomobject][ordered]@{
         Context = $Context
         Definition = $Definition
     }
 }
 
-function Assert-ProjDevMsvcCommandReady {
-    $Requirement = Get-ProjDevMsvcCommandRequirement
-    Assert-ProjDevMsvcReady `
-        -Context $Requirement.Context `
-        -Definition $Requirement.Definition
-    return [pscustomobject][ordered]@{
-        Context = $Requirement.Context
-        Definition = $Requirement.Definition
-    }
-}
-
 function Import-ProjDevMsvcCommandEnvironment {
-    $Requirement = Assert-ProjDevMsvcCommandReady
+    $Requirement = Get-ProjDevMsvcCommandRequirement
     try {
         Import-ProjDevGeneratedEnvironment `
             -Context $Requirement.Context | Out-Null
+        Assert-ProjDevWindowsX64 -ToolName 'Managed MSVC command'
+        Assert-ProjDevMsvcReady `
+            -Context $Requirement.Context `
+            -Definition $Requirement.Definition
         Assert-ProjDevMsvcEnvironmentCurrent `
             -Context $Requirement.Context `
             -Definition $Requirement.Definition

@@ -2,28 +2,25 @@ Set-StrictMode -Version 2.0
 
 $script:ProjDevSetupExportVariablePrefix =
     'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_'
-$script:ProjDevSetupExportRevisionVariable =
-    'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_EXPORT_REVISION'
 
-function Get-ProjDevGeneratedEnvironmentRevision {
+function Get-ProjDevGeneratedEnvironmentPublication {
     param([Parameter(Mandatory = $true)][object]$Context)
 
-    [void](Get-ProjRequiredCommandExport `
+    $Publication = Get-ProjRequiredCommandExport `
         -DataRoot ([string]$Context.DataRoot) `
         -ProviderAddress ([string]$Context.EnvironmentProviderAddress) `
-        -EntryCommand ([string]$Context.EntryCommand))
-    # Command modules own declaration freshness. Shared activation only proves
-    # that the environment publication is complete and internally consistent.
-    $Revision = Get-ProjPublishedDevelopmentEnvironmentRevision `
-        -Context $Context
-    if ($null -eq $Revision) {
+        -EntryCommand ([string]$Context.EntryCommand) `
+        -InputRevision ([string]$Context.EnvironmentInputRevision) `
+        -ProducerContract (Get-ProjDevSetupProducerContract)
+    if (-not [IO.File]::Exists([string]$Context.EnvCmdPath) -or
+        -not [IO.File]::Exists([string]$Context.EnvPs1Path)) {
         $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
         throw (
-            'The project development environment is not configured. Run ' +
+            'The development environment export is incomplete. Run ' +
             "'$Repair'."
         )
     }
-    return $Revision
+    return $Publication
 }
 
 function Clear-ProjDevSetupExportMetadata {
@@ -37,6 +34,30 @@ function Clear-ProjDevSetupExportMetadata {
         )) {
             [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
         }
+    }
+}
+
+function Clear-ProjDevSetupPublicationMetadata {
+    foreach ($Name in @(
+        $script:ProjDevSetupPublicationTokenVariable,
+        $script:ProjDevSetupExportRevisionVariable
+    )) {
+        [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
+    }
+}
+
+function Assert-ProjDevLoadedEnvironmentPublication {
+    param([Parameter(Mandatory = $true)][object]$Publication)
+
+    $LoadedToken = [Environment]::GetEnvironmentVariable(
+        $script:ProjDevSetupPublicationTokenVariable,
+        [EnvironmentVariableTarget]::Process
+    )
+    if ([string]$LoadedToken -cne [string]$Publication.Token) {
+        throw (
+            'The loaded development environment does not match its ' +
+            'published provider state.'
+        )
     }
 }
 
@@ -58,45 +79,43 @@ function Assert-ProjDevLoadedEnvironmentRevision {
 function Import-ProjDevGeneratedEnvironment {
     param([Parameter(Mandatory = $true)][object]$Context)
 
-    $Revision = Get-ProjDevGeneratedEnvironmentRevision -Context $Context
+    $Publication = Get-ProjDevGeneratedEnvironmentPublication `
+        -Context $Context
     Clear-ProjDevSetupExportMetadata
-    . $Context.EnvPs1Path
-    Assert-ProjDevLoadedEnvironmentRevision -Revision $Revision
+    try {
+        . $Context.EnvPs1Path
+        Assert-ProjDevLoadedEnvironmentPublication `
+            -Publication $Publication
+        Assert-ProjCommandProviderPublicationCurrent `
+            -Context $Context `
+            -Publication $Publication
+    } catch {
+        Clear-ProjDevSetupExportMetadata
+        throw
+    }
+    Clear-ProjDevSetupPublicationMetadata
 
     return [pscustomobject][ordered]@{
-        Revision = $Revision
+        Token = [string]$Publication.Token
     }
 }
 
 function Import-ProjDevOptionalGeneratedEnvironment {
     param([Parameter(Mandatory = $true)][object]$Context)
 
-    $Revision = Get-ProjDevelopmentEnvironmentRevision -Context $Context
-    if ($null -eq $Revision) {
-        $Enabled = @(
-            Get-ProjEnabledDevelopmentDeclarationNames `
-                -Declarations (Get-ProjDevelopmentDeclarationSnapshot)
-        )
-        if ($Enabled.Count -gt 0) {
-            [void](Get-ProjRequiredCommandExport `
-                -DataRoot ([string]$Context.DataRoot) `
-                -ProviderAddress ([string]$Context.EnvironmentProviderAddress) `
-                -EntryCommand ([string]$Context.EntryCommand))
-            $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
-            throw (
-                'The project declares managed development tools, but no ' +
-                'environment has been published. Enabled: ' +
-                [string]::Join(', ', $Enabled) + '. Run ' +
-                "'$Repair'."
-            )
-        }
+    Clear-ProjDevSetupExportMetadata
+    $Declarations = Get-ProjDevelopmentDeclarationSnapshot
+    Assert-ProjDevelopmentSetupDeclarationsSupported `
+        -Declarations $Declarations
+    $Enabled = @(
+        Get-ProjEnabledDevelopmentDeclarationNames `
+            -Declarations $Declarations
+    )
+    if ($Enabled.Count -eq 0) {
         return $false
     }
-
-    Clear-ProjDevSetupExportMetadata
     try {
-        . $Context.EnvPs1Path
-        Assert-ProjDevLoadedEnvironmentRevision -Revision $Revision
+        [void](Import-ProjDevGeneratedEnvironment -Context $Context)
     } finally {
         Clear-ProjDevSetupExportMetadata
     }

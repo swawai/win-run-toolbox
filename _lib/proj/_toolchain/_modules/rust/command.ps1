@@ -24,19 +24,15 @@ function Resolve-ProjDevRustCommand {
             "then '$Repair'."
         )
     }
-    Assert-ProjDevWindowsX64 -ToolName 'Rust'
-    [void](Get-ProjRequiredCommandExport `
-        -DataRoot ([string]$Context.DataRoot) `
-        -ProviderAddress ([string]$Context.EnvironmentProviderAddress) `
-        -EntryCommand ([string]$Context.EntryCommand))
-    Assert-ProjDevMsvcReady `
-        -Context $Context `
-        -Definition $MsvcDefinition
-    Assert-ProjDevRustReady `
-        -Context $Context `
-        -Definition $Definition
     try {
         Import-ProjDevGeneratedEnvironment -Context $Context | Out-Null
+        Assert-ProjDevWindowsX64 -ToolName 'Rust'
+        Assert-ProjDevMsvcReady `
+            -Context $Context `
+            -Definition $MsvcDefinition
+        Assert-ProjDevRustReady `
+            -Context $Context `
+            -Definition $Definition
         Assert-ProjDevMsvcEnvironmentCurrent `
             -Context $Context `
             -Definition $MsvcDefinition

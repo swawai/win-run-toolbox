@@ -122,6 +122,8 @@ $RuntimeEnvironmentNames = @(
     'SWAWKIT_PROJ_DATA_ROOT',
     'SWAWKIT_PROJ_ENTRY_COMMAND',
     'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
+    'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256'
@@ -319,10 +321,19 @@ try {
     $ProjectRoot = Join-Path $TemporaryRoot 'project'
     $DataRoot = Join-Path $TemporaryRoot 'data'
     [void][IO.Directory]::CreateDirectory($ProjectRoot)
+    [void][IO.Directory]::CreateDirectory($DataRoot)
+    $InputRevision = 'sha256-' + ('a' * 64)
+    $ProfilePath = Join-Path $DataRoot '_profile.json'
+    [IO.File]::WriteAllText($ProfilePath, '{}')
+    $ProfileRevision = 'sha256-' + (
+        Get-ProjDevFileSha256 -Path $ProfilePath
+    )
     $Context = New-ProjDevContext `
         -ProjectRoot $ProjectRoot `
         -DataRoot $DataRoot `
-        -CacheDataRoot (Join-Path $TemporaryRoot 'shared cache')
+        -CacheDataRoot (Join-Path $TemporaryRoot 'shared cache') `
+        -EnvironmentInputRevision $InputRevision `
+        -CommandProfileRevision $ProfileRevision
     $TargetRoot = Get-ProjDevMsvcInstallRoot `
         -Context $Context `
         -Definition $Definition
@@ -376,7 +387,10 @@ try {
         -Context $Context `
         -Definition $Definition `
         -Plan $Plan
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
+    $Attempt = Start-ProjDevSetupProviderPublication -Context $Context
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+        -Plan $Plan `
+        -PublicationToken ([string]$Attempt.Token)
     Assert-ProjMsvcTest `
         -Condition (
             $Scripts.Cmd -like '*VCToolsVersion=14.44.35228*' -and
@@ -392,9 +406,9 @@ try {
     [void](Publish-ProjDevEnvironmentScripts `
         -Context $Context `
         -Scripts $Scripts)
-    [void](Publish-ProjDevEnvironmentState `
+    Complete-ProjDevSetupProviderPublication `
         -Context $Context `
-        -Revision ([string]$Scripts.Revision))
+        -Attempt $Attempt
     $env:SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL = '1'
     $env:SWAWKIT_HOME = [IO.Path]::GetFullPath(
         (Join-Path $ProjRoot '..\..')
@@ -403,6 +417,8 @@ try {
     $env:SWAWKIT_PROJ_DATA_ROOT = $DataRoot
     $env:SWAWKIT_PROJ_ENTRY_COMMAND = 'fixture'
     $env:SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR = $ProjectRoot
+    $env:SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION = $InputRevision
+    $env:SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION = $ProfileRevision
     foreach ($Name in [string[]]@(
         [Environment]::GetEnvironmentVariables('Process').Keys
     )) {

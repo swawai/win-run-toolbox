@@ -40,14 +40,12 @@ function New-ProjBootstrapToolchainContext {
         -EnvironmentRoot $Layout.ToolchainRoot
     return [pscustomobject][ordered]@{
         ProjectRoot = $Layout.ProjHome
-        CanonicalProjectRoot = Get-ProjDevCanonicalPath -Path $Layout.ProjHome
         DataRoot = $DataRoot
         CacheDataRoot = $CacheRoot
         EnvironmentRoot = $ToolchainRoot
         EnvironmentRepairInvocation = $Layout.BootstrapEntryPath
         EnvCmdPath = Join-Path $ToolchainRoot 'env.cmd'
         EnvPs1Path = Join-Path $ToolchainRoot 'env.ps1'
-        EnvironmentStatePath = Join-Path $ToolchainRoot '_state.json'
         CacheRoot = Join-Path $CacheRoot 'downloads'
         LockRoot = $Layout.LockRoot
         SetupLockPath = Join-Path $Layout.LockRoot 'toolchain-setup.lock'

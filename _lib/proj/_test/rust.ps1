@@ -45,7 +45,8 @@ function New-ProjRustTestContext {
     return New-ProjDevContext `
         -ProjectRoot $ProjectRoot `
         -DataRoot $DataRoot `
-        -CacheDataRoot $CacheDataRoot
+        -CacheDataRoot $CacheDataRoot `
+        -EnvironmentInputRevision ('sha256-' + ('a' * 64))
 }
 
 $EnvironmentSnapshot = @{}
@@ -279,7 +280,15 @@ try {
         -Context $Context `
         -Definition $Definition `
         -Plan $Plan
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
+    $ProfilePath = Join-Path $Context.DataRoot '_profile.json'
+    [IO.File]::WriteAllText($ProfilePath, '{}')
+    $Context.CommandProfileRevision = 'sha256-' + (
+        Get-ProjDevFileSha256 -Path $ProfilePath
+    )
+    $Attempt = Start-ProjDevSetupProviderPublication -Context $Context
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+        -Plan $Plan `
+        -PublicationToken ([string]$Attempt.Token)
     Assert-ProjRustTest `
         -Condition (
             $Plan.PathPrefixes.Count -eq 1 -and
@@ -312,10 +321,9 @@ try {
             -Context $Context `
             -Scripts $Scripts) `
         -Message 'Rust environment scripts were not published'
-    $env:SWAWKIT_PROJ_BUN_MODE = 'disabled'
-    [void](Publish-ProjDevEnvironmentState `
+    Complete-ProjDevSetupProviderPublication `
         -Context $Context `
-        -Revision ([string]$Scripts.Revision))
+        -Attempt $Attempt
     $env:SWAWKIT_PROJ_BUN_MODE = 'managed'
     $env:SWAWKIT_PROJ_BUN_VERSION = '9.9.9'
     [void](Import-ProjDevGeneratedEnvironment -Context $Context)

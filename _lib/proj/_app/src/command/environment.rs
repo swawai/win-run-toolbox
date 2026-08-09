@@ -31,6 +31,8 @@ pub struct CommandExecutionContext {
     pub entry_file: PathBuf,
     pub invocation_directory: PathBuf,
     pub profile: EntryProfileRecord,
+    pub environment_input_revision: String,
+    pub profile_revision: String,
 }
 
 impl CommandExecutionContext {
@@ -50,6 +52,8 @@ impl CommandExecutionContext {
             entry_file: entry.entry_file.clone(),
             invocation_directory: entry.invocation_directory.clone(),
             profile: profile.record().clone(),
+            environment_input_revision: profile.environment_input_revision().to_owned(),
+            profile_revision: profile.profile_revision().to_owned(),
         }
     }
 }
@@ -112,6 +116,14 @@ impl ProcessEnvironment {
         environment.set("SWAWKIT_PROJ_DATA_ROOT", &context.data_root);
         environment.set("SWAWKIT_PROJ_ENTRY_COMMAND", &context.entry_name);
         environment.set("SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE", &context.entry_file);
+        environment.set(
+            "SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION",
+            &context.environment_input_revision,
+        );
+        environment.set(
+            "SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION",
+            &context.profile_revision,
+        );
         environment.apply_profile(&context.profile);
         Ok(environment)
     }

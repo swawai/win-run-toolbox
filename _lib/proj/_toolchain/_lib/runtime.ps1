@@ -4,6 +4,7 @@ foreach ($File in @(
     'declaration.ps1',
     'revision.ps1',
     'foundation.ps1',
+    'provider-state.ps1',
     'command-export.ps1',
     'state.ps1',
     'activation.ps1',

@@ -12,12 +12,13 @@
 同时生成:
   SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/env.cmd
   SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/env.ps1
-  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/export/_state.json
+  SWAWKIT_PROJ_DATA_ROOT/modules/kernel/.dev/setup/_state.json
 
-_state.json 记录该代环境实际应用的开发声明。需要受管开发环境的命令模块
-通过自己的 _guard/run.* 校验前提，并由 run.* 加载和复核环境；修改版本、
-channel、mode 或 hash 后，这些命令会要求重新 setup。与开发环境无关的命令
-不被中心逻辑误伤。
+_state.json 是 .dev.setup provider 的可用性协议，记录输入 revision、发布 token 与
+producer contract。需要受管开发环境的命令只在状态为 ready 且
+协议匹配时加载 export；修改受管工具的版本、channel、mode 或 hash 后，Core 会先将
+provider 标记为 unavailable，旧 setup 也不能覆盖新的状态。重新运行 setup 即可发布
+当前输入；与开发环境无关的配置变化不会使该 provider 失效。
 
 同一 Swaw Kit Home 下的入口共享经过校验的下载缓存:
   SWAWKIT_HOME/data/proj_cache/downloads

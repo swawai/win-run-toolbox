@@ -53,7 +53,9 @@ function New-ProjDevContext {
         [Parameter(Mandatory = $true)][string]$DataRoot,
         [Parameter(Mandatory = $true)][string]$CacheDataRoot,
         [string]$EntryCommand = 'swawkit',
-        [AllowNull()][string]$InvocationDirectory = $null
+        [AllowNull()][string]$InvocationDirectory = $null,
+        [AllowNull()][string]$EnvironmentInputRevision = $null,
+        [AllowNull()][string]$CommandProfileRevision = $null
     )
 
     $ResolvedProjectRoot = Get-ProjDevFullPath -Path $ProjectRoot
@@ -89,18 +91,22 @@ function New-ProjDevContext {
         -Activity 'resolving the development setup lock root'
     return [pscustomobject][ordered]@{
         ProjectRoot = $ResolvedProjectRoot
-        CanonicalProjectRoot = Get-ProjDevCanonicalPath -Path $ResolvedProjectRoot
         DataRoot = $ResolvedDataRoot
+        ProfilePath = Join-Path $ResolvedDataRoot '_profile.json'
         CacheDataRoot = $ResolvedCacheDataRoot
         EnvironmentRoot = $EnvironmentRoot
         EnvironmentProviderAddress = $EnvironmentProviderAddress
+        EnvironmentInputRevision = $EnvironmentInputRevision
+        CommandProfileRevision = $CommandProfileRevision
+        SetupCommandRoot = $SetupCommandRoot
+        ProviderStatePath = Join-Path $SetupCommandRoot '_state.json'
         EnvCmdPath = Join-Path $EnvironmentRoot 'env.cmd'
         EnvPs1Path = Join-Path $EnvironmentRoot 'env.ps1'
-        EnvironmentStatePath = Get-ProjDevelopmentEnvironmentStatePath `
-            -EnvironmentRoot $EnvironmentRoot
+        LegacyEnvironmentStatePath = Join-Path $EnvironmentRoot '_state.json'
         CacheRoot = Join-Path $ResolvedCacheDataRoot 'downloads'
         LockRoot = $LockRoot
         SetupLockPath = Join-Path $LockRoot 'setup.lock'
+        ProviderStateLockPath = Join-Path $LockRoot 'state.lock'
         ArtifactLockRoot = Join-Path $ResolvedCacheDataRoot '_locks'
         EntryCommand = $EntryCommand
         InvocationDirectory = $ResolvedInvocationDirectory
@@ -130,7 +136,9 @@ function New-ProjDevContextFromEnvironment {
         -DataRoot (Get-ProjDevRequiredEnvironmentValue -Name 'SWAWKIT_PROJ_DATA_ROOT') `
         -CacheDataRoot (Join-Path $ProjHome 'data\proj_cache') `
         -EntryCommand (Get-ProjDevRequiredEnvironmentValue -Name 'SWAWKIT_PROJ_ENTRY_COMMAND') `
-        -InvocationDirectory $InvocationDirectory
+        -InvocationDirectory $InvocationDirectory `
+        -EnvironmentInputRevision (Get-ProjDevCommandEnvironmentInputRevision) `
+        -CommandProfileRevision (Get-ProjDevCommandProfileRevision)
 }
 
 function Get-ProjDevSha256Text {
@@ -185,15 +193,35 @@ function Write-ProjDevTextAtomic {
     $TemporaryPath = Join-Path $Parent ".$([IO.Path]::GetFileName($FullPath)).$Token.tmp"
     $BackupPath = Join-Path $Parent ".$([IO.Path]::GetFileName($FullPath)).$Token.bak"
 
+    $CommitAttempted = $false
+    $Published = $false
     try {
         [IO.File]::WriteAllText($TemporaryPath, $Content, $Encoding)
+        $CommitAttempted = $true
         if ([IO.File]::Exists($FullPath)) {
             [IO.File]::Replace($TemporaryPath, $FullPath, $BackupPath)
         } else {
             [IO.File]::Move($TemporaryPath, $FullPath)
         }
+        $Published = $true
+    } catch {
+        if ($CommitAttempted) {
+            throw (
+                "Atomic publication failed for '$FullPath'. Recovery files " +
+                "were preserved when present: '$TemporaryPath', " +
+                "'$BackupPath'. $($_.Exception.Message)"
+            )
+        }
+        throw
     } finally {
-        foreach ($CleanupPath in @($TemporaryPath, $BackupPath)) {
+        $CleanupPaths = if ($Published) {
+            @($TemporaryPath, $BackupPath)
+        } elseif (-not $CommitAttempted) {
+            @($TemporaryPath)
+        } else {
+            @()
+        }
+        foreach ($CleanupPath in $CleanupPaths) {
             if ([IO.File]::Exists($CleanupPath)) {
                 try {
                     [IO.File]::Delete($CleanupPath)

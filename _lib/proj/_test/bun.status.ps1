@@ -16,6 +16,8 @@ $EnvironmentNames = @(
     'SWAWKIT_PROJ_DATA_ROOT',
     'SWAWKIT_PROJ_ENTRY_COMMAND',
     'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
+    'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256'
@@ -43,6 +45,11 @@ try {
     $ActionRoot = Join-Path $ProjectRoot '.swaw'
     [void][IO.Directory]::CreateDirectory($ActionRoot)
     [void][IO.Directory]::CreateDirectory($DataRoot)
+    $ProfilePath = Join-Path $DataRoot '_profile.json'
+    [IO.File]::WriteAllText($ProfilePath, '{}')
+    $ProfileRevision = 'sha256-' + (
+        Get-ProjDevFileSha256 -Path $ProfilePath
+    )
     Set-ProjBunProcessEnvironment -Values @{
         SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL = '1'
         SWAWKIT_HOME = $ControlHome
@@ -51,6 +58,8 @@ try {
         SWAWKIT_PROJ_DATA_ROOT = $DataRoot
         SWAWKIT_PROJ_ENTRY_COMMAND = 'swawkit'
         SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR = $ProjectRoot
+        SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION = ('sha256-' + ('a' * 64))
+        SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION = $ProfileRevision
         SWAWKIT_PROJ_BUN_MODE = 'managed'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
         SWAWKIT_PROJ_BUN_SHA256 = ''
@@ -107,6 +116,17 @@ try {
             [IO.File]::Exists($Context.EnvPs1Path)
         ) `
         -Message ".dev.setup did not preserve non-blocking trust: $($SetupResult.Output)"
+    $ReadyStatus = Invoke-ProjBunEntryFixture `
+        -PowerShell $SystemPowerShell `
+        -EntryPath (Join-Path $ProjRoot '.dev\status\run.ps1') `
+        -Arguments @()
+    Assert-ProjBunTest `
+        -Condition ($ReadyStatus.Output -cmatch
+            '\[READY\] \.dev\.setup publication [a-f0-9]{8}') `
+        -Message (
+            '.dev.status did not report the provider publication token: ' +
+            $ReadyStatus.Output
+        )
 
     $env:SWAWKIT_PROJ_DATA_ROOT = $PinnedDataRoot
     $env:SWAWKIT_PROJ_BUN_SHA256 = 'e' * 64

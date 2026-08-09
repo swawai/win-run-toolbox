@@ -16,6 +16,8 @@ $EnvironmentNames = @(
     'SWAWKIT_PROJ_DATA_ROOT',
     'SWAWKIT_PROJ_ENTRY_COMMAND',
     'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
+    'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION',
+    'SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256',
@@ -107,26 +109,6 @@ try {
             -Context $Context `
             -Scripts $Scripts) `
         -Message 'first environment publication was skipped'
-    $env:SWAWKIT_PROJ_BUN_MODE = 'managed'
-    $env:SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
-    $env:SWAWKIT_PROJ_BUN_SHA256 = [string]$Definition.ProjectSha256
-    Assert-ProjBunTest `
-        -Condition (Publish-ProjDevEnvironmentState `
-            -Context $Context `
-            -Revision ([string]$Scripts.Revision)) `
-        -Message 'first environment state publication was skipped'
-    $PublishedState = Read-ProjDevelopmentEnvironmentState `
-        -EnvironmentRoot $Context.EnvironmentRoot
-    Assert-ProjBunTest `
-        -Condition (
-            [string]$PublishedState.Revision -ceq
-                [string]$Scripts.Revision -and
-            [string]$PublishedState.Declarations.SWAWKIT_PROJ_BUN_MODE -ceq
-                'managed' -and
-            [string]$PublishedState.Declarations.SWAWKIT_PROJ_BUN_VERSION -ceq
-                '1.2.15'
-        ) `
-        -Message 'published environment state lost its declaration contract'
     Assert-ProjBunEnvironmentScriptsUsable `
         -Context $Context `
         -ExpectedExecutable (Join-Path $InstallRoot 'bun.exe') `
@@ -144,11 +126,6 @@ try {
             -Context $Context `
             -Scripts (ConvertTo-ProjDevEnvironmentScripts -Plan $Plan))) `
         -Message 'byte-stable environment was needlessly rewritten'
-    Assert-ProjBunTest `
-        -Condition (-not (Publish-ProjDevEnvironmentState `
-            -Context $Context `
-            -Revision ([string]$Scripts.Revision))) `
-        -Message 'byte-stable environment state was needlessly rewritten'
     Assert-ProjBunTest `
         -Condition (
             (Get-ProjDevFileSha256 -Path $Context.EnvCmdPath) -ceq $EnvCmdHash -and
@@ -301,11 +278,28 @@ try {
         SWAWKIT_PROJ_DATA_ROOT = $null
         SWAWKIT_PROJ_ENTRY_COMMAND = 'swawkit'
         SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR = $InvocationRoot
+        SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION = ('sha256-' + ('a' * 64))
         SWAWKIT_PROJ_BUN_MODE = 'disabled'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }
     $SetupDataRoot = Join-Path $TemporaryRoot 'setup entry data'
+    [void][IO.Directory]::CreateDirectory($SetupDataRoot)
+    $SetupProfilePath = Join-Path $SetupDataRoot '_profile.json'
+    [IO.File]::WriteAllText($SetupProfilePath, '{}')
     $env:SWAWKIT_PROJ_DATA_ROOT = $SetupDataRoot
+    $env:SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION = 'sha256-' + (
+        Get-ProjDevFileSha256 -Path $SetupProfilePath
+    )
+    $LegacyStatePath = Join-Path $SetupDataRoot (
+        'modules\kernel\.dev\setup\export\_state.json'
+    )
+    [void][IO.Directory]::CreateDirectory(
+        (Split-Path -Path $LegacyStatePath -Parent)
+    )
+    [IO.File]::WriteAllText(
+        $LegacyStatePath,
+        '{"schema":"swawkit.proj-dev.environment-state.v2"}'
+    )
     $SetupEntry = Join-Path $ProjRoot '.dev\setup\run.ps1'
     $SetupResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
@@ -315,7 +309,8 @@ try {
         -Condition ($SetupResult.ExitCode -eq 0 -and
             [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\env.cmd')) -and
             [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\env.ps1')) -and
-            [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\_state.json')) -and
+            [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\_state.json')) -and
+            -not [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\_state.json')) -and
             -not [IO.Directory]::Exists(
                 (Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\bun')
             )) `
@@ -334,7 +329,13 @@ try {
         -Message '.dev.setup accepted arguments or changed state after rejection'
 
     $PendingDataRoot = Join-Path $TemporaryRoot 'pending setup data'
+    [void][IO.Directory]::CreateDirectory($PendingDataRoot)
+    $PendingProfilePath = Join-Path $PendingDataRoot '_profile.json'
+    [IO.File]::WriteAllText($PendingProfilePath, '{}')
     $env:SWAWKIT_PROJ_DATA_ROOT = $PendingDataRoot
+    $env:SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION = 'sha256-' + (
+        Get-ProjDevFileSha256 -Path $PendingProfilePath
+    )
     $env:SWAWKIT_PROJ_GO_MODE = 'managed'
     $env:SWAWKIT_PROJ_GO_VERSION = '1.22.4'
     $env:SWAWKIT_PROJ_PYTHON_MODE = 'uv'
@@ -350,7 +351,8 @@ try {
             $PendingSetup.Output.Contains(
                 '.dev.setup does not yet handle these enabled declarations: go, python, uv.'
             ) -and
-            -not [IO.Directory]::Exists($PendingDataRoot) -and
+            [IO.File]::Exists((Join-Path $PendingDataRoot 'modules\kernel\.dev\setup\_state.json')) -and
+            -not [IO.Directory]::Exists((Join-Path $PendingDataRoot 'modules\kernel\.dev\setup\export')) -and
             -not [IO.Directory]::Exists(
                 (Join-Path $ProjectRoot 'data\proj_cache')
             )) `

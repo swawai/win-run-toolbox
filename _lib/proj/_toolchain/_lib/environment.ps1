@@ -66,7 +66,10 @@ function ConvertTo-ProjDevBatchValue {
 }
 
 function ConvertTo-ProjDevEnvironmentScripts {
-    param([Parameter(Mandatory = $true)][object]$Plan)
+    param(
+        [Parameter(Mandatory = $true)][object]$Plan,
+        [AllowNull()][string]$PublicationToken = $null
+    )
 
     $RevisionPlaceholder =
         Get-ProjDevelopmentEnvironmentRevisionPlaceholder
@@ -88,6 +91,16 @@ function ConvertTo-ProjDevEnvironmentScripts {
     [void]$Ps1.AppendLine(
         "`$env:$RevisionVariable = '$RevisionPlaceholder'"
     )
+    if (-not [string]::IsNullOrWhiteSpace($PublicationToken)) {
+        [void](Assert-ProjCommandProviderToken -Token $PublicationToken)
+        $TokenVariable = Get-ProjDevSetupPublicationTokenVariable
+        [void]$Cmd.AppendLine(
+            "set `"$TokenVariable=$PublicationToken`""
+        )
+        [void]$Ps1.AppendLine(
+            "`$env:$TokenVariable = '$PublicationToken'"
+        )
+    }
 
     foreach ($Name in $Plan.Variables.Keys) {
         $Value = $Plan.Variables[$Name]
@@ -168,34 +181,5 @@ function Publish-ProjDevEnvironmentScripts {
         -Content ([string]$Scripts.Ps1) `
         -ControlledRoot $Context.DataRoot `
         -Encoding $Ps1Encoding
-    return $true
-}
-
-function Publish-ProjDevEnvironmentState {
-    param(
-        [Parameter(Mandatory = $true)][object]$Context,
-        [Parameter(Mandatory = $true)][string]$Revision
-    )
-
-    $State = New-ProjDevelopmentEnvironmentState `
-        -Revision $Revision `
-        -ProjectRoot ([string]$Context.ProjectRoot) `
-        -ExportRoot ([string]$Context.EnvironmentRoot) `
-        -Declarations (Get-ProjDevelopmentDeclarationSnapshot)
-    $Content = ConvertTo-ProjDevJsonText -Value $State
-    $Encoding = [Text.UTF8Encoding]::new($false)
-    $Current = if ([IO.File]::Exists($Context.EnvironmentStatePath)) {
-        [IO.File]::ReadAllText($Context.EnvironmentStatePath, $Encoding)
-    } else {
-        $null
-    }
-    if ($Current -ceq $Content) {
-        return $false
-    }
-    Write-ProjDevTextAtomic `
-        -Path $Context.EnvironmentStatePath `
-        -Content $Content `
-        -ControlledRoot $Context.DataRoot `
-        -Encoding $Encoding
     return $true
 }

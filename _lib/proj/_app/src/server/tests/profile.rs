@@ -1,5 +1,6 @@
 use super::*;
 use crate::binding::SWAWKIT_HOME_PLACEHOLDER;
+use crate::profile::EntryProfileState;
 
 async fn send_variable(
     app: Router,
@@ -148,4 +149,66 @@ async fn requires_a_revision_and_rejects_a_stale_variable_without_overwriting() 
     let document = fixture.profile_store().document();
     assert_eq!(document.profile.git.name, "CLI Writer");
     assert_eq!(document.profile.git.email, "");
+}
+
+#[tokio::test]
+async fn web_profile_updates_share_the_provider_invalidation_transaction() {
+    let fixture = Fixture::new();
+    fixture.directory("home/_lib/proj");
+    let app = fixture.app();
+    let initial = send(app.clone(), Method::GET, "/api/v2/profile", Some(AUTHORITY)).await;
+    let initial = response_document(initial).await;
+
+    let created = send_variable(
+        app.clone(),
+        "SWAWKIT_PROJ_GIT_ID_NAME",
+        "Web Writer",
+        initial["revision"].as_str(),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::OK);
+    let created = response_document(created).await;
+    let state_path = fixture
+        .root
+        .join("home/data/proj.swawkit/modules/kernel/.dev/setup/_state.json");
+    let first_state = fs::read(&state_path).expect("read initial provider state");
+
+    let non_provider = send_variable(
+        app.clone(),
+        "SWAWKIT_PROJ_GIT_ID_EMAIL",
+        "web@example.com",
+        created["revision"].as_str(),
+    )
+    .await;
+    assert_eq!(non_provider.status(), StatusCode::OK);
+    let non_provider = response_document(non_provider).await;
+    assert_eq!(fs::read(&state_path).unwrap(), first_state);
+
+    let provider = send_variable(
+        app.clone(),
+        "SWAWKIT_PROJ_BUN_VERSION",
+        "1.2.16",
+        non_provider["revision"].as_str(),
+    )
+    .await;
+    assert_eq!(provider.status(), StatusCode::OK);
+    let state: Value = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+    let EntryProfileState::Ready(profile) = fixture.profile_store().read() else {
+        panic!("expected ready profile");
+    };
+    assert_eq!(
+        state["inputRevision"],
+        profile.environment_input_revision()
+    );
+    let state_after_provider_update = fs::read(&state_path).unwrap();
+
+    let stale = send_variable(
+        app,
+        "SWAWKIT_PROJ_BUN_VERSION",
+        "1.2.17",
+        non_provider["revision"].as_str(),
+    )
+    .await;
+    assert_eq!(stale.status(), StatusCode::CONFLICT);
+    assert_eq!(fs::read(&state_path).unwrap(), state_after_provider_update);
 }

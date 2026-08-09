@@ -1,8 +1,5 @@
 Set-StrictMode -Version 2.0
 
-$script:ProjDevelopmentEnvironmentStateSchema =
-    'swawkit.proj-dev.environment-state.v2'
-
 $script:ProjDevelopmentModuleRoot = [IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '..\_modules')
 )
@@ -135,12 +132,6 @@ function Get-ProjDevelopmentDeclarationSnapshot {
     return $Snapshot
 }
 
-function Get-ProjDevelopmentEnvironmentStatePath {
-    param([Parameter(Mandatory = $true)][string]$EnvironmentRoot)
-
-    return Join-Path $EnvironmentRoot '_state.json'
-}
-
 function Get-ProjEnabledDevelopmentDeclarationNames {
     param(
         [Parameter(Mandatory = $true)]
@@ -176,111 +167,20 @@ function Get-ProjPendingDevelopmentSetupModuleNames {
     }
 }
 
-function New-ProjDevelopmentEnvironmentState {
+function Assert-ProjDevelopmentSetupDeclarationsSupported {
     param(
-        [Parameter(Mandatory = $true)][string]$Revision,
-        [Parameter(Mandatory = $true)][string]$ProjectRoot,
-        [Parameter(Mandatory = $true)][string]$ExportRoot,
         [Parameter(Mandatory = $true)]
         [Collections.IDictionary]$Declarations
     )
 
-    if ($Revision -cnotmatch '^[a-f0-9]{16}$') {
-        throw "Invalid development environment export revision: $Revision"
-    }
-    return [ordered]@{
-        schema = $script:ProjDevelopmentEnvironmentStateSchema
-        revision = $Revision
-        projectRoot = Get-ProjDevFullPath -Path $ProjectRoot
-        exportRoot = Get-ProjDevFullPath -Path $ExportRoot
-        declarations = $Declarations
-    }
-}
-
-function Read-ProjDevelopmentEnvironmentState {
-    param([Parameter(Mandatory = $true)][string]$EnvironmentRoot)
-
-    $Path = Get-ProjDevelopmentEnvironmentStatePath `
-        -EnvironmentRoot $EnvironmentRoot
-    if (-not [IO.File]::Exists($Path)) {
-        return $null
-    }
-    try {
-        $State = [IO.File]::ReadAllText(
-            $Path,
-            [Text.Encoding]::UTF8
-        ) | ConvertFrom-Json
-    } catch {
+    $PendingModules = @(
+        Get-ProjPendingDevelopmentSetupModuleNames `
+            -Declarations $Declarations
+    )
+    if ($PendingModules.Count -gt 0) {
         throw (
-            'Cannot parse the published development environment state: ' +
-            $_.Exception.Message
+            '.dev.setup does not yet handle these enabled declarations: ' +
+            "$([string]::Join(', ', $PendingModules))."
         )
-    }
-    if ([string]$State.schema -cne
-            $script:ProjDevelopmentEnvironmentStateSchema -or
-        [string]$State.revision -cnotmatch '^[a-f0-9]{16}$' -or
-        [string]::IsNullOrWhiteSpace([string]$State.projectRoot) -or
-        -not [IO.Path]::IsPathRooted([string]$State.projectRoot) -or
-        [string]::IsNullOrWhiteSpace([string]$State.exportRoot) -or
-        -not [IO.Path]::IsPathRooted([string]$State.exportRoot) -or
-        $null -eq $State.declarations) {
-        throw "The published development environment state is invalid: $Path"
-    }
-
-    $Declarations = [ordered]@{}
-    foreach ($Property in @($State.declarations.PSObject.Properties)) {
-        $Name = [string]$Property.Name
-        if ($Name -cnotmatch '^SWAWKIT_PROJ_[A-Z0-9_]+$' -or
-            $Declarations.Contains($Name) -or
-            $null -eq $Property.Value -or
-            $Property.Value -isnot [string]) {
-            throw "The published development environment state is invalid: $Path"
-        }
-        $Declarations.Add($Name, [string]$Property.Value)
-    }
-    return [pscustomobject][ordered]@{
-        Path = $Path
-        Revision = [string]$State.revision
-        ProjectRoot = [string]$State.projectRoot
-        ExportRoot = [string]$State.exportRoot
-        Declarations = $Declarations
-    }
-}
-
-function Compare-ProjDevelopmentDeclarations {
-    param(
-        [Parameter(Mandatory = $true)]
-        [Collections.IDictionary]$Applied,
-        [Parameter(Mandatory = $true)]
-        [Collections.IDictionary]$Declared
-    )
-
-    $Names = [Collections.Generic.SortedSet[string]]::new(
-        [StringComparer]::Ordinal
-    )
-    foreach ($Name in $Applied.Keys) {
-        [void]$Names.Add([string]$Name)
-    }
-    foreach ($Name in $Declared.Keys) {
-        [void]$Names.Add([string]$Name)
-    }
-    foreach ($Name in $Names) {
-        $AppliedValue = if ($Applied.Contains($Name)) {
-            [string]$Applied[$Name]
-        } else {
-            '<unset>'
-        }
-        $DeclaredValue = if ($Declared.Contains($Name)) {
-            [string]$Declared[$Name]
-        } else {
-            '<unset>'
-        }
-        if ($AppliedValue -cne $DeclaredValue) {
-            [pscustomobject][ordered]@{
-                Name = $Name
-                Applied = $AppliedValue
-                Declared = $DeclaredValue
-            }
-        }
     }
 }

@@ -1,21 +1,20 @@
 mod document;
 mod error;
 mod model;
+mod provider_state;
+mod storage;
 mod variables;
 
 use std::fs;
-use std::os::windows::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub use document::EntryProfileDocument;
-use error::ProfileReadError;
 pub use error::{ProfileError, ProfileUpdateError};
 pub use model::{
     ChannelTool, DevelopmentProfile, EntryProfileRecord, GitProfile, ModeTool, Preferences,
     RepositoryProfile, RustTool, VersionedTool,
 };
-use sha2::{Digest, Sha256};
-use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+use storage::{read_record, revision, validate_data_root, validate_publication_target};
 
 use crate::atomic_file;
 use crate::binding::ProjectBinding;
@@ -27,6 +26,8 @@ pub const PROFILE_SCHEMA: &str = "swawkit.entry-profile/v1";
 pub struct EntryProfile {
     record: EntryProfileRecord,
     binding: ProjectBinding,
+    environment_input_revision: String,
+    profile_revision: String,
 }
 
 impl EntryProfile {
@@ -36,6 +37,14 @@ impl EntryProfile {
 
     pub fn binding(&self) -> &ProjectBinding {
         &self.binding
+    }
+
+    pub fn environment_input_revision(&self) -> &str {
+        &self.environment_input_revision
+    }
+
+    pub fn profile_revision(&self) -> &str {
+        &self.profile_revision
     }
 }
 
@@ -69,6 +78,12 @@ pub struct EntryProfileStore {
 
 struct ProfileSnapshot {
     state: EntryProfileState,
+    revision: String,
+}
+
+struct PreparedProfile {
+    profile: EntryProfile,
+    content: Vec<u8>,
     revision: String,
 }
 
@@ -119,7 +134,7 @@ impl EntryProfileStore {
                 };
             }
         };
-        let state = match self.resolve(record.clone()) {
+        let state = match self.resolve(record.clone(), revision.clone()) {
             Ok(profile) => EntryProfileState::Ready(profile),
             Err(error) => EntryProfileState::Invalid {
                 path,
@@ -131,30 +146,63 @@ impl EntryProfileStore {
     }
 
     pub fn save(&self, record: EntryProfileRecord) -> Result<EntryProfile, ProfileError> {
-        let _lock = self.acquire_lock()?;
-        self.save_locked(record).map(|(profile, _)| profile)
+        let lock = self.acquire_lock()?;
+        let current = self.snapshot();
+        self.commit_locked(&lock, &current, record)
+            .map(|prepared| prepared.profile)
     }
 
-    fn save_locked(
+    fn commit_locked(
         &self,
+        lock: &DataRootLock,
+        current: &ProfileSnapshot,
         record: EntryProfileRecord,
-    ) -> Result<(EntryProfile, String), ProfileError> {
+    ) -> Result<PreparedProfile, ProfileError> {
         validate_data_root(&self.data_root)?;
-        let profile = self.resolve(record)?;
-        let mut content = serde_json::to_string_pretty(profile.record()).map_err(|error| {
+        let mut content = serde_json::to_vec_pretty(&record).map_err(|error| {
             ProfileError::new(format!("cannot serialize entry profile: {error}"))
         })?;
-        content.push('\n');
+        content.push(b'\n');
+        let profile_revision = revision(&content);
+        let profile = self.resolve(record, profile_revision.clone())?;
+        let prepared = PreparedProfile {
+            revision: profile_revision,
+            profile,
+            content,
+        };
         let path = self.path();
         validate_publication_target(&path)?;
-        atomic_file::publish(&path, content.as_bytes()).map_err(|error| {
+        let state_transaction = if snapshot_input_revision(current).as_deref()
+            != Some(prepared.profile.environment_input_revision.as_str())
+        {
+            Some(provider_state::begin_unavailable(
+                &self.data_root,
+                &prepared.profile.environment_input_revision,
+                lock,
+            )?)
+        } else {
+            None
+        };
+        let publication = atomic_file::publish(&path, &prepared.content).map_err(|error| {
             ProfileError::new(format!(
                 "cannot publish entry profile '{}': {error}",
                 path.display()
             ))
-        })?;
-        let revision = revision(content.as_bytes());
-        Ok((profile, revision))
+        });
+        if let Err(publication_error) = publication {
+            if let Some(transaction) = state_transaction {
+                transaction.rollback().map_err(|rollback_error| {
+                    ProfileError::new(format!(
+                        "{publication_error}; additionally, {rollback_error}"
+                    ))
+                })?;
+            }
+            return Err(publication_error);
+        }
+        if let Some(transaction) = state_transaction {
+            transaction.commit();
+        }
+        Ok(prepared)
     }
 
     pub fn document(&self) -> EntryProfileDocument {
@@ -171,14 +219,15 @@ impl EntryProfileStore {
         name: &str,
         value: String,
     ) -> Result<EntryProfileDocument, ProfileError> {
-        let _lock = self.acquire_lock()?;
-        let mut record = record_for_variable_update(self.snapshot().state)?;
+        let lock = self.acquire_lock()?;
+        let current = self.snapshot();
+        let mut record = record_for_variable_update(current.state.clone())?;
         record.set_environment_variable(name, value)?;
-        let (profile, revision) = self.save_locked(record)?;
+        let prepared = self.commit_locked(&lock, &current, record)?;
         Ok(EntryProfileDocument::from_state(
-            EntryProfileState::Ready(profile),
+            EntryProfileState::Ready(prepared.profile),
             self.path().display().to_string(),
-            revision,
+            prepared.revision,
         ))
     }
 
@@ -186,12 +235,13 @@ impl EntryProfileStore {
         &self,
         record: EntryProfileRecord,
     ) -> Result<EntryProfileDocument, ProfileError> {
-        let _lock = self.acquire_lock()?;
-        let (profile, revision) = self.save_locked(record)?;
+        let lock = self.acquire_lock()?;
+        let current = self.snapshot();
+        let prepared = self.commit_locked(&lock, &current, record)?;
         Ok(EntryProfileDocument::from_state(
-            EntryProfileState::Ready(profile),
+            EntryProfileState::Ready(prepared.profile),
             self.path().display().to_string(),
-            revision,
+            prepared.revision,
         ))
     }
 
@@ -201,25 +251,25 @@ impl EntryProfileStore {
         name: &str,
         value: String,
     ) -> Result<EntryProfileDocument, ProfileUpdateError> {
-        let _lock = self.acquire_lock().map_err(ProfileUpdateError::Profile)?;
+        let lock = self.acquire_lock().map_err(ProfileUpdateError::Profile)?;
         let current = self.snapshot();
         if current.revision != expected_revision {
             return Err(ProfileUpdateError::Conflict {
                 current_revision: current.revision,
             });
         }
-        let mut record = record_for_variable_update(current.state)
+        let mut record = record_for_variable_update(current.state.clone())
             .map_err(ProfileUpdateError::Profile)?;
         record
             .set_environment_variable(name, value)
             .map_err(ProfileUpdateError::Profile)?;
-        let (profile, revision) = self
-            .save_locked(record)
+        let prepared = self
+            .commit_locked(&lock, &current, record)
             .map_err(ProfileUpdateError::Profile)?;
         Ok(EntryProfileDocument::from_state(
-            EntryProfileState::Ready(profile),
+            EntryProfileState::Ready(prepared.profile),
             self.path().display().to_string(),
-            revision,
+            prepared.revision,
         ))
     }
 
@@ -227,11 +277,21 @@ impl EntryProfileStore {
         self.data_root.join("_profile.json")
     }
 
-    fn resolve(&self, record: EntryProfileRecord) -> Result<EntryProfile, ProfileError> {
+    fn resolve(
+        &self,
+        record: EntryProfileRecord,
+        profile_revision: String,
+    ) -> Result<EntryProfile, ProfileError> {
         record.validate()?;
         let binding = ProjectBinding::resolve(&self.swawkit_home, &record.target_project_root)
             .map_err(|error| ProfileError::new(error.to_string()))?;
-        Ok(EntryProfile { record, binding })
+        let environment_input_revision = environment_input_revision(&record);
+        Ok(EntryProfile {
+            record,
+            binding,
+            environment_input_revision,
+            profile_revision,
+        })
     }
 
     fn acquire_lock(&self) -> Result<DataRootLock, ProfileError> {
@@ -242,6 +302,31 @@ impl EntryProfileStore {
             ))
         })?;
         DataRootLock::acquire(data_directory).map_err(|error| ProfileError::new(error.to_string()))
+    }
+}
+
+fn snapshot_input_revision(snapshot: &ProfileSnapshot) -> Option<String> {
+    match &snapshot.state {
+        EntryProfileState::Ready(profile) => {
+            Some(profile.environment_input_revision().to_owned())
+        }
+        EntryProfileState::Invalid {
+            record: Some(record),
+            ..
+        } => Some(record.environment_input_revision()),
+        EntryProfileState::Missing { .. } | EntryProfileState::Invalid { record: None, .. } => None,
+    }
+}
+
+fn environment_input_revision(record: &EntryProfileRecord) -> String {
+    let content = serde_json::to_vec(&record.dev_setup_input_values())
+        .expect("Entry Profile environment inputs must serialize");
+    revision(&content)
+}
+
+impl EntryProfileRecord {
+    pub(crate) fn environment_input_revision(&self) -> String {
+        environment_input_revision(self)
     }
 }
 
@@ -265,64 +350,8 @@ fn record_for_variable_update(
     }
 }
 
-fn read_record(path: &Path) -> Result<(EntryProfileRecord, String), ProfileReadError> {
-    validate_publication_target(path)?;
-    let content = fs::read(path).map_err(|error| {
-        ProfileReadError::new(format!(
-            "cannot read entry profile '{}': {error}",
-            path.display()
-        ))
-    })?;
-    let revision = revision(&content);
-    serde_json::from_slice(&content)
-        .map(|record| (record, revision.clone()))
-        .map_err(|error| {
-            ProfileReadError::with_revision(
-                format!("invalid entry profile JSON: {error}"),
-                revision,
-            )
-        })
-}
-
-fn revision(content: &[u8]) -> String {
-    format!("sha256-{:x}", Sha256::digest(content))
-}
-
-fn validate_data_root(data_root: &Path) -> Result<(), ProfileError> {
-    let metadata = fs::symlink_metadata(data_root).map_err(|error| {
-        ProfileError::new(format!(
-            "cannot inspect entry profile DataRoot '{}': {error}",
-            data_root.display()
-        ))
-    })?;
-    if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        return Err(ProfileError::new(format!(
-            "entry profile DataRoot must be a regular directory: {}",
-            data_root.display()
-        )));
-    }
-    Ok(())
-}
-
-fn validate_publication_target(path: &Path) -> Result<(), ProfileError> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(ProfileError::new(format!(
-                "cannot inspect entry profile '{}': {error}",
-                path.display()
-            )));
-        }
-    };
-    if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        return Err(ProfileError::new(format!(
-            "entry profile must be a regular file: {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod provider_state_tests;

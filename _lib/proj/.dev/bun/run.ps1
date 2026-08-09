@@ -14,20 +14,15 @@ if ($null -eq $BunDefinition) {
         "then '$Repair'."
     )
 }
-[void](Get-ProjRequiredCommandExport `
-    -DataRoot ([string]$Context.DataRoot) `
-    -ProviderAddress ([string]$Context.EnvironmentProviderAddress) `
-    -EntryCommand ([string]$Context.EntryCommand))
-$BunDefinition = Get-ProjDevBunResolvedDefinition `
-    -Context $Context `
-    -Definition $BunDefinition
-
-Assert-ProjDevWindowsX64 -ToolName 'Bun'
-Assert-ProjDevBunReady `
-    -Context $Context `
-    -Definition $BunDefinition
 try {
     Import-ProjDevGeneratedEnvironment -Context $Context | Out-Null
+    $BunDefinition = Get-ProjDevBunResolvedDefinition `
+        -Context $Context `
+        -Definition $BunDefinition
+    Assert-ProjDevWindowsX64 -ToolName 'Bun'
+    Assert-ProjDevBunReady `
+        -Context $Context `
+        -Definition $BunDefinition
     Assert-ProjDevBunEnvironmentCurrent `
         -Context $Context `
         -Definition $BunDefinition

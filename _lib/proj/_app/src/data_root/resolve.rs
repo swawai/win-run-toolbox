@@ -2,12 +2,14 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use crate::entry::{EntryIdentity, EntryIdentityError};
+use crate::entry::{EntryIdentity, EntryIdentityError, EntryIdentityLease};
 
 use super::claim::{ClaimApprovalError, ClaimKind, DataRootClaim, DataRootClaimApprover};
 use super::execute::{DataRootExecutionError, execute_plan};
 use super::inventory::{DataRootInventory, DataRootInventoryError};
+use super::lease::{DataRootBindingLease, DataRootBindingLeaseError};
 use super::lock::{DataRootLock, DataRootLockError};
 use super::plan::{
     DataRootPlan, DataRootPlanError, DataRootPlanningRequest, ordinal_path_eq, ordinal_text_eq,
@@ -22,11 +24,40 @@ pub struct ResolveDataRootRequest<'a> {
     pub legacy_data_directory: Option<&'a Path>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct ResolvedDataRoot {
-    pub path: PathBuf,
-    pub warnings: Vec<String>,
+    path: PathBuf,
+    warnings: Vec<String>,
+    _lease: Arc<DataRootBindingLease>,
 }
+
+impl ResolvedDataRoot {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
+}
+
+impl fmt::Debug for ResolvedDataRoot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ResolvedDataRoot")
+            .field("path", &self.path)
+            .field("warnings", &self.warnings)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for ResolvedDataRoot {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path && self.warnings == other.warnings
+    }
+}
+
+impl Eq for ResolvedDataRoot {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRootInspection {
@@ -38,6 +69,12 @@ pub fn inspect_data_root(
     request: ResolveDataRootRequest<'_>,
 ) -> Result<DataRootInspection, ResolveDataRootError> {
     let request = OwnedRequest::from_request(request)?;
+    inspect_owned_data_root(&request)
+}
+
+pub(super) fn inspect_owned_data_root(
+    request: &OwnedRequest,
+) -> Result<DataRootInspection, ResolveDataRootError> {
     let data_directory = request.swawkit_home.join("data");
     let plan = build_plan(&request, &data_directory)?;
     Ok(DataRootInspection {
@@ -51,10 +88,17 @@ pub fn claim_data_root(
     expected: &DataRootClaim,
 ) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     let request = OwnedRequest::from_request(request)?;
+    claim_owned_data_root(&request, expected)
+}
+
+pub(super) fn claim_owned_data_root(
+    request: &OwnedRequest,
+    expected: &DataRootClaim,
+) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     let data_directory = request.swawkit_home.join("data");
     let lock = DataRootLock::acquire(&data_directory)?;
     let plan = build_plan(&request, &data_directory)?;
-    complete_expected_claim(plan, expected, lock)
+    complete_expected_claim(plan, expected, lock, request)
 }
 
 pub fn resolve_data_root(
@@ -62,13 +106,20 @@ pub fn resolve_data_root(
     approver: &mut impl DataRootClaimApprover,
 ) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     let request = OwnedRequest::from_request(request)?;
+    resolve_owned_data_root(&request, approver)
+}
+
+pub(super) fn resolve_owned_data_root(
+    request: &OwnedRequest,
+    approver: &mut impl DataRootClaimApprover,
+) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     let data_directory = request.swawkit_home.join("data");
 
     let lock = DataRootLock::acquire(&data_directory)?;
     let initial_plan = build_plan(&request, &data_directory)?;
     let claim = DataRootClaim::from_plan(&initial_plan);
     let Some(claim) = claim else {
-        return complete_locked(initial_plan, None, lock);
+        return complete_locked(initial_plan, None, lock, request);
     };
     drop(lock);
 
@@ -78,14 +129,13 @@ pub fn resolve_data_root(
 
     let lock = DataRootLock::acquire(&data_directory)?;
     let current_plan = build_plan(&request, &data_directory)?;
-    complete_expected_claim(current_plan, &claim, lock)
+    complete_expected_claim(current_plan, &claim, lock, request)
 }
 
 fn build_plan(
     request: &OwnedRequest,
     data_directory: &Path,
 ) -> Result<DataRootPlan, ResolveDataRootError> {
-    let identity = EntryIdentity::read(&request.entry_file)?;
     let current = DataRootInventory::scan(data_directory)?;
     let legacy = request
         .legacy_data_directory
@@ -94,7 +144,7 @@ fn build_plan(
         .transpose()?;
     plan_data_root(DataRootPlanningRequest {
         entry_file: &request.entry_file,
-        identity: &identity,
+        identity: request.entry_identity(),
         current: &current,
         legacy: legacy.as_ref(),
         inherited_data_root: request.inherited_data_root.as_deref(),
@@ -106,9 +156,14 @@ fn complete_locked(
     plan: DataRootPlan,
     completed_legacy_source: Option<PathBuf>,
     lock: DataRootLock,
+    request: &OwnedRequest,
 ) -> Result<ResolvedDataRoot, ResolveDataRootError> {
-    let path = plan.target().data_root.clone();
+    let target = plan.target().clone();
     let execution = execute_plan(&plan)?;
+    let lease = Arc::new(DataRootBindingLease::acquire(
+        &plan,
+        Arc::clone(&request.entry_file_lease),
+    )?);
     let mut warnings = Vec::new();
     if let Some(source) = execution.legacy_source.or(completed_legacy_source)
         && let Some(warning) = remove_legacy_residue(&source)
@@ -116,8 +171,9 @@ fn complete_locked(
         warnings.push(warning);
     }
     let resolved = ResolvedDataRoot {
-        path,
+        path: target.data_root,
         warnings,
+        _lease: lease,
     };
     drop(lock);
     Ok(resolved)
@@ -127,16 +183,17 @@ fn complete_expected_claim(
     plan: DataRootPlan,
     expected: &DataRootClaim,
     lock: DataRootLock,
+    request: &OwnedRequest,
 ) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     match DataRootClaim::from_plan(&plan) {
-        Some(current) if &current == expected => complete_locked(plan, None, lock),
+        Some(current) if &current == expected => complete_locked(plan, None, lock, request),
         None if direct_target_matches(&plan, expected) => {
             let completed_legacy_source = if expected.kind == ClaimKind::MigrateLegacy {
                 expected.source_data_root.clone()
             } else {
                 None
             };
-            complete_locked(plan, completed_legacy_source, lock)
+            complete_locked(plan, completed_legacy_source, lock, request)
         }
         _ => Err(ResolveDataRootError::state_changed()),
     }
@@ -185,15 +242,18 @@ fn remove_legacy_residue(legacy_data_root: &Path) -> Option<String> {
     })
 }
 
-struct OwnedRequest {
+pub(super) struct OwnedRequest {
     swawkit_home: PathBuf,
     entry_file: PathBuf,
+    entry_file_lease: Arc<EntryIdentityLease>,
     inherited_data_root: Option<PathBuf>,
     legacy_data_directory: Option<PathBuf>,
 }
 
 impl OwnedRequest {
-    fn from_request(request: ResolveDataRootRequest<'_>) -> Result<Self, ResolveDataRootError> {
+    pub(super) fn from_request(
+        request: ResolveDataRootRequest<'_>,
+    ) -> Result<Self, ResolveDataRootError> {
         let swawkit_home = required_directory(request.swawkit_home, "SWAWKIT_HOME")?;
         let entry_file = absolute(request.entry_file, "project entry file")?;
         let inherited_data_root = match request.inherited_data_root {
@@ -209,12 +269,18 @@ impl OwnedRequest {
             .legacy_data_directory
             .map(|path| absolute(path, "legacy project data directory"))
             .transpose()?;
+        let entry_file_lease = Arc::new(EntryIdentityLease::acquire_entry(&entry_file)?);
         Ok(Self {
             swawkit_home,
             entry_file,
+            entry_file_lease,
             inherited_data_root,
             legacy_data_directory,
         })
+    }
+
+    pub(super) fn entry_identity(&self) -> &EntryIdentity {
+        self.entry_file_lease.identity()
     }
 }
 
@@ -314,6 +380,7 @@ resolve_error_from!(DataRootPlanError);
 resolve_error_from!(DataRootLockError);
 resolve_error_from!(ClaimApprovalError);
 resolve_error_from!(DataRootExecutionError);
+resolve_error_from!(DataRootBindingLeaseError);
 
 #[cfg(test)]
 mod tests;
@@ -321,3 +388,7 @@ mod tests;
 #[cfg(test)]
 #[path = "resolve/directory_identity_tests.rs"]
 mod directory_identity_tests;
+
+#[cfg(test)]
+#[path = "resolve/lease_tests.rs"]
+mod lease_tests;

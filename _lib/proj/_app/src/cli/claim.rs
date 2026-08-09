@@ -62,13 +62,13 @@ pub(super) fn run(
             };
             let resolved = claim_data_root(request, &expected)
                 .map_err(|error| CliError::new(format!("DataRoot claim failed: {error}")))?;
-            for warning in resolved.warnings {
+            for warning in resolved.warnings() {
                 eprintln!("[WARNING] {warning}");
             }
             let output = format!(
                 "DataRoot Claim\nStatus: claimed\nEntry: {}\nDataRoot: {}",
                 expected.entry_name,
-                resolved.path.display()
+                resolved.path().display()
             );
             write_output(&output)
                 .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;

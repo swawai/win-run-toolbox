@@ -6,7 +6,9 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+use windows_sys::Win32::Storage::FileSystem::{
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
+};
 
 const LOCK_FILE_NAME: &str = "_proj-entry.lock";
 const DEFAULT_ATTEMPTS: usize = 100;
@@ -59,9 +61,26 @@ impl DataRootLock {
                 .write(true)
                 .create(true)
                 .share_mode(0)
+                .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
                 .open(&path)
             {
-                Ok(file) => return Ok(Self { _file: file }),
+                Ok(file) => {
+                    let metadata = file.metadata().map_err(|error| {
+                        DataRootLockError::new(format!(
+                            "cannot inspect the opened project DataRoot lock '{}': {error}",
+                            path.display()
+                        ))
+                    })?;
+                    if !metadata.is_file()
+                        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+                    {
+                        return Err(DataRootLockError::new(format!(
+                            "project DataRoot lock must be a regular file: {}",
+                            path.display()
+                        )));
+                    }
+                    return Ok(Self { _file: file });
+                }
                 Err(_) if attempt + 1 < attempts => thread::sleep(retry_delay),
                 Err(error) => {
                     return Err(DataRootLockError::new(format!(
@@ -82,7 +101,6 @@ impl DataRootLock {
     ) -> Result<Self, DataRootLockError> {
         Self::acquire_with(data_directory, attempts, retry_delay)
     }
-
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +147,39 @@ mod tests {
             .expect("reacquire stale lock file");
 
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn a_reparse_lock_file_is_never_followed() {
+        let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "swawkit-data-lock-reparse-{}-{sequence}",
+            std::process::id()
+        ));
+        let target = root.join("external.lock");
+        let lock_path = root.join(LOCK_FILE_NAME);
+        fs::create_dir(&root).expect("create reparse lock fixture");
+        fs::write(&target, b"external").expect("create reparse target");
+        if let Err(error) = std::os::windows::fs::symlink_file(&target, &lock_path) {
+            if error.kind() == std::io::ErrorKind::PermissionDenied {
+                fs::remove_dir_all(root).expect("remove unsupported reparse fixture");
+                return;
+            }
+            panic!("create reparse lock: {error}");
+        }
+
+        let error = match DataRootLock::acquire_for_test(&root, 1, Duration::ZERO) {
+            Ok(lock) => {
+                drop(lock);
+                panic!("a reparse lock file must be rejected");
+            }
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("must be a regular file"));
+        assert_eq!(fs::read(&target).expect("read untouched target"), b"external");
+
+        fs::remove_file(lock_path).expect("remove reparse lock");
+        fs::remove_dir_all(root).expect("remove reparse lock fixture");
     }
 
     fn first_lock_file_remains(root: &Path) -> bool {

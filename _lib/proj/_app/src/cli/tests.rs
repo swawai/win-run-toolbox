@@ -79,7 +79,7 @@ impl Fixture {
             .to_str()
             .expect("Unicode fixture path")
             .to_owned();
-        EntryProfileStore::new(&self.context.swawkit_home, resolved.path)
+        EntryProfileStore::new(&self.context.swawkit_home, resolved.path())
             .save(profile)
             .expect("save fixture profile");
     }

@@ -2,6 +2,7 @@ mod claim;
 mod document;
 mod execute;
 mod inventory;
+mod lease;
 mod lock;
 mod plan;
 mod record;

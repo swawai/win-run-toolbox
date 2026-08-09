@@ -1,11 +1,15 @@
 use std::error::Error;
 use std::fmt;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use crate::entry::EntryIdentity;
+
+use super::resolve::{
+    OwnedRequest, claim_owned_data_root, inspect_owned_data_root, resolve_owned_data_root,
+};
 use super::{
     ClaimApprovalError, DataRootClaim, ResolveDataRootError, ResolveDataRootRequest,
-    ResolvedDataRoot, claim_data_root, inspect_data_root, resolve_data_root,
+    ResolvedDataRoot,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,16 +20,20 @@ pub enum DataRootSessionState {
 
 #[derive(Clone)]
 pub struct DataRootSession {
-    request: Arc<SessionRequest>,
+    request: Arc<OwnedRequest>,
     ready: Arc<Mutex<Option<ResolvedDataRoot>>>,
 }
 
 impl DataRootSession {
-    pub fn new(request: ResolveDataRootRequest<'_>) -> Self {
-        Self {
-            request: Arc::new(SessionRequest::from_request(request)),
+    pub fn new(request: ResolveDataRootRequest<'_>) -> Result<Self, DataRootSessionError> {
+        Ok(Self {
+            request: Arc::new(OwnedRequest::from_request(request)?),
             ready: Arc::new(Mutex::new(None)),
-        }
+        })
+    }
+
+    pub fn entry_identity(&self) -> &EntryIdentity {
+        self.request.entry_identity()
     }
 
     pub fn status(&self) -> Result<DataRootSessionState, DataRootSessionError> {
@@ -34,7 +42,7 @@ impl DataRootSession {
             return Ok(DataRootSessionState::Ready(resolved.clone()));
         }
 
-        let inspection = inspect_data_root(self.request.borrow())?;
+        let inspection = inspect_owned_data_root(&self.request)?;
         if let Some(claim) = inspection.claim {
             return Ok(DataRootSessionState::ClaimRequired(claim));
         }
@@ -51,13 +59,13 @@ impl DataRootSession {
     ) -> Result<Vec<String>, DataRootSessionError> {
         let mut ready = self.lock_ready()?;
         if let Some(resolved) = ready.as_ref() {
-            return Ok(resolved.warnings.clone());
+            return Ok(resolved.warnings().to_vec());
         }
 
-        let inspection = inspect_data_root(self.request.borrow())?;
+        let inspection = inspect_owned_data_root(&self.request)?;
         let Some(expected_claim) = inspection.claim else {
             let resolved = self.resolve_without_claim()?;
-            let warnings = resolved.warnings.clone();
+            let warnings = resolved.warnings().to_vec();
             *ready = Some(resolved);
             return Ok(warnings);
         };
@@ -70,14 +78,14 @@ impl DataRootSession {
             });
         }
 
-        let resolved = match claim_data_root(self.request.borrow(), &expected_claim) {
+        let resolved = match claim_owned_data_root(&self.request, &expected_claim) {
             Ok(resolved) => resolved,
             Err(error) if error.is_state_changed() => {
                 return Err(DataRootSessionError::Conflict);
             }
             Err(error) => return Err(error.into()),
         };
-        let warnings = resolved.warnings.clone();
+        let warnings = resolved.warnings().to_vec();
         *ready = Some(resolved);
         Ok(warnings)
     }
@@ -89,7 +97,7 @@ impl DataRootSession {
                 saw_claim = true;
                 Err(ClaimApprovalError::new("DataRoot claim is required"))
             };
-            resolve_data_root(self.request.borrow(), &mut reject)
+            resolve_owned_data_root(&self.request, &mut reject)
         };
         if saw_claim {
             return Err(DataRootSessionError::Conflict);
@@ -97,39 +105,10 @@ impl DataRootSession {
         result.map_err(Into::into)
     }
 
-    fn lock_ready(
-        &self,
-    ) -> Result<MutexGuard<'_, Option<ResolvedDataRoot>>, DataRootSessionError> {
+    fn lock_ready(&self) -> Result<MutexGuard<'_, Option<ResolvedDataRoot>>, DataRootSessionError> {
         self.ready
             .lock()
             .map_err(|_| DataRootSessionError::Unavailable)
-    }
-}
-
-struct SessionRequest {
-    swawkit_home: PathBuf,
-    entry_file: PathBuf,
-    inherited_data_root: Option<PathBuf>,
-    legacy_data_directory: Option<PathBuf>,
-}
-
-impl SessionRequest {
-    fn from_request(request: ResolveDataRootRequest<'_>) -> Self {
-        Self {
-            swawkit_home: request.swawkit_home.to_path_buf(),
-            entry_file: request.entry_file.to_path_buf(),
-            inherited_data_root: request.inherited_data_root.map(Path::to_path_buf),
-            legacy_data_directory: request.legacy_data_directory.map(Path::to_path_buf),
-        }
-    }
-
-    fn borrow(&self) -> ResolveDataRootRequest<'_> {
-        ResolveDataRootRequest {
-            swawkit_home: &self.swawkit_home,
-            entry_file: &self.entry_file,
-            inherited_data_root: self.inherited_data_root.as_deref(),
-            legacy_data_directory: self.legacy_data_directory.as_deref(),
-        }
     }
 }
 
@@ -169,5 +148,65 @@ impl Error for DataRootSessionError {
 impl From<ResolveDataRootError> for DataRootSessionError {
     fn from(error: ResolveDataRootError) -> Self {
         Self::Resolution(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::*;
+    use crate::data_root::{DataRootClaim, resolve_data_root};
+
+    static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn claim_required_session_pins_its_entry_from_construction_until_drop() {
+        let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "swawkit-data-root-session-{}-{sequence}",
+            std::process::id()
+        ));
+        let swawkit_home = root.join("home");
+        let entry_file = root.join("session-entry.exe");
+        fs::create_dir_all(&swawkit_home).expect("create Swaw Kit home");
+        fs::write(&entry_file, b"first Entry").expect("create first Entry");
+
+        let request = ResolveDataRootRequest {
+            swawkit_home: &swawkit_home,
+            entry_file: &entry_file,
+            inherited_data_root: None,
+            legacy_data_directory: None,
+        };
+        let mut approve = |_claim: &DataRootClaim| Ok(true);
+        let resolved = resolve_data_root(request, &mut approve).expect("bind first Entry");
+        drop(resolved);
+
+        let replacement = root.join("replacement.exe");
+        fs::write(&replacement, b"second Entry").expect("create replacement Entry");
+        fs::remove_file(&entry_file).expect("remove first Entry");
+        fs::rename(&replacement, &entry_file).expect("publish replacement Entry");
+        let expected_identity =
+            EntryIdentity::read(&entry_file).expect("read replacement identity");
+
+        let session = DataRootSession::new(request).expect("pin replacement Entry");
+        assert_eq!(session.entry_identity(), &expected_identity);
+        assert!(
+            fs::write(&entry_file, b"changed before status").is_err(),
+            "the Entry must be pinned before the first session request"
+        );
+        assert!(matches!(
+            session.status().expect("inspect DataRoot session"),
+            DataRootSessionState::ClaimRequired(_)
+        ));
+        assert!(
+            fs::rename(&entry_file, root.join("moved.exe")).is_err(),
+            "ClaimRequired must retain the Entry lease"
+        );
+
+        drop(session);
+        fs::write(&entry_file, b"changed after session").expect("modify released Entry");
+        fs::remove_dir_all(root).expect("remove fixture");
     }
 }

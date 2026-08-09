@@ -301,9 +301,10 @@ async fn ready_profile_store(
     state: &ServerState,
 ) -> Result<EntryProfileStore, (StatusCode, Json<ApiError>)> {
     match data_root_status(state).await? {
-        DataRootSessionState::Ready(resolved) => {
-            Ok(EntryProfileStore::new(&state.context.swawkit_home, resolved.path))
-        }
+        DataRootSessionState::Ready(resolved) => Ok(EntryProfileStore::new(
+            &state.context.swawkit_home,
+            resolved.path(),
+        )),
         DataRootSessionState::ClaimRequired(_) => Err(api_error(
             StatusCode::CONFLICT,
             "DataRoot ownership claim is required",

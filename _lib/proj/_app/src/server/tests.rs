@@ -82,6 +82,7 @@ impl Fixture {
             inherited_data_root: None,
             legacy_data_directory: None,
         })
+        .expect("pin fixture Entry for DataRoot session")
     }
 
     fn replace_entry(&self, content: &[u8]) {

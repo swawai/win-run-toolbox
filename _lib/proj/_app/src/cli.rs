@@ -90,11 +90,11 @@ fn run_with_host_launcher(
         approver,
     )
     .map_err(|error| CliError::new(format!("DataRoot resolution failed: {error}")))?;
-    for warning in resolved.warnings {
+    for warning in resolved.warnings() {
         eprintln!("[WARNING] {warning}");
     }
 
-    let profile_store = EntryProfileStore::new(&context.swawkit_home, &resolved.path);
+    let profile_store = EntryProfileStore::new(&context.swawkit_home, resolved.path());
     let profile_state = profile_store.read();
     let snapshot = CatalogSnapshot::discover(
         context,
@@ -130,7 +130,7 @@ fn run_with_host_launcher(
             )));
         }
     };
-    let execution_context = CommandExecutionContext::new(context, &profile, resolved.path);
+    let execution_context = CommandExecutionContext::new(context, &profile, resolved.path());
     CommandExecutor::new(&execution_context, &snapshot)
         .execute(argv)
         .map_err(|error| CliError::new(error.to_string()))

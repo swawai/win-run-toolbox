@@ -9,7 +9,7 @@ use std::path::Path;
 
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
+    CreateFileW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
     FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_INFO,
     FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
     FileAttributeTagInfo, FileIdInfo, GetFileInformationByHandleEx,
@@ -32,26 +32,13 @@ impl EntryIdentity {
     }
 
     fn read_path(path: &Path, kind: IdentityPathKind) -> Result<Self, EntryIdentityError> {
-        let path = std::path::absolute(path).map_err(|error| {
-            EntryIdentityError::new(format!(
-                "invalid {} path '{}': {error}",
-                kind.label(),
-                path.display()
-            ))
-        })?;
-        if !kind.matches(&path) {
-            return Err(EntryIdentityError::new(format!(
-                "{} does not exist: {}",
-                kind.label(),
-                path.display()
-            )));
-        }
-
-        let file = open_identity_handle(&path, kind)?;
-        reject_reparse_point(&file, &path, kind)?;
-        let file_id = read_file_id(&file, &path)?;
-        let volume_id = read_volume_id(&path)?;
-        Ok(Self { volume_id, file_id })
+        let (_, identity) = open_identity(
+            path,
+            kind,
+            FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        )?;
+        Ok(identity)
     }
 
     pub fn from_parts(
@@ -84,8 +71,36 @@ impl EntryIdentity {
     }
 }
 
+pub(super) fn open_identity(
+    path: &Path,
+    kind: IdentityPathKind,
+    desired_access: u32,
+    share_mode: u32,
+) -> Result<(File, EntryIdentity), EntryIdentityError> {
+    let path = std::path::absolute(path).map_err(|error| {
+        EntryIdentityError::new(format!(
+            "invalid {} path '{}': {error}",
+            kind.label(),
+            path.display()
+        ))
+    })?;
+    if !kind.matches(&path) {
+        return Err(EntryIdentityError::new(format!(
+            "{} does not exist: {}",
+            kind.label(),
+            path.display()
+        )));
+    }
+
+    let file = open_identity_handle(&path, kind, desired_access, share_mode)?;
+    validate_identity_handle(&file, &path, kind)?;
+    let file_id = read_file_id(&file, &path)?;
+    let volume_id = read_volume_id(&path)?;
+    Ok((file, EntryIdentity { volume_id, file_id }))
+}
+
 #[derive(Clone, Copy)]
-enum IdentityPathKind {
+pub(super) enum IdentityPathKind {
     File,
     Directory,
 }
@@ -135,13 +150,15 @@ pub(crate) fn is_valid_file_id(value: &str) -> bool {
 fn open_identity_handle(
     path: &Path,
     kind: IdentityPathKind,
+    desired_access: u32,
+    share_mode: u32,
 ) -> Result<File, EntryIdentityError> {
     let path_wide = null_terminated(path.as_os_str())?;
     let handle = unsafe {
         CreateFileW(
             path_wide.as_ptr(),
-            FILE_READ_ATTRIBUTES,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            desired_access,
+            share_mode,
             std::ptr::null(),
             OPEN_EXISTING,
             kind.open_flags(),
@@ -157,7 +174,7 @@ fn open_identity_handle(
     Ok(unsafe { File::from_raw_handle(handle as RawHandle) })
 }
 
-fn reject_reparse_point(
+fn validate_identity_handle(
     file: &File,
     path: &Path,
     kind: IdentityPathKind,
@@ -167,6 +184,14 @@ fn reject_reparse_point(
     if attributes.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
         return Err(EntryIdentityError::new(format!(
             "{} cannot be a reparse point: {}",
+            kind.label(),
+            path.display()
+        )));
+    }
+    let is_directory = attributes.FileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0;
+    if is_directory != matches!(kind, IdentityPathKind::Directory) {
+        return Err(EntryIdentityError::new(format!(
+            "{} changed type while it was opened: {}",
             kind.label(),
             path.display()
         )));

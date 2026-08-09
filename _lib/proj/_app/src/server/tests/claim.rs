@@ -124,11 +124,10 @@ async fn pending_claim_gates_the_host_and_transitions_to_ready() {
 }
 
 #[tokio::test]
-async fn stale_claim_revision_cannot_confirm_a_new_file_identity() {
+async fn stale_claim_revision_cannot_overwrite_a_changed_binding_record() {
     let fixture = Fixture::new();
     fixture.replace_entry(b"first copy");
     let record_path = fixture.root.join("home/data/proj.swawkit/_entry.json");
-    let before = fs::read(&record_path).expect("existing entry record");
     let app = fixture.app();
     let pending = send(
         app.clone(),
@@ -139,14 +138,15 @@ async fn stale_claim_revision_cannot_confirm_a_new_file_identity() {
     .await;
     let stale_revision = pending.headers().get(ETAG).expect("claim ETag").clone();
 
-    fixture.replace_entry(b"second copy");
+    let concurrent_record = b"concurrent binding update\n";
+    fs::write(&record_path, concurrent_record).expect("change binding record concurrently");
     assert_eq!(
         send_claim(app, "swawkit", Some(&stale_revision))
             .await
             .status(),
         StatusCode::CONFLICT
     );
-    assert_eq!(fs::read(record_path).unwrap(), before);
+    assert_eq!(fs::read(record_path).unwrap(), concurrent_record);
 }
 
 #[tokio::test]

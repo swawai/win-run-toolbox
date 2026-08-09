@@ -136,9 +136,9 @@ fn explicit_claim_accepts_a_matching_record_published_in_the_same_directory() {
     .expect("publish matching record");
 
     let resolved = claim_data_root(fixture.request(), &expected).expect("accept direct completion");
-    assert_eq!(resolved.path, fixture.data_root);
+    assert_eq!(resolved.path(), fixture.data_root);
     assert_eq!(
-        EntryIdentity::read_directory(&resolved.path).expect("completed directory identity"),
+        EntryIdentity::read_directory(resolved.path()).expect("completed directory identity"),
         original_identity
     );
 }
@@ -180,9 +180,9 @@ fn rename_claim_accepts_the_same_directory_moved_and_completed_elsewhere() {
     .expect("complete renamed binding");
 
     let resolved = claim_data_root(request, &expected).expect("accept completed rename");
-    assert_eq!(resolved.path, renamed_root);
+    assert_eq!(resolved.path(), renamed_root);
     assert_eq!(
-        EntryIdentity::read_directory(&resolved.path).expect("renamed directory identity"),
+        EntryIdentity::read_directory(resolved.path()).expect("renamed directory identity"),
         original_identity
     );
 }

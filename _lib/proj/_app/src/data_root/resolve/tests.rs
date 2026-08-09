@@ -107,11 +107,11 @@ fn explicit_claim_applies_only_the_inspected_plan() {
     let claim = inspection.claim.expect("required claim");
 
     let resolved = claim_data_root(fixture.request(&entry), &claim).expect("apply claim");
-    assert_eq!(resolved.path, data_root);
+    assert_eq!(resolved.path(), data_root);
     assert!(read_entry_record(&data_root).valid_record().is_some());
 
     let stale = claim_data_root(fixture.request(&entry), &claim).expect("idempotent claim");
-    assert_eq!(stale.path, data_root);
+    assert_eq!(stale.path(), data_root);
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn completed_explicit_legacy_claim_cleans_legacy_residue() {
 
     let resolved = claim_data_root(fixture.request(&entry), &expected)
         .expect("accept completed legacy claim");
-    assert_eq!(resolved.path, target);
+    assert_eq!(resolved.path(), target);
     assert!(!legacy_directory.exists());
 }
 
@@ -197,13 +197,13 @@ fn creates_and_then_directly_reuses_a_bound_data_root() {
 
     let first =
         resolve_data_root(fixture.request(&entry), &mut unexpected_claim).expect("create DataRoot");
-    assert_eq!(first.path, fixture.data_root("alpha"));
-    assert!(first.path.join("_entry.json").is_file());
+    assert_eq!(first.path(), fixture.data_root("alpha"));
+    assert!(first.path().join("_entry.json").is_file());
     assert!(fixture.swawkit_home.join("data/_proj-entry.lock").is_file());
 
     let second =
         resolve_data_root(fixture.request(&entry), &mut unexpected_claim).expect("direct DataRoot");
-    assert_eq!(second.path, first.path);
+    assert_eq!(second.path(), first.path());
 }
 
 #[test]
@@ -224,7 +224,7 @@ fn claim_current_replaces_an_invalid_record_only_after_approval() {
     let resolved =
         resolve_data_root(fixture.request(&entry), &mut approver).expect("claim current DataRoot");
     assert!(saw_claim);
-    assert_eq!(resolved.path, data_root);
+    assert_eq!(resolved.path(), data_root);
     assert!(read_entry_record(&data_root).valid_record().is_some());
     assert!(
         fs::read_dir(&data_root)
@@ -275,7 +275,7 @@ fn accepts_when_another_process_completes_the_same_claim_during_confirmation() {
 
     let resolved =
         resolve_data_root(fixture.request(&entry), &mut approver).expect("accept completed claim");
-    assert_eq!(resolved.path, data_root);
+    assert_eq!(resolved.path(), data_root);
     assert!(read_entry_record(&data_root).valid_record().is_some());
 }
 
@@ -286,32 +286,32 @@ fn rename_follows_file_identity_and_preserves_opaque_module_data() {
     let mut approver = approve;
     let old =
         resolve_data_root(fixture.request(&old_entry), &mut approver).expect("create old binding");
-    let export_root = old
-        .path
-        .join("modules/kernel/.dev/setup/export");
+    let export_root = old.path().join("modules/kernel/.dev/setup/export");
+    let old_data_root = old.path().to_path_buf();
     fs::create_dir_all(&export_root).expect("create opaque module export");
     fs::write(export_root.join("sentinel.bin"), b"opaque module data")
         .expect("write opaque module data");
+    drop(old);
 
     let new_entry = fixture.entry("new-name");
     fs::rename(&old_entry, &new_entry).expect("rename entry");
     let mut saw_rename = false;
     let mut rename_approver = |claim: &DataRootClaim| {
         saw_rename = claim.kind == ClaimKind::Rename
-            && claim.source_data_root.as_deref() == Some(old.path.as_path());
+            && claim.source_data_root.as_deref() == Some(old_data_root.as_path());
         Ok(true)
     };
     let renamed = resolve_data_root(fixture.request(&new_entry), &mut rename_approver)
         .expect("claim renamed DataRoot");
 
     assert!(saw_rename);
-    assert_eq!(renamed.path, fixture.data_root("new-name"));
-    assert!(!old.path.exists());
-    assert!(renamed.warnings.is_empty());
+    assert_eq!(renamed.path(), fixture.data_root("new-name"));
+    assert!(!old_data_root.exists());
+    assert!(renamed.warnings().is_empty());
     assert_eq!(
         fs::read(
             renamed
-                .path
+                .path()
                 .join("modules/kernel/.dev/setup/export/sentinel.bin")
         )
         .expect("read preserved module data"),
@@ -320,12 +320,14 @@ fn rename_follows_file_identity_and_preserves_opaque_module_data() {
 }
 
 #[test]
-fn confirmation_holds_no_lock_and_rejects_a_changed_entry_identity() {
+fn confirmation_releases_the_data_root_lock_but_keeps_the_entry_pinned() {
     let fixture = Fixture::new();
     let entry = fixture.write_entry("epsilon", "original");
     let mut approver = approve;
     let original =
         resolve_data_root(fixture.request(&entry), &mut approver).expect("create original binding");
+    let original_data_root = original.path().to_path_buf();
+    drop(original);
     replace_entry(&entry, "first replacement");
 
     let data_directory = fixture.swawkit_home.join("data");
@@ -333,17 +335,16 @@ fn confirmation_holds_no_lock_and_rejects_a_changed_entry_identity() {
         let lock = DataRootLock::acquire_for_test(&data_directory, 1, Duration::ZERO)
             .expect("confirmation must not hold the DataRoot lock");
         drop(lock);
-        replace_entry(&entry, "second replacement");
+        assert!(
+            fs::write(&entry, "second replacement").is_err(),
+            "confirmation must keep the planned Entry identity pinned"
+        );
         Ok(true)
     };
-    let error = resolve_data_root(fixture.request(&entry), &mut checking_approver).unwrap_err();
-    assert!(error.is_state_changed());
-    let published = read_entry_record(&original.path);
-    let record = published.valid_record().expect("original record remains");
-    assert_ne!(
-        record.file_id,
-        EntryIdentity::read(&entry).expect("new identity").file_id()
-    );
+    let resolved = resolve_data_root(fixture.request(&entry), &mut checking_approver)
+        .expect("claim the pinned replacement Entry");
+    assert_eq!(resolved.path(), original_data_root);
+    assert_record_matches(resolved.path(), &entry);
 }
 
 #[test]
@@ -361,7 +362,7 @@ fn migrates_a_matching_legacy_root_without_claim_and_cleans_its_directory() {
 
     let resolved = resolve_data_root(fixture.request(&entry), &mut unexpected_claim)
         .expect("migrate legacy root");
-    assert_eq!(resolved.path, fixture.data_root("legacy"));
+    assert_eq!(resolved.path(), fixture.data_root("legacy"));
     assert!(!legacy_root.exists());
     assert!(!legacy_directory.exists());
 }

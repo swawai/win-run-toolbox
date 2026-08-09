@@ -42,6 +42,7 @@ pub enum DataRootPlan {
     MigrateLegacy {
         target: PlanTarget,
         source_data_root: PathBuf,
+        observed_directory_identity: EntryIdentity,
         reason: String,
     },
     ClaimMigrateLegacy {
@@ -202,6 +203,7 @@ pub fn plan_data_root(
             return Ok(DataRootPlan::MigrateLegacy {
                 target,
                 source_data_root: legacy.path.clone(),
+                observed_directory_identity: legacy.directory_identity().clone(),
                 reason: "DataRoot is stored in the legacy project-local data directory".to_owned(),
             });
         }

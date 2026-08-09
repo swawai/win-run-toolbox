@@ -139,17 +139,21 @@ pub(crate) fn read_entry_record_with_fingerprint(data_root: &Path) -> EntryRecor
         }
     };
     let fingerprint = EntryRecordFingerprint::present(&content);
-    let result = serde_json::from_slice::<EntryRecord>(&content)
-        .map_err(|error| error.to_string())
-        .and_then(|record| {
-            record.validate()?;
-            Ok(record)
-        });
+    let result = parse_entry_record(&content);
     let state = match result {
         Ok(record) => EntryRecordState::Valid { path, record },
         Err(error) => EntryRecordState::Invalid { path, error },
     };
     EntryRecordRead { state, fingerprint }
+}
+
+pub(crate) fn parse_entry_record(content: &[u8]) -> Result<EntryRecord, String> {
+    serde_json::from_slice::<EntryRecord>(content)
+        .map_err(|error| error.to_string())
+        .and_then(|record| {
+            record.validate()?;
+            Ok(record)
+        })
 }
 
 pub(crate) fn publish_entry_record(

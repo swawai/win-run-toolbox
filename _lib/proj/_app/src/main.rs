@@ -11,7 +11,6 @@ use std::{env, path::PathBuf};
 use swawkit_proj::{
     context::EntryContext,
     data_root::{DataRootSession, ResolveDataRootRequest},
-    entry::EntryIdentity,
     launch::{LaunchMode, LaunchRequest},
 };
 
@@ -35,11 +34,6 @@ fn run() -> Result<i32, Box<dyn Error>> {
     match request.mode {
         LaunchMode::Cli => cli::run(&context, &request.argv).map_err(Into::into),
         LaunchMode::InternalHost => {
-            let identity = EntryIdentity::read(&context.entry_file)?;
-            let instance = match HostInstance::acquire(&identity)? {
-                HostInstanceAcquisition::Primary(instance) => instance,
-                HostInstanceAcquisition::ActivatedExisting => return Ok(0),
-            };
             let inherited_data_root = env::var_os("SWAWKIT_PROJ_DATA_ROOT")
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from);
@@ -52,7 +46,11 @@ fn run() -> Result<i32, Box<dyn Error>> {
                 entry_file: &context.entry_file,
                 inherited_data_root: inherited_data_root.as_deref(),
                 legacy_data_directory: legacy_data_directory.as_deref(),
-            });
+            })?;
+            let instance = match HostInstance::acquire(data_root.entry_identity())? {
+                HostInstanceAcquisition::Primary(instance) => instance,
+                HostInstanceAcquisition::ActivatedExisting => return Ok(0),
+            };
             tray::run(context, data_root, instance)?;
             Ok(0)
         }

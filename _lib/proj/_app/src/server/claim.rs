@@ -15,12 +15,13 @@ use super::{ServerState, api_error, data_root_status, expected_revision};
 
 pub(super) async fn get_claim(State(state): State<ServerState>) -> Response {
     match data_root_status(&state).await {
-        Ok(DataRootSessionState::Ready(resolved)) if resolved.warnings.is_empty() => {
+        Ok(DataRootSessionState::Ready(resolved)) if resolved.warnings().is_empty() => {
             StatusCode::NO_CONTENT.into_response()
         }
-        Ok(DataRootSessionState::Ready(resolved)) => {
-            Json(DataRootClaimResultDocument::ready(resolved.warnings)).into_response()
-        }
+        Ok(DataRootSessionState::Ready(resolved)) => Json(DataRootClaimResultDocument::ready(
+            resolved.warnings().to_vec(),
+        ))
+        .into_response(),
         Ok(DataRootSessionState::ClaimRequired(claim)) => claim_response(&claim),
         Err(error) => error.into_response(),
     }

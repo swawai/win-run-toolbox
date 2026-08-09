@@ -1,9 +1,7 @@
 Set-StrictMode -Version 2.0
 
 $script:ProjDevelopmentEnvironmentRevisionPlaceholder =
-    '__SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_EXPORT_REVISION__'
-$script:ProjDevSetupExportRevisionVariable =
-    'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_EXPORT_REVISION'
+    '__SWAWKIT_PROJ_ENVIRONMENT_REVISION__'
 
 function Get-ProjDevelopmentEnvironmentRevisionPlaceholder {
     return $script:ProjDevelopmentEnvironmentRevisionPlaceholder

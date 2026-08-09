@@ -86,9 +86,12 @@ try {
         -CommandProfileRevision $ProfileRevision
 
     $Attempt = Start-ProjDevSetupProviderPublication -Context $Context
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
-        -Plan (New-ProjDevEnvironmentPlan) `
-        -PublicationToken ([string]$Attempt.Token)
+    $Plan = New-ProjDevEnvironmentPlan
+    Set-ProjDevEnvironmentVariable `
+        -Plan $Plan `
+        -Name (Get-ProjDevSetupPublicationTokenVariable) `
+        -Value ([string]$Attempt.Token)
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
     [void](Publish-ProjDevEnvironmentScripts `
         -Context $Context `
         -Scripts $Scripts)

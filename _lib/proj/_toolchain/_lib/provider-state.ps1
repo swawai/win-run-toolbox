@@ -3,7 +3,7 @@ Set-StrictMode -Version 2.0
 $script:ProjCommandProviderStateSchema =
     'swawkit.command-provider-state/v1'
 $script:ProjDevSetupProducerContract =
-    'swawkit.proj.dev-setup/v1'
+    'swawkit.proj.dev-setup/v2'
 $script:ProjDevCommandEnvironmentInputRevisionVariable =
     'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION'
 $script:ProjDevCommandProfileRevisionVariable =

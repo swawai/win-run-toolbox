@@ -278,22 +278,6 @@ function Add-ProjDevBunEnvironment {
     $InstallRoot = Get-ProjDevInstallRoot `
         -Context $Context `
         -Definition $Definition
-    Set-ProjDevEnvironmentVariable `
-        -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_MODE' `
-        -Value ([string]$Definition.Mode)
-    Set-ProjDevEnvironmentVariable `
-        -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_VERSION' `
-        -Value ([string]$Definition.Version)
-    Set-ProjDevEnvironmentVariable `
-        -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_SIGNATURE' `
-        -Value (Get-ProjDevDefinitionSignature -Definition $Definition)
-    Set-ProjDevEnvironmentVariable `
-        -Plan $Plan `
-        -Name 'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_HOME' `
-        -Value $InstallRoot
     Add-ProjDevEnvironmentPath -Plan $Plan -Path $InstallRoot
 }
 
@@ -306,40 +290,22 @@ function Assert-ProjDevBunEnvironmentCurrent {
     $InstallRoot = Get-ProjDevInstallRoot `
         -Context $Context `
         -Definition $Definition
-    $ExpectedSignature = Get-ProjDevDefinitionSignature `
-        -Definition $Definition
     $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
-    if ([string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_MODE -cne
-            [string]$Definition.Mode -or
-        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_VERSION -cne
-            [string]$Definition.Version -or
-        [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_SIGNATURE -cne
-            $ExpectedSignature -or
-        [string]::IsNullOrWhiteSpace([string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_HOME) -or
-        -not (Get-ProjDevCanonicalPath -Path (
-            [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_HOME
-        )).Equals(
-            (Get-ProjDevCanonicalPath -Path $InstallRoot),
-            [StringComparison]::OrdinalIgnoreCase
-        )) {
-        throw (
-            'The generated Bun environment does not match the project ' +
-            "declaration. Run '$Repair'."
-        )
-    }
-
     $PathEntries = @(([string]$env:PATH).Split(
         [IO.Path]::PathSeparator
     ) | Where-Object {
         -not [string]::IsNullOrWhiteSpace([string]$_)
     })
     if ($PathEntries.Count -eq 0) {
-        throw 'The generated Bun environment has an empty PATH.'
+        throw "The generated Bun environment has an empty PATH. Run '$Repair'."
     }
     try {
         $FirstPath = Get-ProjDevCanonicalPath -Path ([string]$PathEntries[0])
     } catch {
-        throw 'The generated Bun environment has an invalid PATH prefix.'
+        throw (
+            'The generated Bun environment has an invalid PATH prefix. Run ' +
+            "'$Repair'."
+        )
     }
     if (-not $FirstPath.Equals(
         (Get-ProjDevCanonicalPath -Path $InstallRoot),
@@ -350,22 +316,23 @@ function Assert-ProjDevBunEnvironmentCurrent {
             "'$Repair'."
         )
     }
-}
 
-function Assert-ProjDevBunReady {
-    param(
-        [Parameter(Mandatory = $true)][object]$Context,
-        [Parameter(Mandatory = $true)][object]$Definition
+    $ExecutableName = [IO.Path]::GetFileName(
+        [string]$Definition.Executable
     )
-
-    if (-not (Test-ProjDevRunnable `
-        -Context $Context `
-        -Definition $Definition
-    )) {
-        $Repair = Get-ProjEnvironmentRepairInvocation -Context $Context
-        throw (
-            'The managed Bun installation is missing or inconsistent. Run ' +
-            "'$Repair'."
-        )
+    $Command = Get-Command $ExecutableName `
+        -CommandType Application `
+        -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    $ExpectedExecutable = Resolve-ProjDevChildPath `
+        -Root $InstallRoot `
+        -RelativePath ([string]$Definition.Executable) `
+        -Description 'Bun executable'
+    if ($null -eq $Command -or
+        -not (Get-ProjDevCanonicalPath -Path $Command.Source).Equals(
+            (Get-ProjDevCanonicalPath -Path $ExpectedExecutable),
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+        throw "The managed Bun executable is not selected. Run '$Repair'."
     }
 }

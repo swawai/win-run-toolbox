@@ -254,8 +254,7 @@ try {
         -Plan $Plan
     Assert-ProjPwshTest `
         -Condition (
-            [string]$Plan.Variables['SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_PWSH_VERSION'] -ceq
-                '7.6.4' -and
+            $Plan.Variables.Count -eq 0 -and
             $Plan.PathPrefixes.Count -eq 1 -and
             [string]$Plan.PathPrefixes[0] -ceq
                 (Get-ProjDevInstallRoot `

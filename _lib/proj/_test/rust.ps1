@@ -286,12 +286,24 @@ try {
         Get-ProjDevFileSha256 -Path $ProfilePath
     )
     $Attempt = Start-ProjDevSetupProviderPublication -Context $Context
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+    Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -PublicationToken ([string]$Attempt.Token)
+        -Name (Get-ProjDevSetupPublicationTokenVariable) `
+        -Value ([string]$Attempt.Token)
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
+    $DuplicateRustVariables = @($Plan.Variables.Keys | Where-Object {
+        ([string]$_).StartsWith(
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_',
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    })
     Assert-ProjRustTest `
         -Condition (
             $Plan.PathPrefixes.Count -eq 1 -and
+            $DuplicateRustVariables.Count -eq 0 -and
+            -not $Scripts.Ps1.Contains(
+                'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_RUST_'
+            ) -and
             [string]$Plan.PathPrefixes[0] -ceq
                 (Join-Path $TargetRoot 'cargo\bin')
         ) `
@@ -327,9 +339,38 @@ try {
     $env:SWAWKIT_PROJ_BUN_MODE = 'managed'
     $env:SWAWKIT_PROJ_BUN_VERSION = '9.9.9'
     [void](Import-ProjDevGeneratedEnvironment -Context $Context)
-    Assert-ProjDevRustEnvironmentCurrent `
-        -Context $Context `
-        -Definition $Definition
+    $OriginalRustMetadataValidator = (
+        Get-Command Get-ProjDevRustValidMetadata -CommandType Function
+    ).ScriptBlock
+    $script:ProjRustCurrentMetadataValidationCount = 0
+    Set-Item -LiteralPath Function:\Get-ProjDevRustValidMetadata -Value {
+        param($Context, $Definition, $InstallRoot)
+
+        $script:ProjRustCurrentMetadataValidationCount++
+        throw 'Current must not inspect Rust installation metadata.'
+    }
+    try {
+        Assert-ProjDevRustEnvironmentCurrent `
+            -Context $Context `
+            -Definition $Definition
+    } finally {
+        Set-Item `
+            -LiteralPath Function:\Get-ProjDevRustValidMetadata `
+            -Value $OriginalRustMetadataValidator
+    }
+    Assert-ProjRustTest `
+        -Condition ($script:ProjRustCurrentMetadataValidationCount -eq 0) `
+        -Message 'Current traversed Rust installation metadata'
+    $ExpectedToolchain = [string]$env:RUSTUP_TOOLCHAIN
+    $env:RUSTUP_TOOLCHAIN = 'foreign-toolchain'
+    Assert-ProjRustThrows `
+        -Action {
+            Assert-ProjDevRustEnvironmentCurrent `
+                -Context $Context `
+                -Definition $Definition
+        } `
+        -Pattern "*stale RUSTUP_TOOLCHAIN*Run 'swawkit .dev.setup'*"
+    $env:RUSTUP_TOOLCHAIN = $ExpectedToolchain
     Assert-ProjRustTest `
         -Condition ([string]$env:RUSTUP_TOOLCHAIN -ceq
             [string]$Definition.ToolchainName) `

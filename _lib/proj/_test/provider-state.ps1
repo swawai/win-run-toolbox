@@ -138,15 +138,19 @@ try {
         -Message 'an unavailable state admitted a consumer'
 
     $Plan = New-ProjDevEnvironmentPlan
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+    Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -PublicationToken ([string]$Attempt.Token)
+        -Name (Get-ProjDevSetupPublicationTokenVariable) `
+        -Value ([string]$Attempt.Token)
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
     Assert-ProjProviderStateTest `
         -Condition (
             $Scripts.Cmd -like "*PUBLICATION_TOKEN=$($Attempt.Token)*" -and
-            $Scripts.Ps1 -like "*PUBLICATION_TOKEN*'$($Attempt.Token)'*"
+            $Scripts.Ps1 -like "*PUBLICATION_TOKEN*'$($Attempt.Token)'*" -and
+            -not $Scripts.Cmd.Contains('ENVIRONMENT_REVISION') -and
+            -not $Scripts.Ps1.Contains('ENVIRONMENT_REVISION')
         ) `
-        -Message 'generated env scripts did not embed the publication token'
+        -Message 'setup env scripts retained revision metadata or lost the token'
     [void](Publish-ProjDevEnvironmentScripts `
         -Context $Context `
         -Scripts $Scripts)
@@ -179,7 +183,7 @@ try {
         -State (New-ProjCommandProviderReadyState `
             -InputRevision $InputA `
             -Token ([string]$Attempt.Token) `
-            -ProducerContract 'swawkit.proj.dev-setup/v2')
+            -ProducerContract 'swawkit.proj.dev-setup/v1')
     $ContractMessage = Get-ProjProviderTestFailure {
         [void](Get-ProjProviderTestPublication `
             -DataRoot $DataRoot `
@@ -305,9 +309,12 @@ Write-ProjCommandProviderState -Context `$Context -State `$ChangedState
         -EnvironmentInputRevision $InputB `
         -CommandProfileRevision $ProfileRevisionB
     $AttemptB = Start-ProjDevSetupProviderPublication -Context $ContextB
-    $ScriptsB = ConvertTo-ProjDevEnvironmentScripts `
-        -Plan (New-ProjDevEnvironmentPlan) `
-        -PublicationToken ([string]$AttemptB.Token)
+    $PlanB = New-ProjDevEnvironmentPlan
+    Set-ProjDevEnvironmentVariable `
+        -Plan $PlanB `
+        -Name (Get-ProjDevSetupPublicationTokenVariable) `
+        -Value ([string]$AttemptB.Token)
+    $ScriptsB = ConvertTo-ProjDevEnvironmentScripts -Plan $PlanB
     [void](Publish-ProjDevEnvironmentScripts `
         -Context $ContextB `
         -Scripts $ScriptsB)

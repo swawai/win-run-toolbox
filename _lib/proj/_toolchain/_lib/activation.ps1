@@ -38,19 +38,20 @@ function Clear-ProjDevSetupExportMetadata {
 }
 
 function Clear-ProjDevSetupPublicationMetadata {
-    foreach ($Name in @(
-        $script:ProjDevSetupPublicationTokenVariable,
-        $script:ProjDevSetupExportRevisionVariable
-    )) {
-        [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
-    }
+    $PublicationTokenVariable = Get-ProjDevSetupPublicationTokenVariable
+    [Environment]::SetEnvironmentVariable(
+        $PublicationTokenVariable,
+        $null,
+        [EnvironmentVariableTarget]::Process
+    )
 }
 
 function Assert-ProjDevLoadedEnvironmentPublication {
     param([Parameter(Mandatory = $true)][object]$Publication)
 
+    $PublicationTokenVariable = Get-ProjDevSetupPublicationTokenVariable
     $LoadedToken = [Environment]::GetEnvironmentVariable(
-        $script:ProjDevSetupPublicationTokenVariable,
+        $PublicationTokenVariable,
         [EnvironmentVariableTarget]::Process
     )
     if ([string]$LoadedToken -cne [string]$Publication.Token) {
@@ -62,10 +63,13 @@ function Assert-ProjDevLoadedEnvironmentPublication {
 }
 
 function Assert-ProjDevLoadedEnvironmentRevision {
-    param([Parameter(Mandatory = $true)][string]$Revision)
+    param(
+        [Parameter(Mandatory = $true)][string]$Revision,
+        [Parameter(Mandatory = $true)][string]$VariableName
+    )
 
     $LoadedRevision = [Environment]::GetEnvironmentVariable(
-        $script:ProjDevSetupExportRevisionVariable,
+        $VariableName,
         [EnvironmentVariableTarget]::Process
     )
     if ([string]$LoadedRevision -cne $Revision) {

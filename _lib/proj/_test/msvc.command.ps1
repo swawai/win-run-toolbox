@@ -32,6 +32,7 @@ $ToolVersion = '14.44.35228'
 $ExpectedExecutable = Join-Path $InstallRoot (
     "VC\Tools\MSVC\$ToolVersion\bin\Hostx64\x64\cl.exe"
 )
+$PreviousPath = [string]$env:PATH
 [void][IO.Directory]::CreateDirectory(
     (Split-Path -Path $ExpectedExecutable -Parent)
 )
@@ -44,17 +45,10 @@ function Import-ProjDevMsvcCommandEnvironment {
     return [pscustomobject]@{
         Context = [pscustomobject]@{
             InvocationDirectory = $InvocationDirectory
+            EnvironmentRepairInvocation = 'fixture .dev.setup'
         }
         Definition = [pscustomobject]@{ Channel = '17' }
     }
-}
-
-function Get-ProjDevMsvcInstallRoot {
-    return $InstallRoot
-}
-
-function Get-ProjDevMsvcValidMetadata {
-    return [pscustomobject]@{ toolVersion = $ToolVersion }
 }
 
 function Invoke-ProjDevConsoleProcess {
@@ -76,6 +70,7 @@ function Invoke-ProjDevConsoleProcess {
 }
 
 try {
+    $env:PATH = Split-Path -Path $ExpectedExecutable -Parent
     [string[]]$Arguments = @(
         '/nologo',
         '/TP',
@@ -119,7 +114,7 @@ try {
             -Arguments @())
     } catch {
         $MissingRejected = $_.Exception.Message -like (
-            '*managed MSVC command executable is missing*'
+            "*managed MSVC cl.exe is unavailable*Run 'fixture .dev.setup'*"
         )
     }
     Assert-ProjMsvcCommandTest `
@@ -128,6 +123,7 @@ try {
 
     Write-Host '[PASS] Proj MSVC command contract' -ForegroundColor Green
 } finally {
+    $env:PATH = $PreviousPath
     $ResolvedRoot = [IO.Path]::GetFullPath($TemporaryRoot)
     $AllowedPrefix = $TestBase.TrimEnd('\') + '\'
     if ($ResolvedRoot.StartsWith(

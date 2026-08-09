@@ -33,9 +33,6 @@ function Import-ProjDevMsvcCommandEnvironment {
         Import-ProjDevGeneratedEnvironment `
             -Context $Requirement.Context | Out-Null
         Assert-ProjDevWindowsX64 -ToolName 'Managed MSVC command'
-        Assert-ProjDevMsvcReady `
-            -Context $Requirement.Context `
-            -Definition $Requirement.Definition
         Assert-ProjDevMsvcEnvironmentCurrent `
             -Context $Requirement.Context `
             -Definition $Requirement.Definition

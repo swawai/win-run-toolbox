@@ -103,7 +103,18 @@ try {
         -Context $Context `
         -Definition $Definition `
         -Plan $Plan
+    Assert-ProjBunTest `
+        -Condition (
+            $Plan.Variables.Count -eq 0 -and
+            $Plan.PathPrefixes.Count -eq 1
+        ) `
+        -Message 'generated Bun environment retained duplicate metadata'
     $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
+    Assert-ProjBunTest `
+        -Condition (-not $Scripts.Ps1.Contains(
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_BUN_'
+        )) `
+        -Message 'generated Bun script retained duplicate metadata'
     Assert-ProjBunTest `
         -Condition (Publish-ProjDevEnvironmentScripts `
             -Context $Context `

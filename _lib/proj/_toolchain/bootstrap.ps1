@@ -110,6 +110,8 @@ function Write-ProjBootstrapToolchainState {
 }
 
 function Initialize-ProjBootstrapToolchain {
+    $RevisionVariable =
+        'SWAWKIT_PROJ_TOOLCHAIN_BOOTSTRAP_ENVIRONMENT_REVISION'
     $Contract = Read-ProjBootstrapContract
     $Context = New-ProjBootstrapToolchainContext
     $MsvcDefinition = New-ProjDevMsvcDefinition `
@@ -139,7 +141,9 @@ function Initialize-ProjBootstrapToolchain {
             -Context $Context `
             -Definition $RustDefinition `
             -Plan $Plan
-        $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
+        $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+            -Plan $Plan `
+            -RevisionVariable $RevisionVariable
         [void](Publish-ProjDevEnvironmentScripts `
             -Context $Context `
             -Scripts $Scripts)
@@ -153,11 +157,16 @@ function Initialize-ProjBootstrapToolchain {
         $SetupLock.Dispose()
     }
 
-    Clear-ProjDevSetupExportMetadata
+    [Environment]::SetEnvironmentVariable(
+        $RevisionVariable,
+        $null,
+        [EnvironmentVariableTarget]::Process
+    )
     try {
         . $Context.EnvPs1Path
         Assert-ProjDevLoadedEnvironmentRevision `
-            -Revision ([string]$Scripts.Revision)
+            -Revision ([string]$Scripts.Revision) `
+            -VariableName $RevisionVariable
         Assert-ProjDevMsvcEnvironmentCurrent `
             -Context $Context `
             -Definition $MsvcDefinition
@@ -165,7 +174,11 @@ function Initialize-ProjBootstrapToolchain {
             -Context $Context `
             -Definition $RustDefinition
     } finally {
-        Clear-ProjDevSetupExportMetadata
+        [Environment]::SetEnvironmentVariable(
+            $RevisionVariable,
+            $null,
+            [EnvironmentVariableTarget]::Process
+        )
     }
 
     $RustRoot = Get-ProjDevRustInstallRoot `

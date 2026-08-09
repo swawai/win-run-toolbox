@@ -27,12 +27,6 @@ function Resolve-ProjDevRustCommand {
     try {
         Import-ProjDevGeneratedEnvironment -Context $Context | Out-Null
         Assert-ProjDevWindowsX64 -ToolName 'Rust'
-        Assert-ProjDevMsvcReady `
-            -Context $Context `
-            -Definition $MsvcDefinition
-        Assert-ProjDevRustReady `
-            -Context $Context `
-            -Definition $Definition
         Assert-ProjDevMsvcEnvironmentCurrent `
             -Context $Context `
             -Definition $MsvcDefinition
@@ -53,6 +47,12 @@ function Resolve-ProjDevRustCommand {
             "bin\$ExecutableName"
         ) `
         -Description 'Rust command executable'
+    if (-not [IO.File]::Exists($Executable)) {
+        throw (
+            "The managed Rust $ExecutableName is unavailable. Run " +
+            "'$Repair'."
+        )
+    }
     return [pscustomobject][ordered]@{
         Context = $Context
         Definition = $Definition

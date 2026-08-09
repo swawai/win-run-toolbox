@@ -388,14 +388,25 @@ try {
         -Definition $Definition `
         -Plan $Plan
     $Attempt = Start-ProjDevSetupProviderPublication -Context $Context
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+    Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -PublicationToken ([string]$Attempt.Token)
+        -Name (Get-ProjDevSetupPublicationTokenVariable) `
+        -Value ([string]$Attempt.Token)
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
+    $DuplicateMsvcVariables = @($Plan.Variables.Keys | Where-Object {
+        ([string]$_).StartsWith(
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_MSVC_',
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    })
     Assert-ProjMsvcTest `
         -Condition (
             $Scripts.Cmd -like '*VCToolsVersion=14.44.35228*' -and
             $Scripts.Cmd -like '*WindowsSDKVersion=10.0.26100.0\*' -and
-            $Scripts.Ps1 -like '*SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_MSVC_HOME*' -and
+            -not $Scripts.Ps1.Contains(
+                'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_MSVC_'
+            ) -and
+            $DuplicateMsvcVariables.Count -eq 0 -and
             $Plan.PathPrefixes.Count -eq 3
         ) `
         -Message 'generated MSVC environment lost the baseline contract'
@@ -431,17 +442,60 @@ try {
     }
     $env:SWAWKIT_PROJ_BUN_VERSION = '2.0.0'
     . (Join-Path $ProjRoot '_toolchain\_modules\msvc\runtime.ps1')
-    $RuntimeRequirement = Import-ProjDevMsvcCommandEnvironment
+    $OriginalMsvcMetadataValidator = (
+        Get-Command Get-ProjDevMsvcValidMetadata -CommandType Function
+    ).ScriptBlock
+    $script:ProjMsvcCurrentMetadataValidationCount = 0
+    Set-Item -LiteralPath Function:\Get-ProjDevMsvcValidMetadata -Value {
+        param($Context, $Definition, $InstallRoot)
+
+        $script:ProjMsvcCurrentMetadataValidationCount++
+        throw 'Current must not inspect MSVC installation metadata.'
+    }
+    try {
+        $RuntimeRequirement = Import-ProjDevMsvcCommandEnvironment
+    } finally {
+        Set-Item `
+            -LiteralPath Function:\Get-ProjDevMsvcValidMetadata `
+            -Value $OriginalMsvcMetadataValidator
+    }
+    $LeakedMetadata = @(
+        [Environment]::GetEnvironmentVariables('Process').Keys |
+            Where-Object {
+                ([string]$_).StartsWith(
+                    'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_',
+                    [StringComparison]::OrdinalIgnoreCase
+                )
+            }
+    )
     Assert-ProjMsvcTest `
         -Condition (
             [string]$RuntimeRequirement.Definition.Channel -ceq '17' -and
-            [string]::IsNullOrWhiteSpace(
-                [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_MSVC_HOME
-            )
+            $script:ProjMsvcCurrentMetadataValidationCount -eq 0 -and
+            $LeakedMetadata.Count -eq 0 -and
+            [string]$env:VCToolsVersion -ceq '14.44.35228' -and
+            [string]$env:WindowsSDKVersion -ceq '10.0.26100.0\'
         ) `
         -Message (
             'an unrelated declaration blocked MSVC or export metadata leaked'
         )
+    $ExpectedWindowsSdkVersion = [string]$env:WindowsSDKVersion
+    $env:WindowsSDKVersion = '10.0.26100.0'
+    $InvalidVersionRejected = $false
+    try {
+        Assert-ProjDevMsvcEnvironmentCurrent `
+            -Context $RuntimeRequirement.Context `
+            -Definition $RuntimeRequirement.Definition
+    } catch {
+        $InvalidVersionRejected = $_.Exception.Message -like (
+            "*invalid version variables*Run 'fixture .dev.setup'*"
+        )
+    } finally {
+        $env:WindowsSDKVersion = $ExpectedWindowsSdkVersion
+    }
+    Assert-ProjMsvcTest `
+        -Condition $InvalidVersionRejected `
+        -Message 'Current accepted a malformed WindowsSDKVersion'
 
     [IO.File]::AppendAllText(
         (Join-Path $TargetRoot (

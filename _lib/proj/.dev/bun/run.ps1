@@ -20,9 +20,6 @@ try {
         -Context $Context `
         -Definition $BunDefinition
     Assert-ProjDevWindowsX64 -ToolName 'Bun'
-    Assert-ProjDevBunReady `
-        -Context $Context `
-        -Definition $BunDefinition
     Assert-ProjDevBunEnvironmentCurrent `
         -Context $Context `
         -Definition $BunDefinition

@@ -148,11 +148,16 @@ try {
         -Context $ConsumerContext `
         -Definition $Definition `
         -Plan $Plan
+    Assert-ProjBunTest `
+        -Condition ($Plan.Variables.Count -eq 0) `
+        -Message 'Bun added duplicate module metadata to the export Plan'
     $Attempt = Start-ProjDevSetupProviderPublication `
         -Context $ConsumerContext
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+    Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -PublicationToken ([string]$Attempt.Token)
+        -Name (Get-ProjDevSetupPublicationTokenVariable) `
+        -Value ([string]$Attempt.Token)
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
     [void](Publish-ProjDevEnvironmentScripts `
         -Context $ConsumerContext `
         -Scripts $Scripts)
@@ -240,6 +245,24 @@ try {
                 $SeparatorCapture[4] -ceq '--' -and
                 $SeparatorCapture[5] -ceq '--help') `
             -Message '.dev.bun changed the explicit option separator'
+
+        $BunExecutable = Join-Path $InstallRoot 'bun.exe'
+        $MissingBunBackup = Join-Path $InstallRoot 'bun.exe.missing'
+        [IO.File]::Move($BunExecutable, $MissingBunBackup)
+        try {
+            $MissingBun = Invoke-ProjBunEntryFixture `
+                -PowerShell $SystemPowerShell `
+                -EntryPath $BunEntry `
+                -Arguments @('--version')
+        } finally {
+            [IO.File]::Move($MissingBunBackup, $BunExecutable)
+        }
+        Assert-ProjBunTest `
+            -Condition (
+                $MissingBun.ExitCode -eq 1 -and
+                $MissingBun.Output -like "*Run '*.dev.setup'*"
+            ) `
+            -Message 'a missing Bun executable did not request .dev.setup'
     } finally {
         Pop-Location
     }

@@ -98,9 +98,11 @@ try {
             -Plan $Plan
     }
 
-    $Scripts = ConvertTo-ProjDevEnvironmentScripts `
+    Set-ProjDevEnvironmentVariable `
         -Plan $Plan `
-        -PublicationToken ([string]$PublicationAttempt.Token)
+        -Name (Get-ProjDevSetupPublicationTokenVariable) `
+        -Value ([string]$PublicationAttempt.Token)
+    $Scripts = ConvertTo-ProjDevEnvironmentScripts -Plan $Plan
     $EnvironmentChanged = Publish-ProjDevEnvironmentScripts `
         -Context $Context `
         -Scripts $Scripts

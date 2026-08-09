@@ -98,6 +98,12 @@ Assert-ProjBootstrapContractTest `
     -Condition (
         -not $BootstrapToolchain.Contains('.dev\setup') -and
         -not $BootstrapToolchain.Contains(
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_'
+        ) -and
+        $BootstrapToolchain.Contains(
+            'SWAWKIT_PROJ_TOOLCHAIN_BOOTSTRAP_ENVIRONMENT_REVISION'
+        ) -and
+        -not $BootstrapToolchain.Contains(
             'Set-ProjBootstrapToolchainDeclarations'
         )
     ) `

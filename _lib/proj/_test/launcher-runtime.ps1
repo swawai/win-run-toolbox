@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$LauncherPath = ''
+    [string]$LauncherPath = '',
+    [string]$CorePath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,8 +30,17 @@ function Invoke-ProjLauncherRuntimeProcess {
     $StartInfo.Arguments = $Arguments
     $StartInfo.WorkingDirectory = $WorkingDirectory
     $StartInfo.UseShellExecute = $false
-    # Windows PowerShell lazily materializes this collection.
+    # Windows PowerShell 5.1 can inherit duplicate-cased names such as Path
+    # and PATH. Rebuild one case-insensitive child block before adding probes;
+    # lazy materialization can otherwise silently drop an unrelated variable.
+    $InheritedEnvironment = [Environment]::GetEnvironmentVariables(
+        [EnvironmentVariableTarget]::Process
+    )
     [void]$StartInfo.EnvironmentVariables
+    $StartInfo.EnvironmentVariables.Clear()
+    foreach ($Name in [string[]]@($InheritedEnvironment.Keys)) {
+        $StartInfo.EnvironmentVariables[$Name] = [string]$InheritedEnvironment[$Name]
+    }
     $StartInfo.CreateNoWindow = $true
     $StartInfo.RedirectStandardOutput = $true
     $StartInfo.RedirectStandardError = $true
@@ -57,35 +67,40 @@ function Invoke-ProjLauncherRuntimeProcess {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-if ([string]::IsNullOrWhiteSpace($LauncherPath)) {
+if ([string]::IsNullOrWhiteSpace($LauncherPath) -or
+    [string]::IsNullOrWhiteSpace($CorePath)) {
     . (Join-Path $RepoRoot (
         '_lib\proj\_toolchain\bootstrap-layout.ps1'
     ))
-    $LauncherPath = (Get-ProjBootstrapLayout).LauncherCandidatePath
-    if (-not [IO.File]::Exists($LauncherPath)) {
-        & (Join-Path $RepoRoot '_lib\proj\build.ps1')
+    $Layout = Get-ProjBootstrapLayout
+    if ([string]::IsNullOrWhiteSpace($LauncherPath)) {
+        $LauncherPath = $Layout.LauncherCandidatePath
     }
+    if ([string]::IsNullOrWhiteSpace($CorePath)) {
+        $CorePath = Join-Path $Layout.BuildRoot 'release\swawkit-proj.exe'
+    }
+    & (Join-Path $RepoRoot '_lib\proj\build.ps1') | Out-Host
 }
 $LauncherPath = [IO.Path]::GetFullPath($LauncherPath)
-$CorePath = Join-Path $RepoRoot '_lib\proj\_bin\swawkit-proj.exe'
-if (-not [IO.File]::Exists($CorePath)) {
-    & (Join-Path $RepoRoot '_lib\proj\bootstrap.ps1')
-}
+$CorePath = [IO.Path]::GetFullPath($CorePath)
 foreach ($RequiredFile in @($LauncherPath, $CorePath)) {
     if (-not [IO.File]::Exists($RequiredFile)) {
         throw "Required built executable does not exist: $RequiredFile"
     }
 }
 
-$EntryName = "test-launcher-$([Guid]::NewGuid().ToString('N'))"
-$EntryPath = Join-Path $RepoRoot "Favorites\$EntryName.exe"
-$DataRoot = Join-Path $RepoRoot "data\proj.$EntryName"
-$RootEntryName = "test-root-launcher-$([Guid]::NewGuid().ToString('N'))"
-$RootEntryPath = Join-Path $RepoRoot "$RootEntryName.exe"
-$RootDataRoot = Join-Path $RepoRoot "data\proj.$RootEntryName"
 $TemporaryRoot = Join-Path $RepoRoot (
     "data\_test\swawkit-proj-launcher-$([Guid]::NewGuid().ToString('N'))"
 )
+$RuntimeHome = Join-Path $TemporaryRoot 'runtime-home'
+$RuntimeKernelRoot = Join-Path $RuntimeHome '_lib\proj'
+$RuntimeCorePath = Join-Path $RuntimeKernelRoot '_bin\swawkit-proj.exe'
+$EntryName = "test-launcher-$([Guid]::NewGuid().ToString('N'))"
+$EntryPath = Join-Path $RuntimeHome "Favorites\$EntryName.exe"
+$DataRoot = Join-Path $RuntimeHome "data\proj.$EntryName"
+$RootEntryName = "test-root-launcher-$([Guid]::NewGuid().ToString('N'))"
+$RootEntryPath = Join-Path $RuntimeHome "$RootEntryName.exe"
+$RootDataRoot = Join-Path $RuntimeHome "data\proj.$RootEntryName"
 $TargetRoot = Join-Path $TemporaryRoot 'target'
 $ActionRoot = Join-Path $TargetRoot '.swaw'
 $ProbeRoot = Join-Path $ActionRoot 'probe'
@@ -134,6 +149,9 @@ foreach ($Name in $PoisonedVariables) {
 
 try {
     foreach ($Directory in @(
+        (Split-Path -Path $RuntimeCorePath -Parent),
+        (Join-Path $RuntimeKernelRoot '_help'),
+        (Split-Path -Path $EntryPath -Parent),
         $ProbeRoot,
         $InvocationRoot,
         $NestedRoot,
@@ -141,6 +159,12 @@ try {
     )) {
         [void][IO.Directory]::CreateDirectory($Directory)
     }
+    [IO.File]::Copy($CorePath, $RuntimeCorePath, $false)
+    [IO.File]::Copy(
+        (Join-Path $RepoRoot '_lib\proj\_help\zh-CN.txt'),
+        (Join-Path $RuntimeKernelRoot '_help\zh-CN.txt'),
+        $false
+    )
     [IO.File]::Copy($LauncherPath, $EntryPath, $false)
     [IO.File]::Copy($LauncherPath, $RootEntryPath, $false)
     [IO.File]::Copy($LauncherPath, $NestedEntry, $false)
@@ -388,20 +412,6 @@ exit 37
             $SavedEnvironment[$Name],
             [EnvironmentVariableTarget]::Process
         )
-    }
-    if ([IO.File]::Exists($EntryPath)) {
-        [IO.File]::Delete($EntryPath)
-    }
-    if ([IO.File]::Exists($RootEntryPath)) {
-        [IO.File]::Delete($RootEntryPath)
-    }
-    if ([IO.Directory]::Exists($DataRoot) -and
-        [IO.Path]::GetFileName($DataRoot) -ceq "proj.$EntryName") {
-        [IO.Directory]::Delete($DataRoot, $true)
-    }
-    if ([IO.Directory]::Exists($RootDataRoot) -and
-        [IO.Path]::GetFileName($RootDataRoot) -ceq "proj.$RootEntryName") {
-        [IO.Directory]::Delete($RootDataRoot, $true)
     }
     if ([IO.Directory]::Exists($TemporaryRoot) -and
         $TemporaryRoot.StartsWith(

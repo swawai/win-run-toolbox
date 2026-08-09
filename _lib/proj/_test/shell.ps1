@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param()
+param(
+    [string]$LauncherPath = '',
+    [string]$CorePath = ''
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -61,12 +64,11 @@ function Invoke-ProjShellTest {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-. (Join-Path $RepoRoot '_lib\proj\_toolchain\bootstrap-layout.ps1')
-$SourceEntry = (Get-ProjBootstrapLayout).LauncherCandidatePath
+. (Join-Path $PSScriptRoot 'runtime-fixture.ps1')
+$Artifacts = Resolve-ProjCandidateRuntimeArtifacts `
+    -LauncherPath $LauncherPath `
+    -CorePath $CorePath
 $EntryName = "test-shell-$([Guid]::NewGuid().ToString('N'))"
-$script:ProjShellEntry = Join-Path $RepoRoot "$EntryName.exe"
-$RuntimeBin = Join-Path $RepoRoot '_lib\proj\_bin'
-$DataRoot = Join-Path $RepoRoot "data\proj.$EntryName"
 $TestRoot = Join-Path $RepoRoot 'data\_test'
 $TemporaryRoot = Join-Path $TestRoot (
     "swawkit-proj-shell-$([Guid]::NewGuid().ToString('N'))"
@@ -79,13 +81,17 @@ $PoisonedAdapterEnvironment = [ordered]@{
     SwAwKiT_PrOj_MoDuLe_KeRnEl_DeV_Ps_ArG_4095 = 'foreign-module-argument'
 }
 $SavedAdapterEnvironment = @{}
-if (-not [IO.File]::Exists($SourceEntry)) {
-    & (Join-Path $RepoRoot '_lib\proj\build.ps1')
-}
-[IO.File]::Copy($SourceEntry, $script:ProjShellEntry, $false)
-[void][IO.Directory]::CreateDirectory($TemporaryRoot)
-
 try {
+    $Runtime = New-ProjCandidateRuntimeFixture `
+        -RuntimeHome (Join-Path $TemporaryRoot 'runtime-home') `
+        -LauncherPath $Artifacts.LauncherPath `
+        -CorePath $Artifacts.CorePath
+    $script:ProjShellEntry = Add-ProjCandidateRuntimeEntry `
+        -Runtime $Runtime `
+        -RelativePath "Favorites\$EntryName.exe"
+    $RuntimeBin = $Runtime.RuntimeBin
+    $DataRoot = Join-Path $Runtime.Home "data\proj.$EntryName"
+
     foreach ($Name in $PoisonedAdapterEnvironment.Keys) {
         $SavedAdapterEnvironment[$Name] = [Environment]::GetEnvironmentVariable(
             $Name,
@@ -165,11 +171,11 @@ try {
         'COMMAND_ADDRESS=.dev.cmd',
         "COMMAND_DATA_ROOT=$DataRoot\modules\kernel\.dev\cmd",
         'GIT_ID_NAME=Shell Fixture',
-        "PROJ_HOME=$RepoRoot",
+        "PROJ_HOME=$($Runtime.Home)",
         "DATA_ROOT=$DataRoot",
         "RUNTIME_BIN=$RuntimeBin",
         "PATH_VALUE=$RuntimeBin;",
-        "WORKING_DIR=$RepoRoot",
+        "WORKING_DIR=$($Runtime.Home)",
         'CMD_SPECIAL=left&right',
         'DELAYED=!SWAWKIT_PROJ_ENTRY_COMMAND!'
     )) {
@@ -218,11 +224,11 @@ try {
         'COMMAND_ADDRESS=.dev.ps',
         "COMMAND_DATA_ROOT=$DataRoot\modules\kernel\.dev\ps",
         'GIT_ID_NAME=Shell Fixture',
-        "PROJ_HOME=$RepoRoot",
+        "PROJ_HOME=$($Runtime.Home)",
         "DATA_ROOT=$DataRoot",
         "RUNTIME_BIN=$RuntimeBin",
         "PATH_VALUE=$RuntimeBin;",
-        "WORKING_DIR=$RepoRoot",
+        "WORKING_DIR=$($Runtime.Home)",
         'COMMAND_TEXT=ampersand&pipe|percent%'
     )) {
         Assert-ProjShellTest `
@@ -233,7 +239,7 @@ try {
             -Message ".dev.ps -Command did not preserve '$Expected': $($PowerShell.Text)"
     }
 
-    $ScriptPath = Join-Path $TemporaryRoot 'script with spaces.ps1'
+    $ScriptPath = Join-Path $Runtime.Home 'fixture\script with spaces.ps1'
     $ScriptSource = @'
 param(
     [Parameter(Mandatory = $true)][string]$First,
@@ -270,13 +276,16 @@ Write-Output ('MODULE_INTERNAL_COUNT=' + $ModuleNames.Count)
 Write-Output ('UNDEFINED=' + [string]$ProjUndefinedVariable)
 exit 33
 '@
+    [void][IO.Directory]::CreateDirectory(
+        (Split-Path -Path $ScriptPath -Parent)
+    )
     [IO.File]::WriteAllText(
         $ScriptPath,
         $ScriptSource,
         [Text.UTF8Encoding]::new($false)
     )
     $RelativeScriptPath = $ScriptPath.Substring(
-        $RepoRoot.TrimEnd('\').Length + 1
+        $Runtime.Home.TrimEnd('\').Length + 1
     )
     $PowerShellFile = Invoke-ProjShellTest `
         -Address '.dev.ps' `
@@ -295,7 +304,7 @@ exit 33
         'FILE_ARGS=hello world|ampersand&value|pipe|percent%',
         'PS_MAJOR=5',
         'POLICY=Bypass',
-        "WORKING_DIR=$RepoRoot",
+        "WORKING_DIR=$($Runtime.Home)",
         "RUNTIME_BIN=$RuntimeBin",
         'CORE_ADAPTER_INTERNAL_COUNT=0',
         'MODULE_INTERNAL_COUNT=0',
@@ -383,32 +392,14 @@ exit 33
         ) `
         -Message 'project shell commands changed persistent PATH'
 } finally {
-    foreach ($Name in $PoisonedAdapterEnvironment.Keys) {
+    foreach ($Name in $SavedAdapterEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable(
             $Name,
             $SavedAdapterEnvironment[$Name],
             [EnvironmentVariableTarget]::Process
         )
     }
-    if ([IO.File]::Exists($script:ProjShellEntry)) {
-        [IO.File]::Delete($script:ProjShellEntry)
-    }
-    if ([IO.Directory]::Exists($DataRoot)) {
-        [IO.Directory]::Delete($DataRoot, $true)
-    }
-    $ResolvedTemporaryRoot = [IO.Path]::GetFullPath($TemporaryRoot)
-    $ResolvedTestRoot = [IO.Path]::GetFullPath($TestRoot).TrimEnd('\') + '\'
-    if ($ResolvedTemporaryRoot.StartsWith(
-        $ResolvedTestRoot,
-        [StringComparison]::OrdinalIgnoreCase
-    ) -and
-        [IO.Path]::GetFileName($ResolvedTemporaryRoot).StartsWith(
-            'swawkit-proj-shell-',
-            [StringComparison]::Ordinal
-        ) -and
-        [IO.Directory]::Exists($ResolvedTemporaryRoot)) {
-        [IO.Directory]::Delete($ResolvedTemporaryRoot, $true)
-    }
+    Remove-ProjCandidateRuntimeFixture -Path $TemporaryRoot
 }
 
 Write-Host '[PASS] Proj one-shot shell commands' -ForegroundColor Green

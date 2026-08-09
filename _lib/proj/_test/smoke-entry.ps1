@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param()
+param(
+    [string]$LauncherPath = '',
+    [string]$CorePath = ''
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -37,11 +40,14 @@ function Invoke-ProjEntrySmoke {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-. (Join-Path $RepoRoot '_lib\proj\_toolchain\bootstrap-layout.ps1')
-$SourceEntry = (Get-ProjBootstrapLayout).LauncherCandidatePath
+. (Join-Path $PSScriptRoot 'runtime-fixture.ps1')
+$Artifacts = Resolve-ProjCandidateRuntimeArtifacts `
+    -LauncherPath $LauncherPath `
+    -CorePath $CorePath
+$TemporaryRoot = Join-Path $RepoRoot (
+    "data\_test\swawkit-proj-smoke-$([Guid]::NewGuid().ToString('N'))"
+)
 $EntryName = "test-native-entry-$([Guid]::NewGuid().ToString('N'))"
-$EntryPath = Join-Path $RepoRoot "$EntryName.exe"
-$DataRoot = Join-Path $RepoRoot "data\proj.$EntryName"
 $PoisonedEnvironment = [ordered]@{
     SWAWKIT_HOME = 'C:\foreign-home'
     SWAWKIT_PROJ_PROTOCOL = 'foreign'
@@ -57,11 +63,16 @@ $PoisonedEnvironment = [ordered]@{
 }
 $SavedEnvironment = @{}
 
-if (-not [IO.File]::Exists($SourceEntry)) {
-    & (Join-Path $RepoRoot '_lib\proj\build.ps1')
-}
-[IO.File]::Copy($SourceEntry, $EntryPath, $false)
 try {
+    $Runtime = New-ProjCandidateRuntimeFixture `
+        -RuntimeHome (Join-Path $TemporaryRoot 'runtime-home') `
+        -LauncherPath $Artifacts.LauncherPath `
+        -CorePath $Artifacts.CorePath
+    $EntryPath = Add-ProjCandidateRuntimeEntry `
+        -Runtime $Runtime `
+        -RelativePath "Favorites\$EntryName.exe"
+    $DataRoot = Join-Path $Runtime.Home "data\proj.$EntryName"
+
     foreach ($Name in $PoisonedEnvironment.Keys) {
         $SavedEnvironment[$Name] = [Environment]::GetEnvironmentVariable(
             $Name,
@@ -131,10 +142,10 @@ try {
         -Condition (
             $Info.ExitCode -eq 0 -and
             $Info.Text.Contains(".info") -and
-            $Info.Text.Contains((Join-Path $RepoRoot '_lib\proj\.info')) -and
+            $Info.Text.Contains((Join-Path $Runtime.KernelRoot '.info')) -and
             $Info.Text.Contains($EntryName) -and
             $Info.Text.Contains($EntryPath) -and
-            $Info.Text.Contains($RepoRoot) -and
+            $Info.Text.Contains($Runtime.Home) -and
             $Info.Text.Contains($DataRoot) -and
             $Info.Text.Contains($InvocationDirectory)
         ) `
@@ -154,19 +165,14 @@ try {
         -Condition ([IO.File]::Exists((Join-Path $DataRoot '_profile.json'))) `
         -Message 'the native Entry did not publish its Profile'
 } finally {
-    foreach ($Name in $PoisonedEnvironment.Keys) {
+    foreach ($Name in $SavedEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable(
             $Name,
             $SavedEnvironment[$Name],
             [EnvironmentVariableTarget]::Process
         )
     }
-    if ([IO.File]::Exists($EntryPath)) {
-        [IO.File]::Delete($EntryPath)
-    }
-    if ([IO.Directory]::Exists($DataRoot)) {
-        [IO.Directory]::Delete($DataRoot, $true)
-    }
+    Remove-ProjCandidateRuntimeFixture -Path $TemporaryRoot
 }
 
 Write-Host '[PASS] Native Proj Entry smoke test' -ForegroundColor Green

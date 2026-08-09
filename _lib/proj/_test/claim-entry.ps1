@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param()
+param(
+    [string]$LauncherPath = '',
+    [string]$CorePath = ''
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -37,18 +40,26 @@ function Invoke-ProjClaimEntry {
 }
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-. (Join-Path $RepoRoot '_lib\proj\_toolchain\bootstrap-layout.ps1')
-$Template = (Get-ProjBootstrapLayout).LauncherCandidatePath
+. (Join-Path $PSScriptRoot 'runtime-fixture.ps1')
+$Artifacts = Resolve-ProjCandidateRuntimeArtifacts `
+    -LauncherPath $LauncherPath `
+    -CorePath $CorePath
+$TemporaryRoot = Join-Path $RepoRoot (
+    "data\_test\swawkit-proj-claim-$([Guid]::NewGuid().ToString('N'))"
+)
 $EntryName = "test-claim-$([Guid]::NewGuid().ToString('N'))"
-$EntryPath = Join-Path $RepoRoot "$EntryName.exe"
-$DataRoot = Join-Path $RepoRoot "data\proj.$EntryName"
-$RecordPath = Join-Path $DataRoot '_entry.json'
 
-if (-not [IO.File]::Exists($Template)) {
-    & (Join-Path $RepoRoot '_lib\proj\build.ps1')
-}
-[IO.File]::Copy($Template, $EntryPath, $false)
 try {
+    $Runtime = New-ProjCandidateRuntimeFixture `
+        -RuntimeHome (Join-Path $TemporaryRoot 'runtime-home') `
+        -LauncherPath $Artifacts.LauncherPath `
+        -CorePath $Artifacts.CorePath
+    $EntryPath = Add-ProjCandidateRuntimeEntry `
+        -Runtime $Runtime `
+        -RelativePath "Favorites\$EntryName.exe"
+    $DataRoot = Join-Path $Runtime.Home "data\proj.$EntryName"
+    $RecordPath = Join-Path $DataRoot '_entry.json'
+
     $Setup = Invoke-ProjClaimEntry `
         -EntryPath $EntryPath `
         -Arguments @(
@@ -61,7 +72,7 @@ try {
     $Before = [IO.File]::ReadAllBytes($RecordPath)
 
     [IO.File]::Delete($EntryPath)
-    [IO.File]::Copy($Template, $EntryPath, $false)
+    [IO.File]::Copy($Artifacts.LauncherPath, $EntryPath, $false)
 
     $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
     $Rejected = Invoke-ProjClaimEntry -EntryPath $EntryPath -Arguments @('--help')
@@ -129,12 +140,7 @@ try {
         -Condition ($Help.ExitCode -eq 0 -and $Help.Text.Contains('Control Plane:')) `
         -Message "claimed Entry did not resume normal CLI operation: $($Help.Text)"
 } finally {
-    if ([IO.File]::Exists($EntryPath)) {
-        [IO.File]::Delete($EntryPath)
-    }
-    if ([IO.Directory]::Exists($DataRoot)) {
-        [IO.Directory]::Delete($DataRoot, $true)
-    }
+    Remove-ProjCandidateRuntimeFixture -Path $TemporaryRoot
 }
 
 Write-Host '[PASS] Native Proj Entry explicit claim flow' -ForegroundColor Green

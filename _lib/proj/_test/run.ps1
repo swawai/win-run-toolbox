@@ -4,17 +4,26 @@ param()
 $ErrorActionPreference = 'Stop'
 
 & (Join-Path $PSScriptRoot 'launcher-build.ps1')
-& (Join-Path $PSScriptRoot 'launcher-runtime.ps1')
-& (Join-Path $PSScriptRoot 'smoke-entry.ps1')
-& (Join-Path $PSScriptRoot 'claim-entry.ps1')
+$RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+. (Join-Path $RepoRoot '_lib\proj\_toolchain\bootstrap-layout.ps1')
+$Layout = Get-ProjBootstrapLayout
+$CandidateArguments = @{
+    LauncherPath = $Layout.LauncherCandidatePath
+    CorePath = Join-Path $Layout.BuildRoot 'release\swawkit-proj.exe'
+}
+& (Join-Path $PSScriptRoot 'launcher-runtime.ps1') @CandidateArguments
+& (Join-Path $PSScriptRoot 'smoke-entry.ps1') @CandidateArguments
+& (Join-Path $PSScriptRoot 'claim-entry.ps1') @CandidateArguments
 & (Join-Path $PSScriptRoot 'development-declaration.ps1')
 & (Join-Path $PSScriptRoot 'development-command-layout.ps1')
 & (Join-Path $PSScriptRoot 'command-export.ps1')
+& (Join-Path $PSScriptRoot 'provider-state.ps1')
+& (Join-Path $PSScriptRoot 'provider-activation.ps1')
 & (Join-Path $PSScriptRoot 'app-build.ps1')
 & (Join-Path $PSScriptRoot 'app-core.ps1')
 & (Join-Path $PSScriptRoot 'web.ps1')
 & (Join-Path $PSScriptRoot 'bootstrap-contract.ps1')
-& (Join-Path $PSScriptRoot 'shell.ps1')
+& (Join-Path $PSScriptRoot 'shell.ps1') @CandidateArguments
 & (Join-Path $PSScriptRoot 'install-recovery.ps1')
 & (Join-Path $PSScriptRoot 'bun.ps1')
 & (Join-Path $PSScriptRoot 'pwsh.ps1')

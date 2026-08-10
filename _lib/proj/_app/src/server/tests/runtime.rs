@@ -27,9 +27,11 @@ fn shutdown_signal_stops_the_live_http_server() {
     fixture.directory("home/_lib/proj");
     let (events, received_events) = mpsc::channel();
     let (shutdown, shutdown_receiver) = oneshot::channel();
+    let host_runtime = test_host_runtime();
     let server_thread = spawn(
         fixture.context(),
         fixture.data_root_session(),
+        host_runtime.identity(),
         move |event| events.send(event).map_err(|error| error.to_string()),
         shutdown_receiver,
     )
@@ -38,10 +40,11 @@ fn shutdown_signal_stops_the_live_http_server() {
     let ready = received_events
         .recv_timeout(Duration::from_secs(5))
         .expect("ready event");
-    let ServerEvent::Ready(url) = ready else {
+    let ServerEvent::Ready(document) = ready else {
         panic!("expected ready event");
     };
-    let authority = url
+    let authority = document
+        .url
         .strip_prefix("http://")
         .and_then(|value| value.strip_suffix('/'))
         .expect("loopback URL");
@@ -55,9 +58,65 @@ fn shutdown_signal_stops_the_live_http_server() {
     let mut response = String::new();
     stream.read_to_string(&mut response).expect("HTTP response");
     assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+    assert!(response.to_ascii_lowercase().contains(&format!(
+        "{}: {}\r\n",
+        crate::host_runtime::HOST_BOOT_HEADER,
+        document.boot_id
+    )));
+    assert!(response.to_ascii_lowercase().contains(&format!(
+        "{}: {}\r\n",
+        crate::host_runtime::HOST_ENTRY_HEADER,
+        document.entry_key_sha256
+    )));
     assert!(response.ends_with("\r\nok\n"));
 
     shutdown.send(()).expect("shutdown signal");
+    let stopped = received_events
+        .recv_timeout(Duration::from_secs(5))
+        .expect("stopped event");
+    assert!(matches!(stopped, ServerEvent::Stopped(Ok(()))));
+    server_thread.join().expect("clean server thread");
+}
+
+#[test]
+fn authenticated_web_shutdown_stops_the_live_http_server() {
+    let fixture = Fixture::new();
+    fixture.directory("home/_lib/proj");
+    let (events, received_events) = mpsc::channel();
+    let (_shutdown, shutdown_receiver) = oneshot::channel();
+    let host_runtime = test_host_runtime();
+    let server_thread = spawn(
+        fixture.context(),
+        fixture.data_root_session(),
+        host_runtime.identity(),
+        move |event| events.send(event).map_err(|error| error.to_string()),
+        shutdown_receiver,
+    )
+    .expect("server thread");
+
+    let ready = received_events
+        .recv_timeout(Duration::from_secs(5))
+        .expect("ready event");
+    let ServerEvent::Ready(document) = ready else {
+        panic!("expected ready event");
+    };
+    let authority = document
+        .url
+        .strip_prefix("http://")
+        .and_then(|value| value.strip_suffix('/'))
+        .expect("loopback URL");
+
+    let mut stream = TcpStream::connect(authority).expect("HTTP connection");
+    write!(
+        stream,
+        "POST /api/v2/host/shutdown HTTP/1.1\r\nHost: {authority}\r\n\
+         X-SwawKit-Control: shutdown\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    )
+    .expect("HTTP shutdown request");
+    let mut response = String::new();
+    stream.read_to_string(&mut response).expect("HTTP response");
+    assert!(response.starts_with("HTTP/1.1 202 Accepted\r\n"));
+
     let stopped = received_events
         .recv_timeout(Duration::from_secs(5))
         .expect("stopped event");

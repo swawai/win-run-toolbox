@@ -1,39 +1,33 @@
 import {
   childrenOf,
-  hasChildren,
   isGroup,
   leafName,
   sortCommands,
 } from "./catalog-model.js";
+import {
+  availableCommand,
+  childrenColumnWidth,
+  choiceColumnModels,
+  commandDisabledDuringSetup,
+  commandHasChoices,
+  commandMenuExpanded,
+  selectedCommandView,
+} from "./explorer-model.js";
+
+export {
+  availableCommand,
+  childrenColumnWidth,
+  choiceColumnModels,
+  commandDisabledDuringSetup,
+  commandHasChoices,
+  commandMenuExpanded,
+} from "./explorer-model.js";
 
 const sourceLabels = {
   control: "Control Plane",
   kernel: "Kernel Commands",
   action: "Project Actions",
 };
-
-export function commandDisabledDuringSetup(setupRequired, command) {
-  return setupRequired && command.source !== "control";
-}
-
-export function availableCommand(catalog, setupRequired, address) {
-  const command = catalog.commandByAddress.get(address);
-  return command && !commandDisabledDuringSetup(setupRequired, command)
-    ? command
-    : null;
-}
-
-export function controlledColumnId(_command, depth) {
-  return `finder-column-${depth + 1}`;
-}
-
-export function childrenColumnWidth(command) {
-  return command.childrenColumnWidth || "normal";
-}
-
-export function commandHasChoices(catalog, command, activities) {
-  return hasChildren(catalog, command) || activities.length > 0;
-}
 
 export function captureColumnScrollOffsets(columns) {
   return new Map(
@@ -55,7 +49,7 @@ export function createExplorerView({
   breadcrumb,
   columns,
   detailPanel,
-  getCommandActivities = () => [],
+  getCommandViews = () => [],
   onSelectCommand,
 }) {
   let catalog = null;
@@ -71,9 +65,14 @@ export function createExplorerView({
     const summary = document.createElement("span");
     const chevron = document.createElement("span");
     const group = isGroup(catalog, command);
-    const activities = getCommandActivities(command);
-    const expandable = commandHasChoices(catalog, command, activities);
+    const views = getCommandViews(command);
+    const expandable = commandHasChoices(catalog, command, views);
     const selected = selectedPath[depth] === command.address;
+    const menuExpanded = commandMenuExpanded(
+      selectedPath,
+      command.address,
+      depth,
+    );
     const disabled = commandDisabledDuringSetup(setupRequired, command);
 
     button.type = "button";
@@ -83,13 +82,16 @@ export function createExplorerView({
     button.dataset.kind = group ? "group" : "command";
     button.dataset.navigationKey = command.address;
     button.disabled = disabled;
-    if (selected) {
+    button.dataset.selected = String(selected);
+    if (menuExpanded) {
       button.setAttribute("aria-current", "page");
     }
     if (expandable) {
       button.setAttribute("aria-expanded", String(selected));
-      if (selected) {
-        button.setAttribute("aria-controls", controlledColumnId(command, depth));
+      if (menuExpanded && views.length > 0) {
+        button.setAttribute("aria-controls", `command-view-menu-${depth}`);
+      } else if (selected && group) {
+        button.setAttribute("aria-controls", `finder-column-${depth + 1}`);
       }
     }
     button.title = disabled ? "完成首次设置后可用" : command.address;
@@ -124,46 +126,56 @@ export function createExplorerView({
         history: "push",
       });
     });
+    item.className = "command-item";
     item.append(button);
+    if (menuExpanded && views.length > 0) {
+      item.append(createCommandViewMenu(command, depth, views));
+    }
     return item;
   }
 
-  function createActivityRow(command, depth, activity) {
+  function createCommandViewRow(command, depth, view) {
     const item = document.createElement("li");
     const button = document.createElement("button");
     const icon = document.createElement("span");
-    const copy = document.createElement("span");
     const name = document.createElement("span");
-    const summary = document.createElement("span");
 
     button.type = "button";
-    button.className = "finder-choice command-activity-row";
-    button.dataset.activity = activity.name;
+    button.className = "finder-choice command-view-row";
+    button.dataset.view = view.name;
     button.dataset.parentAddress = command.address;
-    button.dataset.parentDepth = String(depth - 1);
-    button.dataset.navigationKey = `${command.address}#${activity.name}`;
-    button.setAttribute("aria-pressed", String(activity.selected));
+    button.dataset.parentDepth = String(depth);
+    button.dataset.navigationKey = `${command.address}#${view.name}`;
+    button.setAttribute("aria-pressed", String(view.selected));
+    button.title = view.summary;
 
-    icon.className = "row-icon activity-icon";
-    icon.textContent = activity.icon;
+    icon.className = "row-icon view-icon";
+    icon.textContent = view.icon;
     icon.setAttribute("aria-hidden", "true");
-    copy.className = "row-copy";
     name.className = "row-name";
-    name.textContent = activity.label;
-    summary.className = "row-summary";
-    summary.textContent = activity.summary;
-    copy.append(name, summary);
+    name.textContent = view.label;
 
-    button.append(icon, copy);
+    button.append(icon, name);
     button.addEventListener("click", () => {
-      selectCommand(command.address, depth - 1, {
-        activity: activity.name,
-        focusDetail: true,
+      selectCommand(command.address, depth, {
+        focusDetail: view.name !== "children",
         history: "push",
+        view: view.name,
       });
     });
     item.append(button);
     return item;
+  }
+
+  function createCommandViewMenu(command, depth, views) {
+    const list = document.createElement("ul");
+    list.className = "command-view-menu";
+    list.id = `command-view-menu-${depth}`;
+    list.setAttribute("aria-label", `${command.address} 视图`);
+    for (const view of views) {
+      list.append(createCommandViewRow(command, depth, view));
+    }
+    return list;
   }
 
   function appendSection(column, label, commands, depth) {
@@ -184,24 +196,6 @@ export function createExplorerView({
       section.append(heading);
     }
     section.append(list);
-    column.append(section);
-  }
-
-  function appendActivitySection(column, command, activities, depth) {
-    if (activities.length === 0) {
-      return;
-    }
-    const section = document.createElement("section");
-    const heading = document.createElement("h2");
-    const list = document.createElement("ul");
-    section.className = "column-section command-activity-section";
-    heading.className = "column-label";
-    heading.textContent = "当前命令";
-    list.className = "column-list";
-    for (const activity of activities) {
-      list.append(createActivityRow(command, depth, activity));
-    }
-    section.append(heading, list);
     column.append(section);
   }
 
@@ -229,7 +223,7 @@ export function createExplorerView({
     return column;
   }
 
-  function createChoiceColumn(parentAddress, depth, activities = []) {
+  function createChoiceColumn(parentAddress, depth) {
     const column = document.createElement("div");
     const parent = catalog.commandByAddress.get(parentAddress);
     const children = childrenOf(catalog, parentAddress);
@@ -239,13 +233,7 @@ export function createExplorerView({
     column.dataset.scrollKey = `choices:${parentAddress}`;
     column.dataset.width = childrenColumnWidth(parent);
     column.setAttribute("role", "group");
-    const choicesLabel = activities.length > 0 && children.length > 0
-      ? "可用操作和子命令"
-      : activities.length > 0
-        ? "可用操作"
-        : "子命令";
-    column.setAttribute("aria-label", `${parent.address} ${choicesLabel}`);
-    appendActivitySection(column, parent, activities, depth);
+    column.setAttribute("aria-label", `${parent.address} 子命令`);
     appendSection(
       column,
       "子命令",
@@ -258,15 +246,13 @@ export function createExplorerView({
   function renderColumns({ focusKey = null, focusDetail = false } = {}) {
     const scrollOffsets = captureColumnScrollOffsets(columns);
     columns.replaceChildren(createRootColumn());
-    for (const [depth, address] of selectedPath.entries()) {
-      const command = catalog.commandByAddress.get(address);
-      const current = depth === selectedPath.length - 1;
-      const activities = command && current
-        ? getCommandActivities(command)
-        : [];
-      if (command && commandHasChoices(catalog, command, activities)) {
-        columns.append(createChoiceColumn(address, depth + 1, activities));
-      }
+    const models = choiceColumnModels(
+      catalog,
+      selectedPath,
+      getCommandViews,
+    );
+    for (const { command, depth } of models) {
+      columns.append(createChoiceColumn(command.address, depth));
     }
     restoreColumnScrollOffsets(columns, scrollOffsets);
 
@@ -315,10 +301,11 @@ export function createExplorerView({
     }
     selectedPath = [...selectedPath.slice(0, depth), address];
     onSelectCommand(command, options);
+    const view = selectedCommandView(getCommandViews(command));
     renderBreadcrumb();
     renderColumns({
       focusKey: address,
-      focusDetail: options.focusDetail === true,
+      focusDetail: options.focusDetail === true && view !== "children",
     });
     return true;
   }
@@ -342,10 +329,11 @@ export function createExplorerView({
     }
     selectedPath = addressPath(address);
     onSelectCommand(command, options);
+    const view = selectedCommandView(getCommandViews(command));
     renderBreadcrumb();
     renderColumns({
       focusKey: address,
-      focusDetail: options.focusDetail === true,
+      focusDetail: options.focusDetail === true && view !== "children",
     });
     return true;
   }
@@ -385,13 +373,20 @@ export function createExplorerView({
     const depth = Number(button.dataset.depth);
     if (event.key === "ArrowRight") {
       const command = catalog.commandByAddress.get(button.dataset.address);
-      const activities = command ? getCommandActivities(command) : [];
-      if (command && commandHasChoices(catalog, command, activities)) {
+      const views = command ? getCommandViews(command) : [];
+      if (command && commandHasChoices(catalog, command, views)) {
         event.preventDefault();
         selectCommand(button.dataset.address, depth, { history: "push" });
         requestAnimationFrame(() => {
-          const nextColumn = columns.querySelector(`[data-depth="${depth + 1}"]`);
-          nextColumn?.querySelector(".finder-choice")?.focus();
+          const selectedView = selectedCommandView(getCommandViews(command));
+          const target = selectedView === "children"
+            ? columns
+              .querySelector(`[data-depth="${depth + 1}"]`)
+              ?.querySelector(".finder-choice")
+            : columns
+              .querySelector(`#command-view-menu-${depth}`)
+              ?.querySelector(".finder-choice");
+          target?.focus();
         });
       }
     } else if (event.key === "ArrowLeft" && depth > 0) {
@@ -414,7 +409,10 @@ export function createExplorerView({
       ? availableCommand(catalog, setupRequired, preferred)
       : null;
     if (preferredCommand) {
-      selectAddress(preferred, { history: options.history ?? "none" });
+      selectAddress(preferred, {
+        history: options.history ?? "none",
+        view: options.view,
+      });
       return;
     }
     const command = defaultCommand();

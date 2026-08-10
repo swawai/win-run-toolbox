@@ -15,6 +15,7 @@ use winit::{
 use swawkit_proj::{
     context::EntryContext,
     data_root::DataRootSession,
+    host_runtime::{HostRuntimeDocument, HostRuntimeOwner},
     server::{self, ServerEvent},
 };
 
@@ -26,7 +27,6 @@ const QUIT_ID: &str = "tray.quit";
 
 #[derive(Debug)]
 enum AppEvent {
-    Activate,
     Menu(MenuEvent),
     Server(ServerEvent),
 }
@@ -41,10 +41,16 @@ struct App {
     shutdown: Option<oneshot::Sender<()>>,
     browser_opened: bool,
     shutting_down: bool,
+    _host_instance: HostInstance,
+    host_runtime: HostRuntimeOwner,
 }
 
 impl App {
-    fn new(shutdown: oneshot::Sender<()>) -> Self {
+    fn new(
+        shutdown: oneshot::Sender<()>,
+        host_instance: HostInstance,
+        host_runtime: HostRuntimeOwner,
+    ) -> Self {
         Self {
             tray: None,
             status_item: None,
@@ -55,6 +61,8 @@ impl App {
             shutdown: Some(shutdown),
             browser_opened: false,
             shutting_down: false,
+            _host_instance: host_instance,
+            host_runtime,
         }
     }
 
@@ -86,14 +94,20 @@ impl App {
         if self.shutting_down {
             return ("正在停止…".to_owned(), "Swaw Kit — 正在停止".to_owned());
         }
-        if let Some(url) = &self.server_url {
-            return (format!("在线 — {url}"), format!("Swaw Kit — {url}"));
-        }
         if self.server_error.is_some() {
+            if self.server_url.is_some() {
+                return (
+                    "在线 — 无法打开浏览器".to_owned(),
+                    "Swaw Kit — 无法打开浏览器".to_owned(),
+                );
+            }
             return (
                 "离线 — 服务启动失败".to_owned(),
                 "Swaw Kit — 服务启动失败".to_owned(),
             );
+        }
+        if let Some(url) = &self.server_url {
+            return (format!("在线 — {url}"), format!("Swaw Kit — {url}"));
         }
         ("正在启动…".to_owned(), "Swaw Kit — 正在启动".to_owned())
     }
@@ -114,18 +128,22 @@ impl App {
         }
     }
 
-    fn server_ready(&mut self, url: String) {
-        self.server_url = Some(url);
+    fn server_ready(&mut self, document: HostRuntimeDocument) -> Result<(), String> {
+        self.host_runtime
+            .publish(&document)
+            .map_err(|error| format!("cannot publish the Host runtime endpoint: {error}"))?;
+        self.server_url = Some(document.url);
         self.server_error = None;
         if self.shutting_down {
-            return;
+            return Ok(());
         }
 
         self.update_tray_status();
         if !self.browser_opened {
+            self.open_browser()?;
             self.browser_opened = true;
-            self.open_browser();
         }
+        Ok(())
     }
 
     fn server_stopped(&mut self, result: Result<(), String>) {
@@ -133,11 +151,11 @@ impl App {
         self.server_error = result.err();
     }
 
-    fn open_browser(&self) {
+    fn open_browser(&self) -> Result<(), String> {
         let Some(url) = self.server_url.as_deref() else {
-            return;
+            return Ok(());
         };
-        let _ = webbrowser::open(url);
+        webbrowser::open(url).map_err(|error| format!("cannot open the Web console: {error}"))
     }
 
     fn request_shutdown(&mut self) {
@@ -157,7 +175,8 @@ impl ApplicationHandler<AppEvent> for App {
         if self.tray.is_some() {
             return;
         }
-        if self.create_tray().is_err() {
+        if let Err(error) = self.create_tray() {
+            self.server_error = Some(format!("cannot create the system tray: {error}"));
             self.request_shutdown();
             event_loop.exit();
         }
@@ -173,15 +192,25 @@ impl ApplicationHandler<AppEvent> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AppEvent) {
         match event {
-            AppEvent::Activate => self.open_browser(),
             AppEvent::Menu(event) => match event.id().as_ref() {
-                OPEN_ID => self.open_browser(),
+                OPEN_ID => {
+                    if let Err(error) = self.open_browser() {
+                        self.server_error = Some(error);
+                        self.update_tray_status();
+                    }
+                }
                 QUIT_ID => {
                     self.request_shutdown();
                 }
                 _ => {}
             },
-            AppEvent::Server(ServerEvent::Ready(url)) => self.server_ready(url),
+            AppEvent::Server(ServerEvent::Ready(document)) => {
+                if let Err(error) = self.server_ready(document) {
+                    self.server_error = Some(error);
+                    self.request_shutdown();
+                    event_loop.exit();
+                }
+            }
             AppEvent::Server(ServerEvent::Stopped(result)) => {
                 self.server_stopped(result);
                 event_loop.exit();
@@ -193,14 +222,11 @@ impl ApplicationHandler<AppEvent> for App {
 pub fn run(
     context: EntryContext,
     data_root: DataRootSession,
-    instance: HostInstance,
+    host_instance: HostInstance,
+    host_runtime: HostRuntimeOwner,
 ) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<AppEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
-
-    let activation_proxy = event_loop.create_proxy();
-    let activation_listener =
-        instance.listen(move || activation_proxy.send_event(AppEvent::Activate).is_ok())?;
 
     let menu_proxy = event_loop.create_proxy();
     MenuEvent::set_event_handler(Some(move |event| {
@@ -212,6 +238,7 @@ pub fn run(
     let server_thread = server::spawn(
         context,
         data_root,
+        host_runtime.identity(),
         move |event| {
             server_proxy
                 .send_event(AppEvent::Server(event))
@@ -219,14 +246,12 @@ pub fn run(
         },
         shutdown_receiver,
     )?;
-    let mut app = App::new(shutdown);
+    let mut app = App::new(shutdown, host_instance, host_runtime);
 
     let event_loop_result = event_loop.run_app(&mut app);
     app.request_shutdown();
-    let activation_result = activation_listener.stop();
     let server_result = server_thread.join();
     event_loop_result?;
-    activation_result?;
     if server_result.is_err() {
         return Err("Axum server thread panicked".into());
     }

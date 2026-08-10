@@ -4,6 +4,7 @@ import {
   commandAtPath,
   commandPath,
   parseCommandPath,
+  parseCommandView,
   updateCommandPath,
 } from "./navigation.js";
 
@@ -67,17 +68,49 @@ describe("command URL contract", () => {
       pushState(_state, _title, path) { calls.push(["push", path]); },
       replaceState(_state, _title, path) { calls.push(["replace", path]); },
     };
-    const location = { pathname: "/" };
+    const location = { pathname: "/", search: "" };
     const command = { source: "action", address: "demo" };
 
-    updateCommandPath(history, location, command, "replace");
-    updateCommandPath(history, location, command, "push");
+    updateCommandPath(history, location, command, { mode: "replace" });
+    updateCommandPath(history, location, command, { mode: "push" });
     location.pathname = "/commands/action/demo";
-    updateCommandPath(history, location, command, "push");
+    updateCommandPath(history, location, command, { mode: "push" });
 
     expect(calls).toEqual([
       ["replace", "/commands/action/demo"],
       ["push", "/commands/action/demo"],
+    ]);
+  });
+
+  test("round-trips non-default views without encoding default UI state", () => {
+    expect(parseCommandView("")).toBeNull();
+    expect(parseCommandView("?view=help")).toBe("help");
+    expect(() => parseCommandView("?view=unknown")).toThrow("未知");
+    expect(() => parseCommandView("?view=help&view=run")).toThrow("只能");
+    expect(() => parseCommandView("?view=help&draft=1")).toThrow("参数");
+
+    const calls = [];
+    const history = {
+      pushState(_state, _title, path) { calls.push(path); },
+      replaceState() {},
+    };
+    const location = {
+      pathname: "/commands/action/proj/build",
+      search: "",
+    };
+    const command = { source: "action", address: "proj.build" };
+
+    updateCommandPath(history, location, command, {
+      defaultView: "children",
+      view: "help",
+    });
+    updateCommandPath(history, location, command, {
+      defaultView: "children",
+      view: "children",
+    });
+
+    expect(calls).toEqual([
+      "/commands/action/proj/build?view=help",
     ]);
   });
 });

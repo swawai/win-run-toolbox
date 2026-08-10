@@ -63,14 +63,14 @@
 ## 五、当前做到哪里
 
 1. Native Launcher 和 Rust Core 已接管正常启动、Entry 身份、DataRoot、Profile、命令发现、Guard、CLI、单实例 Entry Host 与 Entry Worker 主链。
-2. Entry Host 采用 Axum、Tray 和系统浏览器；Web 已能浏览命令、编辑 Profile，并启动、增量读取和取消 Kernel/Action 命令。命令页使用可刷新的 `/commands/{source}/...` 深链；每个 Finder 后续列把当前命令的概览、帮助、执行与真实子命令分区展示，活动不伪装成命令地址。Control 仍由受限 Core handler 或专用 API 承担，不作为任意 Entry Worker 命令开放。
+2. Entry Host 采用 Axum、Tray 和系统浏览器；Web 已能浏览命令、编辑 Profile，并启动、增量读取和取消 Kernel/Action 命令。命令页使用可刷新的 `/commands/{source}/...` 深链；Finder 将“命令层级”和“当前命令视图”分成两个维度：只有路径末端命令会在原行下展开子命令、概览、帮助和执行菜单，祖先命令保持折叠；Finder 后续列只表示真实子命令。Host 会原子发布带 Entry 身份、Boot ID、PID 和回环 URL 的瞬时运行描述；二次启动验证健康端点后由新进程打开控制台，Web 同时显示 Host 状态并提供显式退出入口，因此托盘不是唯一恢复路径。Control 仍由受限 Core handler 或专用 API 承担，不作为任意 Entry Worker 命令开放。
 3. `_profile.json` 是用户配置的唯一来源；相关环境输入变化会同步使 `.dev.setup` Provider State 失效。`.dev.setup` 的 `env.cmd`、`env.ps1` 位于自身 `export/`，`.dev.bun`、`.dev.cargo`、`.dev.rustc`、`.dev.cl` 等消费者通过统一检查后加载。
 4. 当前执行器支持 `run.exe`、`run.ps1` 和受限的 `run.cmd`。PowerShell 负责工具链、环境发布和命令适配，`.dev.cmd`、`.dev.ps` 提供一次性 Shell 调用。
 5. `proj.build.app` 与 `proj.build.launcher` 已把中间文件、锁和稳定候选分别收进各自 Action 数据根的 `work/`、`locks/` 与 `export/`，并发布制品 Manifest 与 Provider State；失败构建不会授予 Ready 状态。`proj.publish.app` 是第一个自动消费者，会拒绝缺失、过期或被篡改的候选并原子更新正式 Core。Bun、PowerShell、MSVC 和 Rust 的受管环境已经实现；正式测试同时覆盖 Launcher/Core 协议、模块 Export 与 Provider State、Entry Host 单实例、Entry Worker 输出和整棵进程树取消。
 
 ## 六、Web 与执行边界
 
-1. Web 使用固定 Finder 式界面，目录命令模块通过 `_view/web.json` 提供展示提示。每一列只表达上一层已选命令的下一步：当前命令活动和子命令在同一列中以不同分区、样式与可访问性语义展示；URL 只编码可分享、可刷新和可前进后退的命令身份，临时表单与运行状态仍留在页面状态中。Web 提交 Catalog 中的命令地址和参数，解释器、磁盘路径、cwd 和环境变量由 Core 解析。
+1. Web 使用固定 Finder 式界面，目录命令模块通过 `_view/web.json` 提供展示提示。命令行只在自身成为路径末端时原位展开 UI 拥有的视图菜单；有真实子命令时默认选择“子命令”，叶子命令默认选择“概览”，“执行”永不自动触发。继续选择子命令后，父命令菜单收起并追加下一列。URL 路径编码可分享、可刷新和可前进后退的命令身份，非默认视图以 `?view=overview|help|run` 表达；默认视图、临时表单与运行状态不进入 URL。视图标签不属于 Catalog 地址，因此不会与英文命令名冲突。Web 提交 Catalog 中的命令地址和参数，解释器、磁盘路径、cwd 和环境变量由 Core 解析。Host 状态与退出使用受 Host 头约束、要求显式控制请求头的专用本地 API；单实例租约只负责互斥，不再兼任无法确认结果的激活通道。
 2. Web run 使用 `swawkit.command-run/v1` 表达运行标识、状态、增量事件和退出结果。每次运行都从当前用户环境基线启动新的 Entry Worker，并过滤已有的 Swaw Kit 环境命名空间；Host 负责请求与生命周期，具体命令仍经过完整 Entry 边界。
 3. Entry Worker 使用 Windows Job Object 管理整棵子进程树；取消和 Entry Host 退出都会回收后代进程。stdin 关闭，stdout/stderr 以 UTF-8 事件增量返回并有容量上限，当前执行模型面向非交互任务。
 4. `.swaw` Action 是以当前用户权限运行的受信任项目代码；Web 约束调用入口和生命周期，但 Action 本身不是安全沙箱。Host 中的 run registry 只保存当前会话的瞬时输出；需要跨进程同步或长期留存的业务状态，仍应由命令模块写入自己的 DataRoot。

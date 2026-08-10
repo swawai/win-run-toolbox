@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { commandActivities } from "./command-activity.js";
+import {
+  commandActivities,
+  commandViews,
+  defaultCommandView,
+} from "./command-activity.js";
 
 describe("command activities", () => {
   test("keeps hierarchy separate from command presentation", () => {
@@ -29,5 +33,18 @@ describe("command activities", () => {
       handler: "entry.profile.set",
       runnable: true,
     })).toEqual([]);
+  });
+
+  test("treats subcommands as a local UI view and defaults groups to it", () => {
+    const command = {
+      source: "action",
+      address: "proj.build",
+      runnable: false,
+    };
+    expect(commandViews(command, { hasChildren: true }).map(({ name }) => name))
+      .toEqual(["children", "overview", "help"]);
+    expect(defaultCommandView(command, { hasChildren: true })).toBe("children");
+    expect(defaultCommandView(command)).toBe("overview");
+    expect(defaultCommandView(null)).toBeNull();
   });
 });

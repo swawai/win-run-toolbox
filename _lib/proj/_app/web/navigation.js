@@ -1,5 +1,6 @@
 const COMMAND_ROUTE_ROOT = "/commands";
 const COMMAND_SOURCES = new Set(["action", "kernel", "control"]);
+const COMMAND_VIEWS = new Set(["children", "overview", "help", "run"]);
 const NORMAL_SEGMENT = /^[a-z][a-z0-9-]*$/;
 const ENVIRONMENT_SEGMENT = /^SWAWKIT_PROJ_[A-Z0-9_]+$/;
 
@@ -82,12 +83,38 @@ export function commandAtPath(
   return command;
 }
 
-export function updateCommandPath(history, location, command, mode = "push") {
+export function parseCommandView(search = "") {
+  const params = new URLSearchParams(search);
+  const unknown = [...params.keys()].find((name) => name !== "view");
+  if (unknown) {
+    throw new Error(`URL 包含未知的命令视图参数：${unknown}。`);
+  }
+  const values = params.getAll("view");
+  if (values.length > 1) {
+    throw new Error("URL 只能声明一个命令视图。");
+  }
+  const view = values[0] ?? null;
+  if (view !== null && !COMMAND_VIEWS.has(view)) {
+    throw new Error(`URL 包含未知的命令视图：${view || "<empty>"}。`);
+  }
+  return view;
+}
+
+export function updateCommandPath(
+  history,
+  location,
+  command,
+  { defaultView = null, mode = "push", view = null } = {},
+) {
   if (mode === "none") {
     return;
   }
-  const path = commandPath(command);
-  if (mode === "push" && location.pathname === path) {
+  const query = view && view !== defaultView
+    ? `?view=${encodeURIComponent(view)}`
+    : "";
+  const path = `${commandPath(command)}${query}`;
+  const current = `${location.pathname}${location.search ?? ""}`;
+  if (mode === "push" && current === path) {
     return;
   }
   if (mode === "replace") {

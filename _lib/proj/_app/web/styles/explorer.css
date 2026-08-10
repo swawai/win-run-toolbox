@@ -80,10 +80,8 @@
   grid-template-columns: 24px minmax(0, 1fr) 15px;
 }
 
-.command-activity-row {
-  grid-template-columns: 24px minmax(0, 1fr);
-  color: var(--ui-text-muted);
-  background: var(--ui-surface-muted);
+.command-item {
+  min-width: 0;
 }
 
 .finder-choice:hover {
@@ -101,22 +99,40 @@
   background: var(--ui-surface);
 }
 
-.command-row[aria-current="page"] {
+.command-row[data-selected="true"] {
   color: var(--ui-selection-text);
   background: var(--ui-selection-bg);
 }
 
-.command-activity-row[aria-pressed="true"] {
-  color: var(--ui-selection-text);
-  background: var(--ui-selection-bg);
+.command-view-menu {
+  display: grid;
+  gap: 1px;
+  margin: 4px 4px 7px 31px;
+  padding: 2px 0 2px 8px;
+  border-left: 1px solid var(--ui-border-strong);
+  list-style: none;
 }
 
-.command-activity-row[aria-pressed="true"]:focus-visible {
-  outline-color: var(--ui-selection-text);
-  outline-offset: -3px;
+.command-view-row {
+  min-height: 31px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 6px;
+  padding: 3px 6px;
+  color: var(--ui-text-muted);
+  background: transparent;
 }
 
-.command-row[aria-current="page"]:focus-visible {
+.command-view-row:hover {
+  color: var(--ui-text);
+  background: var(--ui-surface-hover);
+}
+
+.command-view-row[aria-pressed="true"] {
+  color: var(--ui-text);
+  background: var(--ui-surface-pressed);
+}
+
+.command-row[data-selected="true"]:focus-visible {
   outline-color: var(--ui-selection-text);
   outline-offset: -3px;
 }
@@ -137,19 +153,22 @@
   color: var(--ui-text);
 }
 
-.command-row[aria-current="page"] .row-icon {
+.command-row[data-selected="true"] .row-icon {
   color: var(--ui-selection-bg);
   background: var(--ui-selection-text);
 }
 
-.command-activity-row .activity-icon {
+.command-view-row .view-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--ui-text);
+  background: transparent;
+  font-size: 10px;
+}
+
+.command-view-row[aria-pressed="true"] .view-icon {
   color: var(--ui-text);
   background: var(--ui-surface);
-}
-
-.command-activity-row[aria-pressed="true"] .activity-icon {
-  color: var(--ui-selection-bg);
-  background: var(--ui-selection-text);
 }
 
 .row-copy {
@@ -177,11 +196,7 @@
   line-height: 1.35;
 }
 
-.command-row[aria-current="page"] .row-summary {
-  color: var(--ui-selection-text);
-}
-
-.command-activity-row[aria-pressed="true"] .row-summary {
+.command-row[data-selected="true"] .row-summary {
   color: var(--ui-selection-text);
 }
 
@@ -191,7 +206,7 @@
   line-height: 1;
 }
 
-.command-row[aria-current="page"] .row-chevron {
+.command-row[data-selected="true"] .row-chevron {
   color: var(--ui-selection-text);
 }
 

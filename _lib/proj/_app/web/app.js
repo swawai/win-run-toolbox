@@ -1,11 +1,16 @@
-import { createCatalog } from "./catalog-model.js";
+import { createCatalog, hasChildren } from "./catalog-model.js";
 import { createDataRootClaimView } from "./claim.js";
 import { createCommandActivityView } from "./command-activity.js";
 import { createCommandRunView } from "./command-run.js";
 import { createDetailView } from "./detail.js";
 import { createExplorerView } from "./explorer.js";
+import { createHostControlView } from "./host-control.js";
 import { createEntryProfileView } from "./entry-profile.js";
-import { commandAtPath, updateCommandPath } from "./navigation.js";
+import {
+  commandAtPath,
+  parseCommandView,
+  updateCommandPath,
+} from "./navigation.js";
 
 const elements = {
   breadcrumb: document.querySelector("#breadcrumb"),
@@ -56,6 +61,9 @@ const elements = {
   explorerFrame: document.querySelector("#explorer-frame"),
   explorerFlow: document.querySelector("#explorer-flow"),
   finderColumns: document.querySelector("#finder-columns"),
+  hostQuit: document.querySelector("#host-quit"),
+  hostIndicator: document.querySelector("#host-indicator"),
+  hostStatus: document.querySelector("#host-status"),
   invocationSection: document.querySelector("#invocation-section"),
   issueCard: document.querySelector("#issue-card"),
   loadingState: document.querySelector("#loading-state"),
@@ -90,27 +98,39 @@ const explorer = createExplorerView({
   breadcrumb: elements.breadcrumb,
   columns: elements.finderColumns,
   detailPanel: elements.detailPanel,
-  getCommandActivities: commandActivity.items,
+  getCommandViews(command) {
+    return commandActivity.items(command, {
+      hasChildren: hasChildren(catalog, command),
+    });
+  },
   onSelectCommand(command, options = {}) {
     if (entryProfile.render(command)) {
       commandActivity.selectCommand(null);
       commandRun.select(null);
+      elements.detailPanel.hidden = false;
       updateCommandPath(
         window.history,
         window.location,
         command,
-        options.history ?? "none",
+        { mode: options.history ?? "none" },
       );
       return;
     }
     detail.render(catalog, command);
     commandRun.select(command);
-    commandActivity.selectCommand(command, { activity: options.activity });
+    const selection = commandActivity.selectCommand(command, {
+      hasChildren: hasChildren(catalog, command),
+      view: options.view,
+    });
+    elements.detailPanel.hidden = selection.view === "children";
     updateCommandPath(
       window.history,
       window.location,
       command,
-      options.history ?? "none",
+      {
+        ...selection,
+        mode: options.history ?? "none",
+      },
     );
   },
 });
@@ -120,6 +140,7 @@ const dataRootClaim = createDataRootClaimView(elements, {
   },
   onReady: loadApplication,
 });
+const hostControl = createHostControlView(elements);
 
 function setLoadState(status, message = "") {
   const loading = status === "loading";
@@ -189,6 +210,7 @@ async function loadApplication() {
     explorer.setCatalog(catalog, {
       address: routed?.address,
       history: "replace",
+      view: parseCommandView(window.location.search),
     });
     setLoadState("ready");
   } catch (error) {
@@ -214,7 +236,10 @@ window.addEventListener("popstate", () => {
     const routed = commandAtPath(catalog, window.location.pathname);
     if (
       !routed
-      || !explorer.selectAddress(routed.address, { history: "none" })
+      || !explorer.selectAddress(routed.address, {
+        history: "none",
+        view: parseCommandView(window.location.search),
+      })
     ) {
       explorer.setCatalog(catalog, { history: "replace" });
     }
@@ -228,4 +253,5 @@ window.addEventListener("popstate", () => {
 });
 
 void commandRun.restore();
+void hostControl.load();
 startApplication();

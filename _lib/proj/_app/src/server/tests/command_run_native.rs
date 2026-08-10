@@ -45,6 +45,8 @@ async fn executes_and_cancels_native_workers_through_the_http_router() {
         fixture.context(),
         fixture.data_root_session(),
         runs.clone(),
+        test_host_runtime(),
+        HostControl::new(),
     );
 
     let (normal_location, normal_created) = start_native_run(&app, NORMAL_ACTION).await;

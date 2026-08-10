@@ -4,9 +4,10 @@ import {
   availableCommand,
   captureColumnScrollOffsets,
   childrenColumnWidth,
+  choiceColumnModels,
   commandHasChoices,
   commandDisabledDuringSetup,
-  controlledColumnId,
+  commandMenuExpanded,
   restoreColumnScrollOffsets,
 } from "./explorer.js";
 
@@ -34,11 +35,12 @@ describe("Explorer control-plane behavior", () => {
     expect(availableCommand(catalog, false, "missing")).toBeNull();
   });
 
-  test("connects command rows to the column they actually reveal", () => {
-    expect(controlledColumnId({ handler: "entry.profile" }, 0))
-      .toBe("finder-column-1");
-    expect(controlledColumnId({ handler: "host.start" }, 0))
-      .toBe("finder-column-1");
+  test("expands a local view menu only for the terminal selection", () => {
+    const path = ["..entry", "..entry.env", "..entry.env.bun"];
+    expect(commandMenuExpanded(path, "..entry", 0)).toBe(false);
+    expect(commandMenuExpanded(path, "..entry.env", 1)).toBe(false);
+    expect(commandMenuExpanded(path, "..entry.env.bun", 2)).toBe(true);
+    expect(commandMenuExpanded(path, "..entry.env.git", 2)).toBe(false);
   });
 
   test("uses the parent command's declared child column width", () => {
@@ -56,6 +58,53 @@ describe("Explorer control-plane behavior", () => {
     expect(commandHasChoices(catalog, parent, [])).toBe(true);
     expect(commandHasChoices(catalog, leaf, [{ name: "overview" }])).toBe(true);
     expect(commandHasChoices(catalog, leaf, [])).toBe(false);
+  });
+
+  test("keeps ancestor child columns but obeys the terminal command view", () => {
+    const entry = { address: "..entry" };
+    const env = { address: "..entry.env" };
+    const bun = { address: "..entry.env.bun" };
+    const catalog = {
+      commandByAddress: new Map([
+        [entry.address, entry],
+        [env.address, env],
+        [bun.address, bun],
+      ]),
+      childrenByParent: new Map([
+        [entry.address, [env]],
+        [env.address, [bun]],
+      ]),
+    };
+    const overviewModels = choiceColumnModels(
+      catalog,
+      [entry.address, env.address, bun.address],
+      (command) => [{
+        name: "overview",
+        selected: command.address === bun.address,
+      }],
+    );
+
+    expect(overviewModels.map(({ command }) => command.address)).toEqual([
+      entry.address,
+      env.address,
+    ]);
+
+    catalog.childrenByParent.set(bun.address, [{
+      address: `${bun.address}.mode`,
+    }]);
+    const childrenModels = choiceColumnModels(
+      catalog,
+      [entry.address, env.address, bun.address],
+      (command) => [{
+        name: "children",
+        selected: command.address === bun.address,
+      }],
+    );
+    expect(childrenModels.map(({ command }) => command.address)).toEqual([
+      entry.address,
+      env.address,
+      bun.address,
+    ]);
   });
 
   test("restores vertical offsets only for columns representing the same parent", () => {

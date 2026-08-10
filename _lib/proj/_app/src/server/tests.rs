@@ -27,6 +27,16 @@ mod runtime;
 const AUTHORITY: &str = "127.0.0.1:43127";
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
+fn test_host_runtime() -> HostRuntimeDocument {
+    HostRuntimeDocument::new(
+        "0".repeat(64),
+        "test-host",
+        std::process::id(),
+        format!("http://{AUTHORITY}/"),
+    )
+    .expect("test Host runtime")
+}
+
 struct Fixture {
     root: PathBuf,
 }
@@ -131,6 +141,47 @@ async fn catalog_document(app: Router) -> Value {
 }
 
 #[tokio::test]
+async fn exposes_status_and_requires_explicit_authority_for_shutdown() {
+    let fixture = Fixture::new();
+    let app = fixture.app();
+
+    let status = send(app.clone(), Method::GET, "/api/v2/host", Some(AUTHORITY)).await;
+    assert_eq!(status.status(), StatusCode::OK);
+    let body = to_bytes(status.into_body(), usize::MAX)
+        .await
+        .expect("Host status body");
+    let document: Value = serde_json::from_slice(&body).expect("Host status JSON");
+    assert_eq!(
+        document["protocol"],
+        crate::host_runtime::HOST_RUNTIME_PROTOCOL
+    );
+    assert_eq!(document["pid"], std::process::id());
+
+    let unauthorized = send(
+        app.clone(),
+        Method::POST,
+        "/api/v2/host/shutdown",
+        Some(AUTHORITY),
+    )
+    .await;
+    assert_eq!(unauthorized.status(), StatusCode::FORBIDDEN);
+
+    let accepted = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v2/host/shutdown")
+                .header(HOST, AUTHORITY)
+                .header("x-swawkit-control", "shutdown")
+                .body(Body::empty())
+                .expect("valid Host shutdown request"),
+        )
+        .await
+        .expect("Host shutdown response");
+    assert_eq!(accepted.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
 async fn serves_only_the_declared_local_surface() {
     let fixture = Fixture::new();
     fixture.directory("home/_lib/proj");
@@ -196,8 +247,13 @@ async fn serves_only_the_declared_local_surface() {
         ),
         ("/assets/navigation.js", "text/javascript; charset=utf-8"),
         ("/assets/explorer.js", "text/javascript; charset=utf-8"),
+        (
+            "/assets/explorer-model.js",
+            "text/javascript; charset=utf-8",
+        ),
         ("/assets/detail.js", "text/javascript; charset=utf-8"),
         ("/assets/entry-profile.js", "text/javascript; charset=utf-8"),
+        ("/assets/host-control.js", "text/javascript; charset=utf-8"),
         ("/assets/claim.js", "text/javascript; charset=utf-8"),
         (
             "/assets/command-run-client.js",

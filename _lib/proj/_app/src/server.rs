@@ -24,31 +24,37 @@ use crate::{
     catalog_reader::CatalogReader,
     context::EntryContext,
     data_root::{DataRootSession, DataRootSessionState},
+    host_runtime::{HostRuntimeDocument, HostRuntimeIdentity},
     profile::{EntryProfileDocument, EntryProfileStore, ProfileUpdateError},
     web_assets,
 };
 
 mod claim;
 mod command_run;
+mod host_control;
 
 use command_run::CommandRuns;
+use host_control::HostControl;
 
 #[derive(Clone)]
 struct ServerState {
     context: EntryContext,
     data_root: DataRootSession,
     command_runs: CommandRuns,
+    host_control: HostControl,
+    host_runtime: HostRuntimeDocument,
 }
 
 #[derive(Debug)]
 pub enum ServerEvent {
-    Ready(String),
+    Ready(HostRuntimeDocument),
     Stopped(Result<(), String>),
 }
 
 pub fn spawn<F>(
     context: EntryContext,
     data_root: DataRootSession,
+    host_runtime: HostRuntimeIdentity,
     notify: F,
     shutdown: oneshot::Receiver<()>,
 ) -> io::Result<thread::JoinHandle<()>>
@@ -65,7 +71,8 @@ where
                 Ok(runtime) => runtime.block_on(run_server(
                     context,
                     data_root,
-                    |url| notify(ServerEvent::Ready(url)),
+                    host_runtime,
+                    |document| notify(ServerEvent::Ready(document)),
                     shutdown,
                 )),
                 Err(error) => Err(error.to_string()),
@@ -78,26 +85,42 @@ where
 async fn run_server<F>(
     context: EntryContext,
     data_root: DataRootSession,
+    host_runtime: HostRuntimeIdentity,
     notify_ready: F,
     shutdown: oneshot::Receiver<()>,
 ) -> Result<(), String>
 where
-    F: FnOnce(String) -> Result<(), String>,
+    F: FnOnce(HostRuntimeDocument) -> Result<(), String>,
 {
     let listener = bind_loopback().await.map_err(|error| error.to_string())?;
     let address = listener.local_addr().map_err(|error| error.to_string())?;
     let authority = address.to_string();
     let url = format!("http://{authority}/");
+    let host_runtime = host_runtime
+        .document(url)
+        .map_err(|error| error.to_string())?;
 
-    notify_ready(url)?;
+    notify_ready(host_runtime.clone())?;
 
     let command_runs = CommandRuns::native();
+    let host_control = HostControl::new();
+    let shutdown_control = host_control.clone();
     let serve_result = axum::serve(
         listener,
-        router_with_runs(authority, context, data_root, command_runs.clone()),
+        router_with_runs(
+            authority,
+            context,
+            data_root,
+            command_runs.clone(),
+            host_runtime,
+            host_control,
+        ),
     )
     .with_graceful_shutdown(async move {
-        let _ = shutdown.await;
+        tokio::select! {
+            _ = shutdown => {}
+            _ = shutdown_control.wait() => {}
+        }
     })
     .await
     .map_err(|error| error.to_string());
@@ -119,11 +142,20 @@ async fn bind_loopback() -> io::Result<TcpListener> {
 
 #[cfg(test)]
 fn router(expected_authority: String, context: EntryContext, data_root: DataRootSession) -> Router {
+    let host_runtime = HostRuntimeDocument::new(
+        "0".repeat(64),
+        "test-host",
+        std::process::id(),
+        format!("http://{expected_authority}/"),
+    )
+    .expect("test Host runtime");
     router_with_runs(
         expected_authority,
         context,
         data_root,
         CommandRuns::native(),
+        host_runtime,
+        HostControl::new(),
     )
 }
 
@@ -132,6 +164,8 @@ fn router_with_runs(
     context: EntryContext,
     data_root: DataRootSession,
     command_runs: CommandRuns,
+    host_runtime: HostRuntimeDocument,
+    host_control: HostControl,
 ) -> Router {
     Router::new()
         .route("/", get(web_assets::index))
@@ -144,6 +178,11 @@ fn router_with_runs(
             get(claim::get_claim).post(claim::post_claim),
         )
         .route("/api/v2/profile", get(get_profile))
+        .route("/api/v2/host", get(host_control::get_host))
+        .route(
+            "/api/v2/host/shutdown",
+            axum::routing::post(host_control::post_shutdown),
+        )
         .route(
             "/api/v2/command-runs",
             axum::routing::post(command_run::post_command_run),
@@ -156,7 +195,7 @@ fn router_with_runs(
             "/api/v2/profile/variables/{name}",
             axum::routing::put(put_profile_variable),
         )
-        .route("/healthz", get(health))
+        .route("/healthz", get(host_control::health))
         .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn_with_state(
             Arc::<str>::from(expected_authority),
@@ -166,6 +205,8 @@ fn router_with_runs(
             context,
             data_root,
             command_runs,
+            host_control,
+            host_runtime,
         })
 }
 
@@ -357,10 +398,6 @@ async fn ready_profile_store(
             "DataRoot ownership claim is required",
         )),
     }
-}
-
-async fn health() -> &'static str {
-    "ok\n"
 }
 
 #[cfg(test)]

@@ -1,8 +1,12 @@
 import { isCommandRunSupported } from "./command-run-model.js";
 
-const DEFAULT_ACTIVITY = "overview";
 const PROFILE_SETTER_HANDLER = "entry.profile.set";
-const activityPresentation = {
+const viewPresentation = {
+  children: {
+    icon: "⌑",
+    label: "子命令",
+    summary: "继续浏览下一级命令",
+  },
   overview: {
     icon: "i",
     label: "概览",
@@ -31,6 +35,24 @@ export function commandActivities(command) {
   return activities;
 }
 
+export function commandViews(command, { hasChildren = false } = {}) {
+  if (!command) {
+    return [];
+  }
+  const names = [
+    ...(hasChildren ? ["children"] : []),
+    ...commandActivities(command),
+  ];
+  return names.map((name) => ({ name, ...viewPresentation[name] }));
+}
+
+export function defaultCommandView(command, options = {}) {
+  const views = commandViews(command, options);
+  return views.find((view) => view.name === "children")?.name
+    ?? views[0]?.name
+    ?? null;
+}
+
 export function createCommandActivityView(elements) {
   const panes = new Map([
     ["overview", elements.commandDetail],
@@ -38,29 +60,31 @@ export function createCommandActivityView(elements) {
     ["run", elements.commandRunActivity],
   ]);
   let available = [];
-  let selected = DEFAULT_ACTIVITY;
+  let selected = null;
   let selectedAddress = null;
 
   function render() {
-    const active = new Set(available);
-    elements.commandWorkspace.hidden = active.size === 0;
+    const active = new Set(available.filter((name) => name !== "children"));
+    elements.commandWorkspace.hidden = !active.has(selected);
     for (const [name, pane] of panes) {
       pane.hidden = name !== selected || !active.has(name);
     }
   }
 
-  function selectCommand(command, { activity = DEFAULT_ACTIVITY } = {}) {
-    available = commandActivities(command);
-    selected = available.includes(activity) ? activity : DEFAULT_ACTIVITY;
+  function selectCommand(command, { hasChildren = false, view = null } = {}) {
+    const views = commandViews(command, { hasChildren });
+    available = views.map((item) => item.name);
+    const defaultView = defaultCommandView(command, { hasChildren });
+    selected = available.includes(view) ? view : defaultView;
     selectedAddress = command?.address ?? null;
     render();
+    return { defaultView, view: selected };
   }
 
-  function items(command) {
-    return commandActivities(command).map((name) => ({
-      name,
-      ...activityPresentation[name],
-      selected: command.address === selectedAddress && name === selected,
+  function items(command, options = {}) {
+    return commandViews(command, options).map((view) => ({
+      ...view,
+      selected: command.address === selectedAddress && view.name === selected,
     }));
   }
   render();

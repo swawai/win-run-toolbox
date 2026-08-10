@@ -15,9 +15,17 @@
         <section class="catalog-canvas" aria-labelledby="browser-title">
           <h1 class="sr-only" id="browser-title">Swaw Kit Project Console</h1>
 
-          <nav class="breadcrumb" id="breadcrumb" aria-label="当前命令路径">
-            <span class="breadcrumb-home">控制台</span>
-          </nav>
+          <header class="console-bar">
+            <nav class="breadcrumb" id="breadcrumb" aria-label="当前命令路径">
+              <span class="breadcrumb-home">控制台</span>
+            </nav>
+            <div class="host-summary" aria-label="Host 状态与控制">
+              <span class="host-indicator" id="host-indicator" data-state="loading"
+                aria-hidden="true"></span>
+              <span id="host-status" role="status">正在读取 Host 状态…</span>
+              <button class="host-quit" id="host-quit" type="button">退出 Host</button>
+            </div>
+          </header>
 
           <div class="explorer-frame" id="explorer-frame">
             <div class="finder-state" id="loading-state">

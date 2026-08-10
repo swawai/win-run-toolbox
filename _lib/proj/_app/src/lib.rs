@@ -8,6 +8,7 @@ pub mod data_root;
 pub mod entry;
 mod entry_runner;
 pub mod help;
+pub mod host_runtime;
 pub mod launch;
 pub mod profile;
 pub mod server;

@@ -104,6 +104,8 @@ fn command_app(fixture: &Fixture, runner: Arc<FakeRunner>) -> (Router, CommandRu
         fixture.context(),
         fixture.data_root_session(),
         runs.clone(),
+        test_host_runtime(),
+        HostControl::new(),
     );
     (app, runs)
 }

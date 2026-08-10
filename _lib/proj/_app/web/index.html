@@ -122,93 +122,114 @@
                   </form>
                 </article>
 
-                <article class="command-detail" id="command-detail" hidden>
-                  <header class="detail-heading">
-                    <h2 id="detail-address"></h2>
-                    <p id="detail-summary"></p>
-                  </header>
+                <div class="command-workspace" id="command-workspace" hidden>
+                  <nav class="command-activities" id="command-activities" aria-label="命令功能">
+                    <button type="button" data-command-activity="overview">概览</button>
+                    <button type="button" data-command-activity="help">帮助</button>
+                    <button type="button" data-command-activity="run">执行</button>
+                  </nav>
 
-                  <section class="issue-card" id="issue-card" hidden>
-                    <span aria-hidden="true">!</span>
-                    <div>
-                      <h3>协议问题</h3>
-                      <p id="detail-issue"></p>
+                  <div class="command-activity-content">
+                    <article class="command-detail command-activity-pane" id="command-detail"
+                      tabindex="-1" hidden>
+                      <header class="detail-heading">
+                        <h2 id="detail-address"></h2>
+                        <p id="detail-summary"></p>
+                      </header>
+
+                      <section class="issue-card" id="issue-card" hidden>
+                        <span aria-hidden="true">!</span>
+                        <div>
+                          <h3>协议问题</h3>
+                          <p id="detail-issue"></p>
+                        </div>
+                      </section>
+
+                      <section class="detail-section" id="invocation-section" aria-labelledby="invocation-title">
+                        <h3 id="invocation-title">CLI 调用</h3>
+                        <div class="command-copy">
+                          <code id="cli-command"></code>
+                          <button id="copy-button" type="button" aria-label="复制 CLI 调用">
+                            <span class="copy-label" id="copy-label">复制</span>
+                          </button>
+                        </div>
+                        <p class="copy-feedback" id="copy-feedback" aria-live="polite"></p>
+                      </section>
+
+                      <section class="detail-section" aria-labelledby="properties-title">
+                        <h3 id="properties-title">命令属性</h3>
+                        <dl class="properties">
+                          <div>
+                            <dt>Address</dt>
+                            <dd><code id="property-address"></code></dd>
+                          </div>
+                          <div id="property-entry-row">
+                            <dt>Entry</dt>
+                            <dd><code id="property-entry"></code></dd>
+                          </div>
+                        </dl>
+                      </section>
+                    </article>
+
+                    <article class="command-help-activity command-activity-pane"
+                      id="command-help-activity" tabindex="-1" hidden>
+                      <header class="detail-heading">
+                        <h2>帮助</h2>
+                        <p><code id="command-help-address"></code></p>
+                      </header>
+                      <section class="detail-section help-section" aria-labelledby="help-title">
+                        <h3 id="help-title">命令说明</h3>
+                        <pre id="detail-help"></pre>
+                      </section>
+                    </article>
+
+                    <div class="command-run-activity command-activity-pane"
+                      id="command-run-activity" tabindex="-1" hidden>
+                      <section class="command-run-section" id="command-run-section"
+                        aria-labelledby="command-run-title" hidden>
+                        <header class="command-run-heading">
+                          <div>
+                            <h3 id="command-run-title">Web 执行</h3>
+                            <p>非交互执行；不提供 stdin 或终端会话，结束时会清理全部子进程。每一行都是一个原始参数。输出协议为 UTF-8；非 UTF-8 字节会显示为替换字符。</p>
+                          </div>
+                          <span class="command-run-state" id="command-run-state" aria-live="polite"></span>
+                        </header>
+
+                        <form class="command-run-form" id="command-run-form">
+                          <div class="command-run-arguments-heading">
+                            <span>参数</span>
+                            <button class="secondary-button command-run-add" id="command-run-add" type="button">
+                              添加参数
+                            </button>
+                          </div>
+                          <div class="command-run-arguments" id="command-run-arguments"></div>
+                          <p class="command-run-empty" id="command-run-empty">当前不传递参数。</p>
+                          <div class="command-run-actions">
+                            <button class="command-run-submit" id="command-run-submit" type="submit">执行</button>
+                            <button class="secondary-button command-run-cancel" id="command-run-cancel"
+                              type="button" hidden>
+                              终止进程
+                            </button>
+                          </div>
+                          <p class="command-run-feedback" id="command-run-feedback" aria-live="polite"></p>
+                        </form>
+
+                        <section class="command-run-result" id="command-run-result" aria-label="执行输出" hidden>
+                          <header>
+                            <code id="command-run-address"></code>
+                            <span id="command-run-exit-code"></span>
+                          </header>
+                          <span class="sr-only" id="command-run-stream-stdout">标准输出</span>
+                          <span class="sr-only" id="command-run-stream-stderr">标准错误</span>
+                          <pre class="command-run-output" id="command-run-output" role="log" aria-live="off" tabindex="0"></pre>
+                          <p class="command-run-truncated" id="command-run-truncated" role="status" aria-live="polite" hidden>
+                            输出已达到 Host 保留上限；超出部分不会显示，但不会因此终止进程。
+                          </p>
+                        </section>
+                      </section>
                     </div>
-                  </section>
-
-                  <section class="detail-section" id="invocation-section" aria-labelledby="invocation-title">
-                    <h3 id="invocation-title">CLI 调用</h3>
-                    <div class="command-copy">
-                      <code id="cli-command"></code>
-                      <button id="copy-button" type="button" aria-label="复制 CLI 调用">
-                        <span class="copy-label" id="copy-label">复制</span>
-                      </button>
-                    </div>
-                    <p class="copy-feedback" id="copy-feedback" aria-live="polite"></p>
-                  </section>
-
-                  <section class="detail-section" aria-labelledby="properties-title">
-                    <h3 id="properties-title">命令属性</h3>
-                    <dl class="properties">
-                      <div>
-                        <dt>Address</dt>
-                        <dd><code id="property-address"></code></dd>
-                      </div>
-                      <div id="property-entry-row">
-                        <dt>Entry</dt>
-                        <dd><code id="property-entry"></code></dd>
-                      </div>
-                    </dl>
-                  </section>
-
-                  <section class="detail-section help-section" id="help-section" aria-labelledby="help-title">
-                    <h3 id="help-title">帮助</h3>
-                    <pre id="detail-help"></pre>
-                  </section>
-                </article>
-
-                <section class="command-run-section" id="command-run-section"
-                  aria-labelledby="command-run-title" hidden>
-                  <header class="command-run-heading">
-                    <div>
-                      <h3 id="command-run-title">Web 执行</h3>
-                      <p>非交互执行；不提供 stdin 或终端会话，结束时会清理全部子进程。每一行都是一个原始参数。输出协议为 UTF-8；非 UTF-8 字节会显示为替换字符。</p>
-                    </div>
-                    <span class="command-run-state" id="command-run-state" aria-live="polite"></span>
-                  </header>
-
-                  <form class="command-run-form" id="command-run-form">
-                    <div class="command-run-arguments-heading">
-                      <span>参数</span>
-                      <button class="secondary-button command-run-add" id="command-run-add" type="button">
-                        添加参数
-                      </button>
-                    </div>
-                    <div class="command-run-arguments" id="command-run-arguments"></div>
-                    <p class="command-run-empty" id="command-run-empty">当前不传递参数。</p>
-                    <div class="command-run-actions">
-                      <button class="command-run-submit" id="command-run-submit" type="submit">执行</button>
-                      <button class="secondary-button command-run-cancel" id="command-run-cancel"
-                        type="button" hidden>
-                        终止进程
-                      </button>
-                    </div>
-                    <p class="command-run-feedback" id="command-run-feedback" aria-live="polite"></p>
-                  </form>
-
-                  <section class="command-run-result" id="command-run-result" aria-label="执行输出" hidden>
-                    <header>
-                      <code id="command-run-address"></code>
-                      <span id="command-run-exit-code"></span>
-                    </header>
-                    <span class="sr-only" id="command-run-stream-stdout">标准输出</span>
-                    <span class="sr-only" id="command-run-stream-stderr">标准错误</span>
-                    <pre class="command-run-output" id="command-run-output" role="log" aria-live="off" tabindex="0"></pre>
-                    <p class="command-run-truncated" id="command-run-truncated" role="status" aria-live="polite" hidden>
-                      输出已达到 Host 保留上限；超出部分不会显示，但不会因此终止进程。
-                    </p>
-                  </section>
-                </section>
+                  </div>
+                </div>
               </aside>
             </div>
           </div>

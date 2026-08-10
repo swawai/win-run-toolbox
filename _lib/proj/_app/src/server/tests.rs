@@ -159,6 +159,22 @@ async fn serves_only_the_declared_local_surface() {
     assert!(index_html.contains("Swaw Kit Proj"));
     assert!(index_html.contains("class=\"command-run-output\" id=\"command-run-output\""));
 
+    for path in [
+        "/commands",
+        "/commands/action/proj/build/launcher",
+        "/commands/kernel/dev/setup",
+        "/commands/control/entry/env/rust",
+        "/commands/control/entry/env/rust/SWAWKIT_PROJ_RUST_MODE",
+    ] {
+        let response = send(app.clone(), Method::GET, path, Some(AUTHORITY)).await;
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+        assert_eq!(
+            response.headers().get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/html; charset=utf-8")),
+            "{path}"
+        );
+    }
+
     for (path, content_type) in [
         ("/assets/app.css", "text/css; charset=utf-8"),
         ("/assets/styles/theme.css", "text/css; charset=utf-8"),
@@ -174,6 +190,11 @@ async fn serves_only_the_declared_local_surface() {
         ("/assets/styles/command-run.css", "text/css; charset=utf-8"),
         ("/assets/app.js", "text/javascript; charset=utf-8"),
         ("/assets/catalog-model.js", "text/javascript; charset=utf-8"),
+        (
+            "/assets/command-activity.js",
+            "text/javascript; charset=utf-8",
+        ),
+        ("/assets/navigation.js", "text/javascript; charset=utf-8"),
         ("/assets/explorer.js", "text/javascript; charset=utf-8"),
         ("/assets/detail.js", "text/javascript; charset=utf-8"),
         ("/assets/entry-profile.js", "text/javascript; charset=utf-8"),

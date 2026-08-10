@@ -16,6 +16,13 @@ export function commandDisabledDuringSetup(setupRequired, command) {
   return setupRequired && command.source !== "control";
 }
 
+export function availableCommand(catalog, setupRequired, address) {
+  const command = catalog.commandByAddress.get(address);
+  return command && !commandDisabledDuringSetup(setupRequired, command)
+    ? command
+    : null;
+}
+
 export function controlledColumnId(_command, depth) {
   return `finder-column-${depth + 1}`;
 }
@@ -108,6 +115,7 @@ export function createExplorerView({
     button.addEventListener("click", (event) => {
       selectCommand(command.address, depth, {
         focusDetail: event.detail === 0,
+        history: "push",
       });
     });
     item.append(button);
@@ -223,17 +231,18 @@ export function createExplorerView({
   }
 
   function selectCommand(address, depth, options = {}) {
-    const command = catalog.commandByAddress.get(address);
-    if (!command || commandDisabledDuringSetup(setupRequired, command)) {
-      return;
+    const command = availableCommand(catalog, setupRequired, address);
+    if (!command) {
+      return false;
     }
     selectedPath = [...selectedPath.slice(0, depth), address];
-    onSelectCommand(command);
+    onSelectCommand(command, options);
     renderBreadcrumb();
     renderColumns({
       focusKey: address,
       focusDetail: options.focusDetail === true,
     });
+    return true;
   }
 
   function addressPath(address) {
@@ -249,17 +258,18 @@ export function createExplorerView({
   }
 
   function selectAddress(address, options = {}) {
-    const command = catalog.commandByAddress.get(address);
-    if (!command || commandDisabledDuringSetup(setupRequired, command)) {
-      return;
+    const command = availableCommand(catalog, setupRequired, address);
+    if (!command) {
+      return false;
     }
     selectedPath = addressPath(address);
-    onSelectCommand(command);
+    onSelectCommand(command, options);
     renderBreadcrumb();
     renderColumns({
       focusKey: address,
       focusDetail: options.focusDetail === true,
     });
+    return true;
   }
 
   function defaultCommand() {
@@ -288,7 +298,7 @@ export function createExplorerView({
       const children = childrenOf(catalog, button.dataset.address);
       if (children.length > 0) {
         event.preventDefault();
-        selectCommand(button.dataset.address, depth);
+        selectCommand(button.dataset.address, depth, { history: "push" });
         requestAnimationFrame(() => {
           const nextColumn = columns.querySelector(`[data-depth="${depth + 1}"]`);
           nextColumn?.querySelector(".command-row")?.focus();
@@ -296,23 +306,30 @@ export function createExplorerView({
       }
     } else if (event.key === "ArrowLeft" && depth > 0) {
       event.preventDefault();
-      selectAddress(selectedPath[depth - 1]);
+      selectAddress(selectedPath[depth - 1], { history: "push" });
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      selectCommand(button.dataset.address, depth, { focusDetail: true });
+      selectCommand(button.dataset.address, depth, {
+        focusDetail: true,
+        history: "push",
+      });
     }
   }
 
-  function setCatalog(nextCatalog) {
+  function setCatalog(nextCatalog, options = {}) {
     const previous = selectedPath.at(-1);
     catalog = nextCatalog;
-    if (previous && catalog.commandByAddress.has(previous)) {
-      selectAddress(previous);
+    const preferred = options.address ?? previous;
+    const preferredCommand = preferred
+      ? availableCommand(catalog, setupRequired, preferred)
+      : null;
+    if (preferredCommand) {
+      selectAddress(preferred, { history: options.history ?? "none" });
       return;
     }
     const command = defaultCommand();
     if (command) {
-      selectAddress(command.address);
+      selectAddress(command.address, { history: options.history ?? "none" });
     } else {
       selectedPath = [];
       renderBreadcrumb();
@@ -332,7 +349,7 @@ export function createExplorerView({
     }
     const command = defaultCommand();
     if (command) {
-      selectAddress(command.address);
+      selectAddress(command.address, { history: "replace" });
     }
   }
 

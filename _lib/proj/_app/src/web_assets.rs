@@ -18,6 +18,8 @@ const COMMAND_RUN_CSS: &str = include_str!("../web/styles/command-run.css");
 
 const APP_JS: &str = include_str!("../web/app.js");
 const CATALOG_MODEL_JS: &str = include_str!("../web/catalog-model.js");
+const COMMAND_ACTIVITY_JS: &str = include_str!("../web/command-activity.js");
+const NAVIGATION_JS: &str = include_str!("../web/navigation.js");
 const EXPLORER_JS: &str = include_str!("../web/explorer.js");
 const DETAIL_JS: &str = include_str!("../web/detail.js");
 const ENTRY_PROFILE_JS: &str = include_str!("../web/entry-profile.js");
@@ -44,6 +46,8 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "styles/command-run.css" => Some(("text/css; charset=utf-8", COMMAND_RUN_CSS)),
         "app.js" => Some(("text/javascript; charset=utf-8", APP_JS)),
         "catalog-model.js" => Some(("text/javascript; charset=utf-8", CATALOG_MODEL_JS)),
+        "command-activity.js" => Some(("text/javascript; charset=utf-8", COMMAND_ACTIVITY_JS)),
+        "navigation.js" => Some(("text/javascript; charset=utf-8", NAVIGATION_JS)),
         "explorer.js" => Some(("text/javascript; charset=utf-8", EXPLORER_JS)),
         "detail.js" => Some(("text/javascript; charset=utf-8", DETAIL_JS)),
         "entry-profile.js" => Some(("text/javascript; charset=utf-8", ENTRY_PROFILE_JS)),

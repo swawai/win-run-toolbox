@@ -135,6 +135,8 @@ fn router_with_runs(
 ) -> Router {
     Router::new()
         .route("/", get(web_assets::index))
+        .route("/commands", get(web_assets::index))
+        .route("/commands/{*path}", get(web_assets::index))
         .route("/assets/{*path}", get(web_assets::asset))
         .route("/api/v2/catalog", get(get_catalog))
         .route(

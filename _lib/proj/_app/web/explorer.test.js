@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  availableCommand,
   captureColumnScrollOffsets,
   childrenColumnWidth,
   commandDisabledDuringSetup,
@@ -14,6 +15,22 @@ describe("Explorer control-plane behavior", () => {
     expect(commandDisabledDuringSetup(true, { source: "kernel" })).toBe(true);
     expect(commandDisabledDuringSetup(true, { source: "action" })).toBe(true);
     expect(commandDisabledDuringSetup(false, { source: "action" })).toBe(false);
+  });
+
+  test("falls back instead of selecting a disabled routed command", () => {
+    const control = { address: "..entry", source: "control" };
+    const action = { address: "proj", source: "action" };
+    const catalog = {
+      commandByAddress: new Map([
+        [control.address, control],
+        [action.address, action],
+      ]),
+    };
+
+    expect(availableCommand(catalog, true, action.address)).toBeNull();
+    expect(availableCommand(catalog, true, control.address)).toBe(control);
+    expect(availableCommand(catalog, false, action.address)).toBe(action);
+    expect(availableCommand(catalog, false, "missing")).toBeNull();
   });
 
   test("connects command rows to the column they actually reveal", () => {

@@ -1,9 +1,11 @@
 import { createCatalog } from "./catalog-model.js";
 import { createDataRootClaimView } from "./claim.js";
+import { createCommandActivityView } from "./command-activity.js";
 import { createCommandRunView } from "./command-run.js";
 import { createDetailView } from "./detail.js";
 import { createExplorerView } from "./explorer.js";
 import { createEntryProfileView } from "./entry-profile.js";
+import { commandAtPath, updateCommandPath } from "./navigation.js";
 
 const elements = {
   breadcrumb: document.querySelector("#breadcrumb"),
@@ -23,6 +25,10 @@ const elements = {
   claimSubmit: document.querySelector("#claim-submit"),
   claimVolumeId: document.querySelector("#claim-volume-id"),
   commandDetail: document.querySelector("#command-detail"),
+  commandActivities: document.querySelector("#command-activities"),
+  commandHelpActivity: document.querySelector("#command-help-activity"),
+  commandHelpAddress: document.querySelector("#command-help-address"),
+  commandRunActivity: document.querySelector("#command-run-activity"),
   commandRunAdd: document.querySelector("#command-run-add"),
   commandRunAddress: document.querySelector("#command-run-address"),
   commandRunArguments: document.querySelector("#command-run-arguments"),
@@ -37,6 +43,7 @@ const elements = {
   commandRunState: document.querySelector("#command-run-state"),
   commandRunSubmit: document.querySelector("#command-run-submit"),
   commandRunTruncated: document.querySelector("#command-run-truncated"),
+  commandWorkspace: document.querySelector("#command-workspace"),
   copyButton: document.querySelector("#copy-button"),
   copyFeedback: document.querySelector("#copy-feedback"),
   copyLabel: document.querySelector("#copy-label"),
@@ -72,6 +79,7 @@ const elements = {
 let catalog = null;
 const detail = createDetailView(elements);
 const commandRun = createCommandRunView(elements);
+const commandActivity = createCommandActivityView(elements);
 const entryProfile = createEntryProfileView(elements, {
   async onProfileChanged(document, address) {
     explorer.setSetupRequired(!document.requiredComplete);
@@ -83,13 +91,27 @@ const explorer = createExplorerView({
   breadcrumb: elements.breadcrumb,
   columns: elements.finderColumns,
   detailPanel: elements.detailPanel,
-  onSelectCommand(command) {
+  onSelectCommand(command, options = {}) {
     if (entryProfile.render(command)) {
+      commandActivity.selectCommand(null);
       commandRun.select(null);
+      updateCommandPath(
+        window.history,
+        window.location,
+        command,
+        options.history ?? "none",
+      );
       return;
     }
     detail.render(catalog, command);
     commandRun.select(command);
+    commandActivity.selectCommand(command);
+    updateCommandPath(
+      window.history,
+      window.location,
+      command,
+      options.history ?? "none",
+    );
   },
 });
 const dataRootClaim = createDataRootClaimView(elements, {
@@ -138,7 +160,7 @@ async function loadCatalog() {
     }
 
     catalog = createCatalog(await response.json());
-    explorer.setCatalog(catalog);
+    explorer.setCatalog(catalog, { history: "replace" });
     setLoadState("ready");
   } catch (error) {
     const message = error instanceof Error
@@ -161,7 +183,13 @@ async function loadApplication() {
       throw new Error(`Host 返回 HTTP ${response.status}`);
     }
     catalog = createCatalog(await response.json());
-    explorer.setCatalog(catalog);
+    const routed = commandAtPath(catalog, window.location.pathname, {
+      allowMissing: !document.requiredComplete,
+    });
+    explorer.setCatalog(catalog, {
+      address: routed?.address,
+      history: "replace",
+    });
     setLoadState("ready");
   } catch (error) {
     const message = error instanceof Error
@@ -178,6 +206,26 @@ elements.profileForm.addEventListener("submit", (event) => {
 });
 elements.finderColumns.addEventListener("keydown", explorer.handleKeyboard);
 elements.retryButton.addEventListener("click", startApplication);
+window.addEventListener("popstate", () => {
+  if (!catalog) {
+    return;
+  }
+  try {
+    const routed = commandAtPath(catalog, window.location.pathname);
+    if (
+      !routed
+      || !explorer.selectAddress(routed.address, { history: "none" })
+    ) {
+      explorer.setCatalog(catalog, { history: "replace" });
+    }
+    setLoadState("ready");
+  } catch (error) {
+    setLoadState(
+      "error",
+      error instanceof Error ? error.message : "当前命令 URL 无效。",
+    );
+  }
+});
 
 void commandRun.restore();
 startApplication();

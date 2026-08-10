@@ -1,8 +1,5 @@
 .command-run-section {
-  flex: 0 0 auto;
-  margin: 0 26px 27px;
-  padding-top: 22px;
-  border-top: 1px solid var(--ui-border);
+  padding: 27px 26px;
 }
 
 .command-run-heading {
@@ -209,7 +206,6 @@
 
 @media (max-width: 560px) {
   .command-run-section {
-    margin-right: 18px;
-    margin-left: 18px;
+    padding: 23px 18px;
   }
 }

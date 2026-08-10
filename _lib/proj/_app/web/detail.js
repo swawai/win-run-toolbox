@@ -21,7 +21,6 @@ export function createDetailView(elements) {
     copyVersion += 1;
     resetCopyFeedback();
     elements.entryProfileDetail.hidden = true;
-    elements.commandDetail.hidden = false;
 
     const group = isGroup(catalog, command);
     const issue = command.issue;
@@ -42,6 +41,7 @@ export function createDetailView(elements) {
       ? `${command.entry} · ${command.adapter}`
       : command.entry;
     elements.detailHelp.textContent = command.help || "该命令尚未提供详细帮助。";
+    elements.commandHelpAddress.textContent = command.address;
     elements.selectionStatus.textContent = `已选择命令 ${command.address}`;
   }
 

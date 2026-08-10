@@ -83,7 +83,7 @@ export function createEntryProfileView(elements, { onProfileChanged }) {
     currentCommand = command;
     const name = variableName(command);
     const known = currentDocument && Object.hasOwn(currentDocument.variables, name);
-    elements.commandDetail.hidden = true;
+    elements.commandWorkspace.hidden = true;
     elements.entryProfileDetail.hidden = false;
     elements.entryProfileTitle.textContent = name;
     elements.entryProfileSummary.textContent = command.summary

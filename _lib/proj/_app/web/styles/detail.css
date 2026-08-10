@@ -5,11 +5,8 @@
   flex: 0 0 var(--detail-width);
   position: relative;
   display: flex;
-  flex-direction: column;
   background: var(--ui-surface);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--ui-scrollbar) var(--ui-scrollbar-track);
+  overflow: hidden;
 }
 
 .detail-panel:focus-visible {
@@ -17,9 +14,69 @@
 }
 
 .entry-profile-detail,
-.command-detail {
+.command-detail,
+.command-help-activity {
   flex: 1;
   padding: 27px 26px;
+}
+
+.entry-profile-detail {
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-scrollbar) var(--ui-scrollbar-track);
+}
+
+.command-workspace {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+}
+
+.command-activities {
+  width: 108px;
+  flex: 0 0 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 18px 8px;
+  border-right: 1px solid var(--ui-border);
+  background: var(--ui-surface-muted);
+}
+
+.command-activities button {
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--ui-text-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-activities button:hover {
+  color: var(--ui-text);
+  background: var(--ui-surface-hover);
+}
+
+.command-activities button[aria-current="page"] {
+  color: var(--ui-selection-text);
+  background: var(--ui-selection-bg);
+}
+
+.command-activity-content {
+  min-width: 0;
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-scrollbar) var(--ui-scrollbar-track);
+}
+
+.command-activity-pane {
+  min-height: 100%;
 }
 
 .detail-heading {
@@ -222,12 +279,18 @@
 
 @media (max-width: 560px) {
   .detail-panel {
-    width: min(92vw, 420px);
-    flex-basis: min(92vw, 420px);
+    width: min(96vw, 560px);
+    flex-basis: min(96vw, 560px);
   }
 
   .entry-profile-detail,
-  .command-detail {
+  .command-detail,
+  .command-help-activity {
     padding: 23px 18px;
+  }
+
+  .command-activities {
+    width: 88px;
+    flex-basis: 88px;
   }
 }

@@ -21,6 +21,7 @@ $CandidateArguments = @{
 & (Join-Path $PSScriptRoot 'provider-activation.ps1')
 & (Join-Path $PSScriptRoot 'project-build-export.ps1')
 & (Join-Path $PSScriptRoot 'app-build.ps1')
+& (Join-Path $PSScriptRoot 'app-publish.ps1')
 & (Join-Path $PSScriptRoot 'app-core.ps1')
 & (Join-Path $PSScriptRoot 'web.ps1')
 & (Join-Path $PSScriptRoot 'bootstrap-contract.ps1')

@@ -43,10 +43,12 @@ try {
             -BuildRoot $WorkRoot `
             -CandidatePath $CandidatePath | Out-Host
     }
-    Publish-ProjBuildCandidate `
+    Publish-ProjBuildArtifact `
         -SourcePath $CandidatePath `
         -ExportPath $ExportPath `
-        -CommandDataRoot $CommandDataRoot
+        -CommandDataRoot $CommandDataRoot `
+        -ProducerAddress 'proj.build.launcher' `
+        -ProducerContract 'swawkit.proj-build-launcher/v1'
 } finally {
     $BuildLock.Dispose()
 }

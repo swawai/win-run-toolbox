@@ -6,9 +6,14 @@
 构建中间文件和最近一次成功结果保存在当前命令专有数据根：
   work/cargo/
   export/swawkit-proj.exe
+  export/manifest.json
+  _state.json
 
 该命令只构建候选文件，不会替换正在运行的：
   _lib/proj/_bin/swawkit-proj.exe
+
+发布候选：
+  swawkit proj.publish.app
 
 固定 Bootstrap 工具链属于源码树维护入口，不作为项目 Action 暴露：
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File _lib\proj\build.ps1

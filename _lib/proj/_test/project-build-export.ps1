@@ -21,10 +21,14 @@ $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $TemporaryRoot = Join-Path $RepoRoot (
     "data\_test\swawkit-project-build-export-$([Guid]::NewGuid().ToString('N'))"
 )
-$WorkRoot = Join-Path $TemporaryRoot 'work'
-$ExportRoot = Join-Path $TemporaryRoot 'export'
+$DataRoot = Join-Path $TemporaryRoot 'data'
+$CommandDataRoot = Join-Path $DataRoot 'modules\action\proj\build\app'
+$WorkRoot = Join-Path $CommandDataRoot 'work'
+$ExportRoot = Join-Path $CommandDataRoot 'export'
 $CandidatePath = Join-Path $WorkRoot 'candidate.exe'
 $ExportPath = Join-Path $ExportRoot 'candidate.exe'
+$ProducerAddress = 'proj.build.app'
+$ProducerContract = 'swawkit.proj-build-app/v1'
 
 try {
     [void][IO.Directory]::CreateDirectory($WorkRoot)
@@ -32,10 +36,12 @@ try {
     [IO.File]::WriteAllText($CandidatePath, 'new-candidate')
     [IO.File]::WriteAllText($ExportPath, 'last-known-good')
 
-    $Reported = Publish-ProjBuildCandidate `
+    $Reported = Publish-ProjBuildArtifact `
         -SourcePath $CandidatePath `
         -ExportPath $ExportPath `
-        -CommandDataRoot $TemporaryRoot
+        -CommandDataRoot $CommandDataRoot `
+        -ProducerAddress $ProducerAddress `
+        -ProducerContract $ProducerContract
     Assert-ProjProjectBuildExport `
         -Condition ([IO.File]::ReadAllText($ExportPath) -ceq 'new-candidate') `
         -Message 'a valid candidate was not exported'
@@ -49,12 +55,88 @@ try {
         ).Count -eq 0) `
         -Message 'a successful export left a recovery file behind'
 
+    $Resolved = Get-ProjRequiredBuildArtifact `
+        -DataRoot $DataRoot `
+        -ProviderAddress $ProducerAddress `
+        -EntryCommand 'fixture' `
+        -ProducerContract $ProducerContract `
+        -ArtifactName 'candidate.exe'
+    $State = Read-ProjCommandProviderState `
+        -Path (Join-Path $CommandDataRoot '_state.json') `
+        -DataRoot $DataRoot
+    $ManifestPath = Join-Path $ExportRoot 'manifest.json'
+    $Manifest = [IO.File]::ReadAllText($ManifestPath) | ConvertFrom-Json
+    Assert-ProjProjectBuildExport `
+        -Condition (
+            [string]$Resolved.Path -ceq $ExportPath -and
+            [string]$State.Status -ceq 'ready' -and
+            [string]$Manifest.token -ceq [string]$State.Token -and
+            [string]$Manifest.inputRevision -ceq [string]$State.InputRevision -and
+            [string]$Manifest.artifact.sha256 -ceq [string]$Resolved.Sha256
+        ) `
+        -Message 'the build artifact contract was not published consistently'
+
+    $Manifest.token = 'f' * 32
+    [IO.File]::WriteAllText(
+        $ManifestPath,
+        (ConvertTo-ProjDevJsonText -Value $Manifest),
+        [Text.UTF8Encoding]::new($false)
+    )
+    try {
+        Get-ProjRequiredBuildArtifact `
+            -DataRoot $DataRoot `
+            -ProviderAddress $ProducerAddress `
+            -EntryCommand 'fixture' `
+            -ProducerContract $ProducerContract `
+            -ArtifactName 'candidate.exe' | Out-Null
+        throw 'a mismatched manifest token unexpectedly passed validation'
+    } catch {
+        Assert-ProjProjectBuildExport `
+            -Condition ($_.Exception.Message.Contains(
+                'invalid artifact manifest'
+            )) `
+            -Message 'a mismatched manifest token failed for the wrong reason'
+    }
+    [IO.File]::WriteAllText($CandidatePath, 'new-candidate')
+    Publish-ProjBuildArtifact `
+        -SourcePath $CandidatePath `
+        -ExportPath $ExportPath `
+        -CommandDataRoot $CommandDataRoot `
+        -ProducerAddress $ProducerAddress `
+        -ProducerContract $ProducerContract | Out-Null
+
+    [IO.File]::WriteAllText($ExportPath, 'tampered-candidate')
+    try {
+        Get-ProjRequiredBuildArtifact `
+            -DataRoot $DataRoot `
+            -ProviderAddress $ProducerAddress `
+            -EntryCommand 'fixture' `
+            -ProducerContract $ProducerContract `
+            -ArtifactName 'candidate.exe' | Out-Null
+        throw 'a tampered artifact unexpectedly passed validation'
+    } catch {
+        Assert-ProjProjectBuildExport `
+            -Condition ($_.Exception.Message.Contains(
+                'does not match its manifest'
+            )) `
+            -Message 'a tampered artifact failed for the wrong reason'
+    }
+    [IO.File]::WriteAllText($CandidatePath, 'new-candidate')
+    Publish-ProjBuildArtifact `
+        -SourcePath $CandidatePath `
+        -ExportPath $ExportPath `
+        -CommandDataRoot $CommandDataRoot `
+        -ProducerAddress $ProducerAddress `
+        -ProducerContract $ProducerContract | Out-Null
+
     [IO.File]::WriteAllText($ExportPath, 'preserve-me')
     try {
-        Publish-ProjBuildCandidate `
+        Publish-ProjBuildArtifact `
             -SourcePath (Join-Path $WorkRoot 'missing.exe') `
             -ExportPath $ExportPath `
-            -CommandDataRoot $TemporaryRoot | Out-Null
+            -CommandDataRoot $CommandDataRoot `
+            -ProducerAddress $ProducerAddress `
+            -ProducerContract $ProducerContract | Out-Null
         throw 'a missing candidate unexpectedly succeeded'
     } catch {
         Assert-ProjProjectBuildExport `
@@ -68,10 +150,12 @@ try {
     $InvalidExportPath = Join-Path $ExportRoot 'directory-target.exe'
     [void][IO.Directory]::CreateDirectory($InvalidExportPath)
     try {
-        Publish-ProjBuildCandidate `
+        Publish-ProjBuildArtifact `
             -SourcePath $CandidatePath `
             -ExportPath $InvalidExportPath `
-            -CommandDataRoot $TemporaryRoot | Out-Null
+            -CommandDataRoot $CommandDataRoot `
+            -ProducerAddress $ProducerAddress `
+            -ProducerContract $ProducerContract | Out-Null
         throw 'an invalid export target unexpectedly succeeded'
     } catch {
         Assert-ProjProjectBuildExport `
@@ -93,13 +177,21 @@ try {
                 'new-candidate'
         ) `
         -Message 'a failed commit did not preserve the complete candidate'
+    $FailedState = Read-ProjCommandProviderState `
+        -Path (Join-Path $CommandDataRoot '_state.json') `
+        -DataRoot $DataRoot
+    Assert-ProjProjectBuildExport `
+        -Condition ([string]$FailedState.Status -ceq 'unavailable') `
+        -Message 'a failed artifact publication retained Ready state'
 
-    $OutsidePath = Join-Path (Split-Path $TemporaryRoot -Parent) 'escaped.exe'
+    $OutsidePath = Join-Path (Split-Path $CommandDataRoot -Parent) 'escaped.exe'
     try {
-        Publish-ProjBuildCandidate `
+        Publish-ProjBuildArtifact `
             -SourcePath $CandidatePath `
             -ExportPath $OutsidePath `
-            -CommandDataRoot $TemporaryRoot | Out-Null
+            -CommandDataRoot $CommandDataRoot `
+            -ProducerAddress $ProducerAddress `
+            -ProducerContract $ProducerContract | Out-Null
         throw 'an escaped export unexpectedly succeeded'
     } catch {
         Assert-ProjProjectBuildExport `
@@ -123,7 +215,7 @@ try {
             -Condition (-not $Action.Contains('SWAWKIT_PROJ_DATA_ROOT')) `
             -Message 'a project build Action still writes through the Entry data root'
         Assert-ProjProjectBuildExport `
-            -Condition $Action.Contains('Publish-ProjBuildCandidate') `
+            -Condition $Action.Contains('Publish-ProjBuildArtifact') `
             -Message 'a project build Action bypasses the export boundary'
     }
     Assert-ProjProjectBuildExport `

@@ -34,10 +34,12 @@ try {
     & $BuildPath `
         -CargoPath ([string]$Cargo.Executable) `
         -TargetDirectory $WorkRoot | Out-Host
-    Publish-ProjBuildCandidate `
+    Publish-ProjBuildArtifact `
         -SourcePath (Join-Path $WorkRoot 'release\swawkit-proj.exe') `
         -ExportPath $ExportPath `
-        -CommandDataRoot $CommandDataRoot
+        -CommandDataRoot $CommandDataRoot `
+        -ProducerAddress 'proj.build.app' `
+        -ProducerContract 'swawkit.proj-build-app/v1'
 } finally {
     $BuildLock.Dispose()
 }

@@ -9,6 +9,8 @@
 构建中间文件和最近一次成功结果保存在当前命令专有数据根：
   work/launcher/
   export/template.proj1.exe
+  export/manifest.json
+  _state.json
 
 构建入口直接准备 Bootstrap 固定的 Rust/MSVC 工具链，不依赖根 swawkit.exe、
 现有 Launcher 模板、项目 Profile 或系统 PATH 中碰巧存在的编译器；

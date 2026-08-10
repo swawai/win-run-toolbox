@@ -59,6 +59,25 @@ try {
         -Condition (-not [IO.Directory]::Exists($ExpectedCommandRoot)) `
         -Message 'resolving provider paths created directories'
 
+    $ExpectedActionRoot = Join-Path $DataRoot 'modules\action\proj\build\app'
+    $ActionRoot = Get-ProjActionCommandDataRoot `
+        -DataRoot $DataRoot `
+        -Address 'proj.build.app'
+    $ActionExport = Resolve-ProjCommandExportPath `
+        -DataRoot $DataRoot `
+        -ProviderAddress 'proj.build.app' `
+        -ProviderSource action
+    Assert-ProjCommandExportTest `
+        -Condition (
+            (Get-ProjDevCanonicalPath -Path $ActionRoot) -ceq
+            (Get-ProjDevCanonicalPath -Path $ExpectedActionRoot) -and
+            (Get-ProjDevCanonicalPath -Path $ActionExport) -ceq
+            (Get-ProjDevCanonicalPath -Path (
+                Join-Path $ExpectedActionRoot 'export'
+            ))
+        ) `
+        -Message 'Action provider paths do not follow the command-data layout'
+
     foreach ($Address in @(
         '', '.Dev.setup', '.dev..setup', '.dev/setup', '.dev\setup',
         '..entry', 'build'
@@ -74,6 +93,24 @@ try {
         Assert-ProjCommandExportTest `
             -Condition $Rejected `
             -Message "unsafe provider address was accepted: '$Address'"
+    }
+
+    foreach ($Address in @(
+        '', 'Proj.build', 'proj..build', '.dev.setup', 'proj/build',
+        'proj\build', '..entry'
+    )) {
+        $Rejected = $false
+        try {
+            [void](Resolve-ProjCommandExportPath `
+                -DataRoot $DataRoot `
+                -ProviderAddress $Address `
+                -ProviderSource action)
+        } catch {
+            $Rejected = $true
+        }
+        Assert-ProjCommandExportTest `
+            -Condition $Rejected `
+            -Message "unsafe Action provider address was accepted: '$Address'"
     }
 
     $ExternalRoot = Join-Path $TemporaryRoot 'external'

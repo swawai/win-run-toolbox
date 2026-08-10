@@ -21,4 +21,13 @@ describe("command activities", () => {
     })).toEqual(["overview", "help"]);
     expect(commandActivities(null)).toEqual([]);
   });
+
+  test("does not add generic activities beside the dedicated Profile editor", () => {
+    expect(commandActivities({
+      source: "control",
+      address: "..entry.env.default-shell",
+      handler: "entry.profile.set",
+      runnable: true,
+    })).toEqual([]);
+  });
 });

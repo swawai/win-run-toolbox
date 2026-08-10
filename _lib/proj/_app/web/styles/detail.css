@@ -30,41 +30,6 @@
 .command-workspace {
   width: 100%;
   min-width: 0;
-  display: flex;
-}
-
-.command-activities {
-  width: 108px;
-  flex: 0 0 108px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 18px 8px;
-  border-right: 1px solid var(--ui-border);
-  background: var(--ui-surface-muted);
-}
-
-.command-activities button {
-  min-height: 36px;
-  padding: 7px 10px;
-  border: 0;
-  border-radius: var(--radius-control);
-  color: var(--ui-text-muted);
-  background: transparent;
-  font-size: 12px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-
-.command-activities button:hover {
-  color: var(--ui-text);
-  background: var(--ui-surface-hover);
-}
-
-.command-activities button[aria-current="page"] {
-  color: var(--ui-selection-text);
-  background: var(--ui-selection-bg);
 }
 
 .command-activity-content {
@@ -289,8 +254,4 @@
     padding: 23px 18px;
   }
 
-  .command-activities {
-    width: 88px;
-    flex-basis: 88px;
-  }
 }

@@ -25,7 +25,6 @@ const elements = {
   claimSubmit: document.querySelector("#claim-submit"),
   claimVolumeId: document.querySelector("#claim-volume-id"),
   commandDetail: document.querySelector("#command-detail"),
-  commandActivities: document.querySelector("#command-activities"),
   commandHelpActivity: document.querySelector("#command-help-activity"),
   commandHelpAddress: document.querySelector("#command-help-address"),
   commandRunActivity: document.querySelector("#command-run-activity"),
@@ -91,6 +90,7 @@ const explorer = createExplorerView({
   breadcrumb: elements.breadcrumb,
   columns: elements.finderColumns,
   detailPanel: elements.detailPanel,
+  getCommandActivities: commandActivity.items,
   onSelectCommand(command, options = {}) {
     if (entryProfile.render(command)) {
       commandActivity.selectCommand(null);
@@ -105,7 +105,7 @@ const explorer = createExplorerView({
     }
     detail.render(catalog, command);
     commandRun.select(command);
-    commandActivity.selectCommand(command);
+    commandActivity.selectCommand(command, { activity: options.activity });
     updateCommandPath(
       window.history,
       window.location,

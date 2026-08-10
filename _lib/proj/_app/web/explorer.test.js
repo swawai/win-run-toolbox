@@ -4,6 +4,7 @@ import {
   availableCommand,
   captureColumnScrollOffsets,
   childrenColumnWidth,
+  commandHasChoices,
   commandDisabledDuringSetup,
   controlledColumnId,
   restoreColumnScrollOffsets,
@@ -45,10 +46,22 @@ describe("Explorer control-plane behavior", () => {
     expect(childrenColumnWidth({})).toBe("normal");
   });
 
+  test("reveals one next-choice column for activities or children", () => {
+    const parent = { address: "proj" };
+    const leaf = { address: "proj.build" };
+    const catalog = {
+      childrenByParent: new Map([[parent.address, [leaf]]]),
+    };
+
+    expect(commandHasChoices(catalog, parent, [])).toBe(true);
+    expect(commandHasChoices(catalog, leaf, [{ name: "overview" }])).toBe(true);
+    expect(commandHasChoices(catalog, leaf, [])).toBe(false);
+  });
+
   test("restores vertical offsets only for columns representing the same parent", () => {
     let rendered = [
       { dataset: { scrollKey: "root" }, scrollTop: 17 },
-      { dataset: { scrollKey: "children:..entry.env" }, scrollTop: 559 },
+      { dataset: { scrollKey: "choices:..entry.env" }, scrollTop: 559 },
     ];
     const columns = {
       querySelectorAll() {
@@ -59,8 +72,8 @@ describe("Explorer control-plane behavior", () => {
 
     rendered = [
       { dataset: { scrollKey: "root" }, scrollTop: 0 },
-      { dataset: { scrollKey: "children:..entry.env" }, scrollTop: 0 },
-      { dataset: { scrollKey: "children:proj" }, scrollTop: 0 },
+      { dataset: { scrollKey: "choices:..entry.env" }, scrollTop: 0 },
+      { dataset: { scrollKey: "choices:proj" }, scrollTop: 0 },
     ];
     restoreColumnScrollOffsets(columns, offsets);
 

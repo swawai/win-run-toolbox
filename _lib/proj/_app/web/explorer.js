@@ -31,6 +31,10 @@ export function childrenColumnWidth(command) {
   return command.childrenColumnWidth || "normal";
 }
 
+export function commandHasChoices(catalog, command, activities) {
+  return hasChildren(catalog, command) || activities.length > 0;
+}
+
 export function captureColumnScrollOffsets(columns) {
   return new Map(
     [...columns.querySelectorAll(".finder-column")]
@@ -51,6 +55,7 @@ export function createExplorerView({
   breadcrumb,
   columns,
   detailPanel,
+  getCommandActivities = () => [],
   onSelectCommand,
 }) {
   let catalog = null;
@@ -66,12 +71,13 @@ export function createExplorerView({
     const summary = document.createElement("span");
     const chevron = document.createElement("span");
     const group = isGroup(catalog, command);
-    const expandable = hasChildren(catalog, command);
+    const activities = getCommandActivities(command);
+    const expandable = commandHasChoices(catalog, command, activities);
     const selected = selectedPath[depth] === command.address;
     const disabled = commandDisabledDuringSetup(setupRequired, command);
 
     button.type = "button";
-    button.className = "command-row";
+    button.className = "finder-choice command-row";
     button.dataset.address = command.address;
     button.dataset.depth = String(depth);
     button.dataset.kind = group ? "group" : "command";
@@ -122,6 +128,44 @@ export function createExplorerView({
     return item;
   }
 
+  function createActivityRow(command, depth, activity) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const icon = document.createElement("span");
+    const copy = document.createElement("span");
+    const name = document.createElement("span");
+    const summary = document.createElement("span");
+
+    button.type = "button";
+    button.className = "finder-choice command-activity-row";
+    button.dataset.activity = activity.name;
+    button.dataset.parentAddress = command.address;
+    button.dataset.parentDepth = String(depth - 1);
+    button.dataset.navigationKey = `${command.address}#${activity.name}`;
+    button.setAttribute("aria-pressed", String(activity.selected));
+
+    icon.className = "row-icon activity-icon";
+    icon.textContent = activity.icon;
+    icon.setAttribute("aria-hidden", "true");
+    copy.className = "row-copy";
+    name.className = "row-name";
+    name.textContent = activity.label;
+    summary.className = "row-summary";
+    summary.textContent = activity.summary;
+    copy.append(name, summary);
+
+    button.append(icon, copy);
+    button.addEventListener("click", () => {
+      selectCommand(command.address, depth - 1, {
+        activity: activity.name,
+        focusDetail: true,
+        history: "push",
+      });
+    });
+    item.append(button);
+    return item;
+  }
+
   function appendSection(column, label, commands, depth) {
     if (commands.length === 0) {
       return;
@@ -140,6 +184,24 @@ export function createExplorerView({
       section.append(heading);
     }
     section.append(list);
+    column.append(section);
+  }
+
+  function appendActivitySection(column, command, activities, depth) {
+    if (activities.length === 0) {
+      return;
+    }
+    const section = document.createElement("section");
+    const heading = document.createElement("h2");
+    const list = document.createElement("ul");
+    section.className = "column-section command-activity-section";
+    heading.className = "column-label";
+    heading.textContent = "当前命令";
+    list.className = "column-list";
+    for (const activity of activities) {
+      list.append(createActivityRow(command, depth, activity));
+    }
+    section.append(heading, list);
     column.append(section);
   }
 
@@ -167,17 +229,29 @@ export function createExplorerView({
     return column;
   }
 
-  function createChildColumn(parentAddress, depth) {
+  function createChoiceColumn(parentAddress, depth, activities = []) {
     const column = document.createElement("div");
     const parent = catalog.commandByAddress.get(parentAddress);
+    const children = childrenOf(catalog, parentAddress);
     column.className = "finder-column";
     column.id = `finder-column-${depth}`;
     column.dataset.depth = String(depth);
-    column.dataset.scrollKey = `children:${parentAddress}`;
+    column.dataset.scrollKey = `choices:${parentAddress}`;
     column.dataset.width = childrenColumnWidth(parent);
     column.setAttribute("role", "group");
-    column.setAttribute("aria-label", `${parent.address} 子命令`);
-    appendSection(column, null, childrenOf(catalog, parentAddress), depth);
+    const choicesLabel = activities.length > 0 && children.length > 0
+      ? "可用操作和子命令"
+      : activities.length > 0
+        ? "可用操作"
+        : "子命令";
+    column.setAttribute("aria-label", `${parent.address} ${choicesLabel}`);
+    appendActivitySection(column, parent, activities, depth);
+    appendSection(
+      column,
+      "子命令",
+      children,
+      depth,
+    );
     return column;
   }
 
@@ -186,8 +260,12 @@ export function createExplorerView({
     columns.replaceChildren(createRootColumn());
     for (const [depth, address] of selectedPath.entries()) {
       const command = catalog.commandByAddress.get(address);
-      if (command && hasChildren(catalog, command)) {
-        columns.append(createChildColumn(address, depth + 1));
+      const current = depth === selectedPath.length - 1;
+      const activities = command && current
+        ? getCommandActivities(command)
+        : [];
+      if (command && commandHasChoices(catalog, command, activities)) {
+        columns.append(createChoiceColumn(address, depth + 1, activities));
       }
     }
     restoreColumnScrollOffsets(columns, scrollOffsets);
@@ -280,11 +358,11 @@ export function createExplorerView({
   }
 
   function handleKeyboard(event) {
-    const button = event.target.closest(".command-row");
+    const button = event.target.closest(".finder-choice");
     if (!button) {
       return;
     }
-    const rows = [...button.closest(".finder-column")?.querySelectorAll(".command-row") ?? []];
+    const rows = [...button.closest(".finder-column")?.querySelectorAll(".finder-choice") ?? []];
     const index = rows.indexOf(button);
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
@@ -293,15 +371,27 @@ export function createExplorerView({
       return;
     }
 
+    if (!button.classList.contains("command-row")) {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        const parentAddress = button.dataset.parentAddress;
+        columns.querySelector(
+          `.command-row[data-address="${CSS.escape(parentAddress)}"]`,
+        )?.focus();
+      }
+      return;
+    }
+
     const depth = Number(button.dataset.depth);
     if (event.key === "ArrowRight") {
-      const children = childrenOf(catalog, button.dataset.address);
-      if (children.length > 0) {
+      const command = catalog.commandByAddress.get(button.dataset.address);
+      const activities = command ? getCommandActivities(command) : [];
+      if (command && commandHasChoices(catalog, command, activities)) {
         event.preventDefault();
         selectCommand(button.dataset.address, depth, { history: "push" });
         requestAnimationFrame(() => {
           const nextColumn = columns.querySelector(`[data-depth="${depth + 1}"]`);
-          nextColumn?.querySelector(".command-row")?.focus();
+          nextColumn?.querySelector(".finder-choice")?.focus();
         });
       }
     } else if (event.key === "ArrowLeft" && depth > 0) {

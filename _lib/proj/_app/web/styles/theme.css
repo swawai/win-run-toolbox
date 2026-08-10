@@ -33,5 +33,5 @@
   --radius-pill: 999px;
   --column-width: clamp(230px, 23vw, 292px);
   --column-width-wide: clamp(330px, 29vw, 380px);
-  --detail-width: clamp(470px, 43vw, 650px);
+  --detail-width: clamp(340px, 32vw, 470px);
 }

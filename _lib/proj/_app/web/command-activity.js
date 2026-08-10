@@ -1,9 +1,27 @@
 import { isCommandRunSupported } from "./command-run-model.js";
 
 const DEFAULT_ACTIVITY = "overview";
+const PROFILE_SETTER_HANDLER = "entry.profile.set";
+const activityPresentation = {
+  overview: {
+    icon: "i",
+    label: "概览",
+    summary: "查看调用与命令属性",
+  },
+  help: {
+    icon: "?",
+    label: "帮助",
+    summary: "阅读命令说明",
+  },
+  run: {
+    icon: "▶",
+    label: "执行",
+    summary: "设置参数并启动命令",
+  },
+};
 
 export function commandActivities(command) {
-  if (!command) {
+  if (!command || command.handler === PROFILE_SETTER_HANDLER) {
     return [];
   }
   const activities = ["overview", "help"];
@@ -14,9 +32,6 @@ export function commandActivities(command) {
 }
 
 export function createCommandActivityView(elements) {
-  const buttons = [...elements.commandActivities.querySelectorAll(
-    "[data-command-activity]",
-  )];
   const panes = new Map([
     ["overview", elements.commandDetail],
     ["help", elements.commandHelpActivity],
@@ -24,47 +39,31 @@ export function createCommandActivityView(elements) {
   ]);
   let available = [];
   let selected = DEFAULT_ACTIVITY;
+  let selectedAddress = null;
 
   function render() {
     const active = new Set(available);
     elements.commandWorkspace.hidden = active.size === 0;
-    for (const button of buttons) {
-      const name = button.dataset.commandActivity;
-      button.hidden = !active.has(name);
-      if (name === selected && active.has(name)) {
-        button.setAttribute("aria-current", "page");
-      } else {
-        button.removeAttribute("aria-current");
-      }
-    }
     for (const [name, pane] of panes) {
       pane.hidden = name !== selected || !active.has(name);
     }
   }
 
-  function select(name, { focus = false } = {}) {
-    if (!available.includes(name)) {
-      return;
-    }
-    selected = name;
-    render();
-    if (focus) {
-      panes.get(name)?.focus({ preventScroll: true });
-    }
-  }
-
-  function selectCommand(command) {
+  function selectCommand(command, { activity = DEFAULT_ACTIVITY } = {}) {
     available = commandActivities(command);
-    selected = DEFAULT_ACTIVITY;
+    selected = available.includes(activity) ? activity : DEFAULT_ACTIVITY;
+    selectedAddress = command?.address ?? null;
     render();
   }
 
-  for (const button of buttons) {
-    button.addEventListener("click", () => {
-      select(button.dataset.commandActivity, { focus: true });
-    });
+  function items(command) {
+    return commandActivities(command).map((name) => ({
+      name,
+      ...activityPresentation[name],
+      selected: command.address === selectedAddress && name === selected,
+    }));
   }
   render();
 
-  return { select, selectCommand };
+  return { items, selectCommand };
 }

@@ -54,23 +54,23 @@
 1. **身份与配置。** Entry 以 Windows File ID 保持身份：复制产生新身份，改名延续原身份，文件被替换时才要求显式认领（claim）。`_entry.json` 只记录 Entry 身份，`_profile.json` 只记录用户配置；运行时环境变量不能反过来成为配置来源。
 2. **目录即命令协议。** 命令地址由目录层级唯一推导，一个目录最多有一个规范执行入口；Help、Web 展示提示和 Guard 都是模块的伴随声明。Catalog 以 `swawkit.command-catalog/v3` 生成结构性的 `runnable` 与 `diagnostic`；Control 的 `run.core.json` 使用 `swawkit.core-command/v1`，`_view/web.json` 使用 `swawkit.command-view/web/v1`。全局与模块 Guard 在执行前判断运行前提。
 3. **模块数据根。** Core 按命令来源和相对目录，将每个目录命令模块同构映射到 `DataRoot/modules/{control|kernel|action}/...`。例如 `.dev.setup` 对应 `modules/kernel/.dev/setup/`。`SWAWKIT_PROJ_DATA_ROOT` 表示 Entry 根，`SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT` 表示当前模块数据根；普通命令的工作数据、状态、锁和 Export 都归入后者。只有 Core 缺失时的 Bootstrap 构建和确实需要跨 Entry 复用的下载缓存进入 `data/proj_cache/`。
-4. **模块 Export 与显式依赖。** 模块把稳定候选或供其他模块消费的产物发布到自身的 `export/`，中间文件留在 `work/`。`export/` 只是稳定发布边界，不自动等于一套资产系统：当前只有人工检查或手工发布的候选可以不建立 Manifest；出现第一个需要判定版本与可用性的自动消费方后，再声明提供命令地址和 `producerContract`，通过 `_state.json` 解析 Export。依赖尚未 Ready 时，错误信息直接给出应执行的提供命令。
+4. **模块 Export 与显式依赖。** 模块把稳定候选或供其他模块消费的产物发布到自身的 `export/`，中间文件留在 `work/`。`export/` 只是稳定发布边界，不自动等于一套资产系统：需要自动消费的构建产物通过 `manifest.json` 声明文件名、长度与 SHA-256，并由提供命令地址、`producerContract` 和 `_state.json` 建立可验证发布边界。依赖尚未 Ready 或制品与 Manifest 不一致时，错误信息直接给出应执行的提供命令。
 5. **Provider State。** `_state.json` 使用 `swawkit.command-provider-state/v1`，状态为 `unavailable` 或 `ready`。影响开发环境的 Profile 输入变化时，`.dev.setup` 状态同步变为 `unavailable`；重新执行 `.dev.setup` 后，完成的 Export 与 `ready` 状态一起成为新的有效发布。`inputRevision`、`token` 与 `producerContract` 共同标识这次发布并保证消费一致性。
 6. **环境变量是边界，不是状态。** 除系列根目录使用 `SWAWKIT_HOME` 外，Proj 拥有的变量统一使用 `SWAWKIT_PROJ_` 前缀：`SWAWKIT_PROJ_CORE_LAUNCH_*` 传递一次性启动声明，`SWAWKIT_PROJ_CORE_COMMAND_*` 描述单次命令上下文，`SWAWKIT_PROJ_MODULE_*` 用于模块私有适配。Core 在读取 Launcher 声明后、创建线程前清除进程中的 `SWAWKIT_HOME` 与全部 `SWAWKIT_PROJ_*`；Host 的长期事实保存在类型化对象和 DataRoot。每次执行命令时，Core 再从当前 Entry/Profile 生成命令环境，适配器私有变量在消费后清除。
 7. **执行一致性。** 普通 Kernel 和 Action 依次执行全局 Guard、模块 Guard 和 `run.*`；Guard 只检查前提，不安装工具或修复状态。CLI 直接进入这条执行链，Web 则通过同一个 Entry Launcher 创建 Entry Worker，再进入同一条链，因此两者共享解释器、cwd、Profile、DataRoot 与环境语义。
-8. **构建与发布分离。** build 产出候选文件，publish/update 独立替换正式制品；普通 Action 不直接替换正在运行的 Core。工具下载、安装、更新和主动清理由显式命令触发，受管工具始终使用已验证的受管版本，而不是系统 PATH 中的同名程序。
+8. **构建与发布分离。** build 只产出候选文件，显式 publish/update 命令才可替换正式制品。`proj.publish.app` 只消费 `proj.build.app` 的 Ready Provider 与匹配 Manifest，在共享锁内原子切换 Core；旧进程继续运行已映射版本，新调用使用新版本。工具下载、安装、更新和主动清理由显式命令触发，受管工具始终使用已验证的受管版本，而不是系统 PATH 中的同名程序。
 
 ## 五、当前做到哪里
 
 1. Native Launcher 和 Rust Core 已接管正常启动、Entry 身份、DataRoot、Profile、命令发现、Guard、CLI、单实例 Entry Host 与 Entry Worker 主链。
-2. Entry Host 采用 Axum、Tray 和系统浏览器；Web 已能浏览命令、编辑 Profile，并启动、增量读取和取消 Kernel/Action 命令。命令页使用可刷新的 `/commands/{source}/...` 深链，并把详情拆为概览、帮助和执行三个互斥活动。Control 仍由受限 Core handler 或专用 API 承担，不作为任意 Entry Worker 命令开放。
+2. Entry Host 采用 Axum、Tray 和系统浏览器；Web 已能浏览命令、编辑 Profile，并启动、增量读取和取消 Kernel/Action 命令。命令页使用可刷新的 `/commands/{source}/...` 深链；每个 Finder 后续列把当前命令的概览、帮助、执行与真实子命令分区展示，活动不伪装成命令地址。Control 仍由受限 Core handler 或专用 API 承担，不作为任意 Entry Worker 命令开放。
 3. `_profile.json` 是用户配置的唯一来源；相关环境输入变化会同步使 `.dev.setup` Provider State 失效。`.dev.setup` 的 `env.cmd`、`env.ps1` 位于自身 `export/`，`.dev.bun`、`.dev.cargo`、`.dev.rustc`、`.dev.cl` 等消费者通过统一检查后加载。
 4. 当前执行器支持 `run.exe`、`run.ps1` 和受限的 `run.cmd`。PowerShell 负责工具链、环境发布和命令适配，`.dev.cmd`、`.dev.ps` 提供一次性 Shell 调用。
-5. `proj.build.app` 与 `proj.build.launcher` 已把中间文件、锁和稳定候选分别收进各自 Action 数据根的 `work/`、`locks/` 与 `export/`；失败构建不会覆盖上一份有效候选。Bun、PowerShell、MSVC 和 Rust 的受管环境已经实现；正式测试同时覆盖 Launcher/Core 协议、模块 Export 与 Provider State、Entry Host 单实例、Entry Worker 输出和整棵进程树取消。
+5. `proj.build.app` 与 `proj.build.launcher` 已把中间文件、锁和稳定候选分别收进各自 Action 数据根的 `work/`、`locks/` 与 `export/`，并发布制品 Manifest 与 Provider State；失败构建不会授予 Ready 状态。`proj.publish.app` 是第一个自动消费者，会拒绝缺失、过期或被篡改的候选并原子更新正式 Core。Bun、PowerShell、MSVC 和 Rust 的受管环境已经实现；正式测试同时覆盖 Launcher/Core 协议、模块 Export 与 Provider State、Entry Host 单实例、Entry Worker 输出和整棵进程树取消。
 
 ## 六、Web 与执行边界
 
-1. Web 使用固定 Finder 式界面，目录命令模块通过 `_view/web.json` 提供展示提示。命令层级和概览、帮助、执行活动保持为不同列；URL 只编码可分享、可刷新和可前进后退的命令身份，临时表单与运行状态仍留在页面状态中。Web 提交 Catalog 中的命令地址和参数，解释器、磁盘路径、cwd 和环境变量由 Core 解析。
+1. Web 使用固定 Finder 式界面，目录命令模块通过 `_view/web.json` 提供展示提示。每一列只表达上一层已选命令的下一步：当前命令活动和子命令在同一列中以不同分区、样式与可访问性语义展示；URL 只编码可分享、可刷新和可前进后退的命令身份，临时表单与运行状态仍留在页面状态中。Web 提交 Catalog 中的命令地址和参数，解释器、磁盘路径、cwd 和环境变量由 Core 解析。
 2. Web run 使用 `swawkit.command-run/v1` 表达运行标识、状态、增量事件和退出结果。每次运行都从当前用户环境基线启动新的 Entry Worker，并过滤已有的 Swaw Kit 环境命名空间；Host 负责请求与生命周期，具体命令仍经过完整 Entry 边界。
 3. Entry Worker 使用 Windows Job Object 管理整棵子进程树；取消和 Entry Host 退出都会回收后代进程。stdin 关闭，stdout/stderr 以 UTF-8 事件增量返回并有容量上限，当前执行模型面向非交互任务。
 4. `.swaw` Action 是以当前用户权限运行的受信任项目代码；Web 约束调用入口和生命周期，但 Action 本身不是安全沙箱。Host 中的 run registry 只保存当前会话的瞬时输出；需要跨进程同步或长期留存的业务状态，仍应由命令模块写入自己的 DataRoot。
@@ -80,6 +80,6 @@
 1. 先定义命令模块拥有的持久事件日志最小协议（建议 JSON Lines），让 CLI 和 Web Worker 都写同一份模块事实，Web 通过游标增量读取；先不引入 OpenTelemetry SDK，等确有跨进程 Trace 或外部采集需求时再映射到 OTLP。
 2. 以真实命令为驱动扩展 `_view/web.json` 的最小交互协议，逐步覆盖参数类型、确认提示和结果展示；不要把临时输入和输出塞进 URL。
 3. 单独完成执行入口收敛：删除 `run.ps1` / `run.cmd` 适配器前，先把现有命令迁移到 `run.exe`、`run.ts` 或 `run.py` 并补齐 Bun/Node/Python 的启动契约，避免长期兼容层。
-4. 继续收窄现有 Action 对 `_toolchain` 私有实现的直接依赖；当 build candidate 出现第一个自动发布消费者时，再为它建立明确的 Provider State 与制品 Manifest。
-5. 把候选制品到正式 Entry/Core 的受控发布流程做成清晰入口，保持原位更新、身份不变和结果可验证。
+4. 继续收窄现有 Action 对 `_toolchain` 私有实现的直接依赖；等 Launcher 出现真实发布消费者时，再按 App 已验证的模式增加对应 publish 入口，不预先制造通用资产框架。
+5. 为退出后的 retired Core 增加低成本、可观察的日常清理触发点；当前发布会在每次执行时重试清理，仍被旧 Host 映射的版本明确保留在共享缓存中。
 6. 长期目标是保持一个正式 Core、一套配置与命令协议，让 CLI、Web 和后续入口共享同一套行为语义，同时让每个目录化模块独立拥有自己的领域数据与演进节奏。

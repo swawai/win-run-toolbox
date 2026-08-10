@@ -6,12 +6,14 @@
 没有可用 Entry 时，也可以从源码树直接运行：
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File _lib\proj\build.ps1
 
-输出:
-  data/proj_cache/bootstrap/build/launcher/release/template.proj1.exe
+构建中间文件和最近一次成功结果保存在当前命令专有数据根：
+  work/launcher/
+  export/template.proj1.exe
 
 构建入口直接准备 Bootstrap 固定的 Rust/MSVC 工具链，不依赖根 swawkit.exe、
 现有 Launcher 模板、项目 Profile 或系统 PATH 中碰巧存在的编译器；
-它只写构建候选，绝不修改 Favorites/template.proj1.exe 或根 swawkit.exe。
+Bootstrap 工具链仍由共享缓存管理，但 Action 的 work/export 不再写入共享缓存。
+它绝不修改 Favorites/template.proj1.exe 或根 swawkit.exe。
 
 模板可在 SWAWKIT_HOME 根目录或其一级目录（如 Favorites）内复制并改名。无参数
 启动 Host、托盘和本地 Web 控制台；带参数时同步执行 Rust CLI，保留原生参数边界

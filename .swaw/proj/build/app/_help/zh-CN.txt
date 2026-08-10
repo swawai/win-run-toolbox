@@ -3,8 +3,9 @@
 用法：
   {{INVOCATION}}
 
-构建结果保存在当前 Entry DataRoot：
-  _build/app/release/swawkit-proj.exe
+构建中间文件和最近一次成功结果保存在当前命令专有数据根：
+  work/cargo/
+  export/swawkit-proj.exe
 
 该命令只构建候选文件，不会替换正在运行的：
   _lib/proj/_bin/swawkit-proj.exe

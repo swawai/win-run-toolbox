@@ -6,33 +6,47 @@ if ($args.Count -ne 0) {
     throw 'proj.build.launcher does not accept dynamic arguments.'
 }
 
+$CommandDataRoot = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT
+if ([string]::IsNullOrWhiteSpace($CommandDataRoot)) {
+    throw 'The project command data root is unavailable.'
+}
 $KernelRoot = [IO.Path]::GetFullPath(
     (Join-Path ([string]$env:SWAWKIT_HOME) '_lib\proj')
 )
 . (Join-Path $KernelRoot '_toolchain\bootstrap.ps1')
+. (Join-Path $PSScriptRoot '..\_lib\export.ps1')
 
-Invoke-ProjBootstrapToolchain -Action {
-    param($Toolchain, $Layout)
+$WorkRoot = Assert-ProjDevPathInsideDataRoot `
+    -Path (Join-Path $CommandDataRoot 'work\launcher') `
+    -DataRoot $CommandDataRoot `
+    -Activity 'building the Proj Launcher'
+$CandidatePath = Assert-ProjDevPathInsideDataRoot `
+    -Path (Join-Path $WorkRoot 'release\template.proj1.exe') `
+    -DataRoot $CommandDataRoot `
+    -Activity 'staging the Proj Launcher candidate'
+$ExportPath = Assert-ProjDevPathInsideDataRoot `
+    -Path (Join-Path $CommandDataRoot 'export\template.proj1.exe') `
+    -DataRoot $CommandDataRoot `
+    -Activity 'publishing the Proj Launcher export'
+$BuildLock = Enter-ProjDevFileLock `
+    -Path (Join-Path $CommandDataRoot 'locks\build.lock') `
+    -ControlledRoot $CommandDataRoot `
+    -TimeoutSeconds 1800
 
-    $BuildRoot = Assert-ProjDevPathInsideDataRoot `
-        -Path $Layout.LauncherBuildRoot `
-        -DataRoot $Toolchain.Context.DataRoot `
-        -Activity 'building the Proj Launcher'
-    $CandidatePath = Assert-ProjDevPathInsideDataRoot `
-        -Path $Layout.LauncherCandidatePath `
-        -DataRoot $Toolchain.Context.DataRoot `
-        -Activity 'publishing the Proj Launcher build candidate'
-    $BuildLock = Enter-ProjDevFileLock `
-        -Path (Join-Path $Layout.LockRoot 'launcher-build.lock') `
-        -ControlledRoot $Toolchain.Context.DataRoot `
-        -TimeoutSeconds 1800
-    try {
+try {
+    Invoke-ProjBootstrapToolchain -Action {
+        param($Toolchain, $Layout)
+
         & $Layout.LauncherBuildPath `
             -CompilerPath ([string]$Toolchain.CompilerPath) `
             -LinkerPath ([string]$Toolchain.LinkerPath) `
-            -BuildRoot $BuildRoot `
+            -BuildRoot $WorkRoot `
             -CandidatePath $CandidatePath | Out-Host
-    } finally {
-        $BuildLock.Dispose()
     }
+    Publish-ProjBuildCandidate `
+        -SourcePath $CandidatePath `
+        -ExportPath $ExportPath `
+        -CommandDataRoot $CommandDataRoot
+} finally {
+    $BuildLock.Dispose()
 }

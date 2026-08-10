@@ -7,20 +7,37 @@ if ($args.Count -ne 0) {
 }
 
 $ProjHome = [string]$env:SWAWKIT_HOME
-$DataRoot = [string]$env:SWAWKIT_PROJ_DATA_ROOT
+$CommandDataRoot = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT
 if ([string]::IsNullOrWhiteSpace($ProjHome) -or
-    [string]::IsNullOrWhiteSpace($DataRoot)) {
+    [string]::IsNullOrWhiteSpace($CommandDataRoot)) {
     throw 'The project runtime context is incomplete.'
 }
 $KernelRoot = Join-Path $ProjHome '_lib\proj'
 . (Join-Path $KernelRoot '_toolchain\_modules\rust\runtime.ps1')
+. (Join-Path $PSScriptRoot '..\_lib\export.ps1')
 
 $Cargo = Resolve-ProjDevRustCommand -ExecutableName 'cargo.exe'
 $BuildPath = Join-Path $KernelRoot '_app\build.ps1'
-$TargetDirectory = Assert-ProjDevPathInsideDataRoot `
-    -Path (Join-Path $DataRoot '_build\app') `
-    -DataRoot $DataRoot `
+$WorkRoot = Assert-ProjDevPathInsideDataRoot `
+    -Path (Join-Path $CommandDataRoot 'work\cargo') `
+    -DataRoot $CommandDataRoot `
     -Activity 'building the Swaw Kit Proj application'
-& $BuildPath `
-    -CargoPath ([string]$Cargo.Executable) `
-    -TargetDirectory $TargetDirectory
+$ExportPath = Assert-ProjDevPathInsideDataRoot `
+    -Path (Join-Path $CommandDataRoot 'export\swawkit-proj.exe') `
+    -DataRoot $CommandDataRoot `
+    -Activity 'publishing the Swaw Kit Proj application export'
+$BuildLock = Enter-ProjDevFileLock `
+    -Path (Join-Path $CommandDataRoot 'locks\build.lock') `
+    -ControlledRoot $CommandDataRoot `
+    -TimeoutSeconds 1800
+try {
+    & $BuildPath `
+        -CargoPath ([string]$Cargo.Executable) `
+        -TargetDirectory $WorkRoot | Out-Host
+    Publish-ProjBuildCandidate `
+        -SourcePath (Join-Path $WorkRoot 'release\swawkit-proj.exe') `
+        -ExportPath $ExportPath `
+        -CommandDataRoot $CommandDataRoot
+} finally {
+    $BuildLock.Dispose()
+}

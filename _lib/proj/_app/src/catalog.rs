@@ -181,7 +181,26 @@ fn scan_node(pending: &PendingDirectory, entry_name: &str) -> CommandNode {
             None
         }
         Some(entry)
-            if entry.adapter != CommandAdapter::Core
+            if entry.adapter == CommandAdapter::Toolchain
+                && pending.source != CommandSource::Kernel =>
+        {
+            diagnostics.push(
+                "run.toolchain.json is restricted to Kernel commands (addresses beginning with '.')"
+                    .to_owned(),
+            );
+            None
+        }
+        Some(entry)
+            if entry.adapter == CommandAdapter::Bun && pending.source != CommandSource::Action =>
+        {
+            diagnostics.push(
+                "run.ts is restricted to project Action commands; product-owned commands must use a Rust-native entry"
+                    .to_owned(),
+            );
+            None
+        }
+        Some(entry)
+            if !matches!(entry.adapter, CommandAdapter::Core)
                 && pending.source == CommandSource::Control =>
         {
             diagnostics.push("Control Plane commands must use a run.core.json entry".to_owned());

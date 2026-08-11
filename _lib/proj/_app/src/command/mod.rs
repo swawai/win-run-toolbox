@@ -1,3 +1,4 @@
+mod development;
 mod environment;
 mod execute;
 mod guard;
@@ -5,6 +6,7 @@ mod invocation;
 mod process;
 mod resolve;
 
+pub(crate) use development::resolve_entry_bun;
 pub use environment::{CommandExecutionContext, CommandProcessMode};
 pub(crate) use environment::{
     ExecutionPhase, ProcessEnvironment, catalog_command_data_root, command_data_root,
@@ -40,5 +42,7 @@ impl fmt::Display for CommandError {
 
 impl Error for CommandError {}
 
+#[cfg(test)]
+mod development_tests;
 #[cfg(test)]
 mod tests;

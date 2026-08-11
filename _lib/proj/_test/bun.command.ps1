@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [Parameter(Mandatory = $true)][string]$ToolchainPath
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -22,6 +24,7 @@ $EnvironmentNames = @(
     'SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT',
     'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION',
     'SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION',
+    'SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256',
@@ -47,6 +50,10 @@ $ConsumerDataRoot = Join-Path $ControlHome "data\proj.$EntryName"
 $SystemPowerShell = Join-Path $env:SystemRoot (
     'System32\WindowsPowerShell\v1.0\powershell.exe'
 )
+$ResolvedToolchainPath = [IO.Path]::GetFullPath($ToolchainPath)
+if (-not [IO.File]::Exists($ResolvedToolchainPath)) {
+    throw "Toolchain test candidate is missing: $ResolvedToolchainPath"
+}
 
 try {
     $ProjectRoot = Join-Path $TemporaryRoot 'project'
@@ -84,6 +91,7 @@ try {
         SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT = (Join-Path $ConsumerDataRoot 'modules\kernel\.dev\bun')
         SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION = $InputRevision
         SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION = $ProfileRevision
+        SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE = $ResolvedToolchainPath
         SWAWKIT_PROJ_BUN_MODE = 'managed'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }

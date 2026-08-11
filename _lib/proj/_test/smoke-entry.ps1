@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$LauncherPath = '',
-    [string]$CorePath = ''
+    [string]$CorePath = '',
+    [string]$HostPath = '',
+    [string]$ToolchainPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +45,9 @@ $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 . (Join-Path $PSScriptRoot '_lib\runtime-fixture.ps1')
 $Artifacts = Resolve-ProjCandidateRuntimeArtifacts `
     -LauncherPath $LauncherPath `
-    -CorePath $CorePath
+    -CorePath $CorePath `
+    -HostPath $HostPath `
+    -ToolchainPath $ToolchainPath
 $TemporaryRoot = Join-Path $RepoRoot (
     "data\_test\swawkit-proj-smoke-$([Guid]::NewGuid().ToString('N'))"
 )
@@ -67,7 +71,9 @@ try {
     $Runtime = New-ProjCandidateRuntimeFixture `
         -RuntimeHome (Join-Path $TemporaryRoot 'runtime-home') `
         -LauncherPath $Artifacts.LauncherPath `
-        -CorePath $Artifacts.CorePath
+        -CorePath $Artifacts.CorePath `
+        -HostPath $Artifacts.HostPath `
+        -ToolchainPath $Artifacts.ToolchainPath
     $EntryPath = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
         -RelativePath "Favorites\$EntryName.exe"
@@ -133,6 +139,23 @@ try {
             $DotHelp.Text.Contains('Control Plane:')
         ) `
         -Message ".help leaked into its fail-closed adapter: $($DotHelp.Text)"
+
+    $DevelopmentStatus = Invoke-ProjEntrySmoke `
+        -EntryPath $EntryPath `
+        -Arguments @('.dev.status')
+    Assert-ProjEntrySmoke `
+        -Condition (
+            $DevelopmentStatus.ExitCode -eq 0 -and
+            $DevelopmentStatus.Text.Contains('[OUTDATED]') -and
+            $DevelopmentStatus.Text.Contains('[MISSING] bun 1.2.15') -and
+            $DevelopmentStatus.Text.Contains('[MISSING] pwsh latest unresolved') -and
+            $DevelopmentStatus.Text.Contains('[MISSING] msvc channel 17') -and
+            $DevelopmentStatus.Text.Contains('[MISSING] rust stable')
+        ) `
+        -Message (
+            '.dev.status did not execute through the candidate Toolchain: ' +
+            $DevelopmentStatus.Text
+        )
 
     $InvocationDirectory = (Get-Location).ProviderPath
     $Info = Invoke-ProjEntrySmoke `

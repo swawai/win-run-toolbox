@@ -19,14 +19,17 @@ static const WCHAR worker_ready_event_name_name[] =
 
 static WCHAR entry_path[TEXT_CAPACITY];
 static WCHAR core_path[TEXT_CAPACITY];
+static WCHAR selector_path[TEXT_CAPACITY];
 static WCHAR bootstrap_path[TEXT_CAPACITY];
 static WCHAR powershell_path[TEXT_CAPACITY];
 static WCHAR child_command_line[TEXT_CAPACITY];
 static WCHAR worker_protocol[16u];
 static WCHAR worker_job_name[TEXT_CAPACITY];
 static WCHAR worker_ready_event_name[TEXT_CAPACITY];
+static CHAR release_selector[66u];
 static STARTUPINFOW startup_info;
 static PROCESS_INFORMATION process_info;
+static DWORD layout_home_length;
 
 __declspec(noreturn) void __cdecl __report_rangecheckfailure(void)
 {
@@ -244,19 +247,93 @@ static BOOL is_file(const WCHAR *path)
 {
     DWORD attributes = GetFileAttributesW(path);
     return attributes != INVALID_FILE_ATTRIBUTES
-        && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0u;
+        && (attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == 0u;
+}
+
+static BOOL resolve_current_core(void)
+{
+    static const WCHAR release_prefix[] =
+        L"\\_lib\\proj\\_bin\\releases\\";
+    static const WCHAR core_suffix[] = L"\\swawkit-proj.exe";
+    DWORD attributes = GetFileAttributesW(selector_path);
+    HANDLE file;
+    DWORD bytes_read = 0u;
+    DWORD index;
+    DWORD destination = 0u;
+
+    core_path[0] = L'\0';
+    if (attributes == INVALID_FILE_ATTRIBUTES
+        || (attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0u) {
+        return FALSE;
+    }
+    file = CreateFileW(
+        selector_path,
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
+        NULL
+    );
+    if (file == INVALID_HANDLE_VALUE
+        || !ReadFile(
+            file,
+            release_selector,
+            sizeof(release_selector),
+            &bytes_read,
+            NULL
+        )) {
+        if (file != INVALID_HANDLE_VALUE) {
+            CloseHandle(file);
+        }
+        return FALSE;
+    }
+    CloseHandle(file);
+    if (bytes_read != 65u || release_selector[64u] != '\n') {
+        return FALSE;
+    }
+    for (index = 0u; index < 64u; ++index) {
+        CHAR value = release_selector[index];
+        if (!((value >= '0' && value <= '9')
+            || (value >= 'a' && value <= 'f'))) {
+            return FALSE;
+        }
+    }
+    if (layout_home_length
+            + wide_length(release_prefix)
+            + 64u
+            + wide_length(core_suffix)
+            + 1u
+        > TEXT_CAPACITY) {
+        return FALSE;
+    }
+    for (index = 0u; index < layout_home_length; ++index) {
+        core_path[destination++] = entry_path[index];
+    }
+    for (index = 0u; release_prefix[index] != L'\0'; ++index) {
+        core_path[destination++] = release_prefix[index];
+    }
+    for (index = 0u; index < 64u; ++index) {
+        core_path[destination++] = (WCHAR)release_selector[index];
+    }
+    for (index = 0u; core_suffix[index] != L'\0'; ++index) {
+        core_path[destination++] = core_suffix[index];
+    }
+    core_path[destination] = L'\0';
+    return is_file(core_path);
 }
 
 static BOOL try_layout(DWORD home_length)
 {
-    static const WCHAR core_suffix[] = L"\\_lib\\proj\\_bin\\swawkit-proj.exe";
+    static const WCHAR selector_suffix[] = L"\\_lib\\proj\\_bin\\current";
     static const WCHAR bootstrap_suffix[] = L"\\_lib\\proj\\bootstrap.ps1";
 
+    layout_home_length = home_length;
     return copy_path_with_suffix(
             entry_path,
             home_length,
-            core_suffix,
-            core_path
+            selector_suffix,
+            selector_path
         )
         && copy_path_with_suffix(
             entry_path,
@@ -264,7 +341,7 @@ static BOOL try_layout(DWORD home_length)
             bootstrap_suffix,
             bootstrap_path
         )
-        && (is_file(core_path) || is_file(bootstrap_path));
+        && (resolve_current_core() || is_file(bootstrap_path));
 }
 
 static BOOL locate_layout(void)
@@ -366,7 +443,7 @@ static BOOL run_bootstrap(BOOL host_mode, BOOL worker_mode)
         return FALSE;
     }
     CloseHandle(process_info.hProcess);
-    return exit_code == 0u && is_file(core_path);
+    return exit_code == 0u && resolve_current_core();
 }
 
 static const WCHAR *raw_argument_tail(void)

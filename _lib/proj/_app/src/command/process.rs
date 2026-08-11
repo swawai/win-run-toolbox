@@ -3,7 +3,7 @@ mod journaled;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::os::windows::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::catalog::{CommandAdapter, is_help_marker};
@@ -11,6 +11,17 @@ use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 use super::{CommandError, CommandProcessMode, CommandResult, ProcessEnvironment};
 pub(crate) use journaled::run_process_journaled;
+
+#[derive(Debug, Default)]
+pub(crate) enum AdapterLaunch {
+    #[default]
+    Direct,
+    Bun(PathBuf),
+    Toolchain {
+        executable: PathBuf,
+        handler: String,
+    },
+}
 
 const ADAPTER_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_";
 const POWERSHELL_ARGUMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_";
@@ -71,6 +82,7 @@ pub(crate) fn run_process(
     entry_path: &Path,
     arguments: &[OsString],
     working_directory: &Path,
+    adapter_launch: &AdapterLaunch,
     environment: &ProcessEnvironment,
     process_mode: CommandProcessMode,
 ) -> CommandResult<i32> {
@@ -79,6 +91,7 @@ pub(crate) fn run_process(
         entry_path,
         arguments,
         working_directory,
+        adapter_launch,
         environment,
         process_mode,
     )?;
@@ -96,15 +109,18 @@ fn prepare_command(
     entry_path: &Path,
     arguments: &[OsString],
     working_directory: &Path,
+    adapter_launch: &AdapterLaunch,
     environment: &ProcessEnvironment,
     process_mode: CommandProcessMode,
 ) -> CommandResult<Command> {
     validate_adapter(adapter)?;
     let mut command = match adapter {
         CommandAdapter::Exe => executable_command(entry_path, arguments),
+        CommandAdapter::Bun => bun_command(adapter_launch, entry_path, arguments)?,
+        CommandAdapter::Toolchain => toolchain_command(adapter_launch, arguments)?,
         CommandAdapter::PowerShell => powershell_command(entry_path, arguments)?,
         CommandAdapter::Cmd => cmd_command(entry_path, arguments)?,
-        CommandAdapter::Core | CommandAdapter::Bun | CommandAdapter::Python => unreachable!(),
+        CommandAdapter::Core | CommandAdapter::Python => unreachable!(),
     };
     command.current_dir(working_directory);
     command.creation_flags(process_creation_flags(process_mode));
@@ -122,7 +138,11 @@ fn process_creation_flags(process_mode: CommandProcessMode) -> u32 {
 pub(crate) fn validate_adapter(adapter: CommandAdapter) -> CommandResult<()> {
     if matches!(
         adapter,
-        CommandAdapter::Exe | CommandAdapter::PowerShell | CommandAdapter::Cmd
+        CommandAdapter::Exe
+            | CommandAdapter::Bun
+            | CommandAdapter::Toolchain
+            | CommandAdapter::PowerShell
+            | CommandAdapter::Cmd
     ) {
         return Ok(());
     }
@@ -130,6 +150,41 @@ pub(crate) fn validate_adapter(adapter: CommandAdapter) -> CommandResult<()> {
         "the Rust V0 executor does not yet support the '{}' adapter",
         adapter.as_str()
     )))
+}
+
+fn bun_command(
+    adapter_launch: &AdapterLaunch,
+    entry_path: &Path,
+    arguments: &[OsString],
+) -> CommandResult<Command> {
+    let AdapterLaunch::Bun(executable) = adapter_launch else {
+        return Err(CommandError::new(
+            "the run.ts adapter requires a resolved Entry Bun executable",
+        ));
+    };
+    let mut command = Command::new(executable);
+    remove_inherited_adapter_environment(&mut command);
+    command.arg(entry_path).args(arguments);
+    Ok(command)
+}
+
+fn toolchain_command(
+    adapter_launch: &AdapterLaunch,
+    arguments: &[OsString],
+) -> CommandResult<Command> {
+    let AdapterLaunch::Toolchain {
+        executable,
+        handler,
+    } = adapter_launch
+    else {
+        return Err(CommandError::new(
+            "the run.toolchain.json adapter requires a resolved Toolchain handler",
+        ));
+    };
+    let mut command = Command::new(executable);
+    remove_inherited_adapter_environment(&mut command);
+    command.arg("command-v1").arg(handler).args(arguments);
+    Ok(command)
 }
 
 fn executable_command(entry_path: &Path, arguments: &[OsString]) -> Command {
@@ -237,6 +292,28 @@ mod tests {
         assert_eq!(
             process_creation_flags(CommandProcessMode::NoWindow),
             CREATE_NO_WINDOW
+        );
+    }
+
+    #[test]
+    fn toolchain_launch_pins_the_protocol_and_manifest_handler_before_user_arguments() {
+        let executable = PathBuf::from(r"C:\runtime\swawkit-proj-toolchain.exe");
+        let launch = AdapterLaunch::Toolchain {
+            executable: executable.clone(),
+            handler: "dev.status".to_owned(),
+        };
+        let command = toolchain_command(
+            &launch,
+            &[OsString::from("first"), OsString::from("two words")],
+        )
+        .expect("Toolchain command");
+
+        assert_eq!(command.get_program(), executable.as_os_str());
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            ["command-v1", "dev.status", "first", "two words"]
+                .map(OsStr::new)
+                .to_vec()
         );
     }
 }

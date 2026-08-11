@@ -4,7 +4,7 @@
 
 1. Swaw Kit Proj（`Favorites/template.proj1.exe` + `_lib/proj`）是一个以项目为对象的本地控制面，通过同一套 Core 向 CLI 和 Web 提供项目配置、开发环境和功能命令。
 2. 一个 Entry 对应一套相互隔离的项目资源：目标项目、功能命令、Git 身份、DataRoot、开发环境，以及随项目维护的 skills 和提示词。创建 Entry：`copy Favorites\template.proj1.exe MyProjEntry.exe`。
-3. Entry 是约 10 KB 的原生 Launcher，只负责确定共享 Core、传递自身路径与原始参数，并建立必要的进程边界。若 `_lib/proj/_bin/swawkit-proj.exe` 尚未生成，它会调用 `_lib/proj/bootstrap.ps1`，由仓库内固定的 Rust/MSVC 工具链完成首次构建和发布。
+3. Entry 是约 10 KB 的原生 Launcher，只负责读取 `_lib/proj/_bin/current`、确定不可变 Release Set 中的共享 Core、传递自身路径与原始参数，并建立必要的进程边界。若 selector 尚未生成，它会调用 `_lib/proj/bootstrap.ps1`，由仓库内固定的 Rust/MSVC 工具链完成首次三件套构建和发布。
 4. 运行主链可以记作：`Entry Launcher -> Rust Core（CLI / Host / Worker）-> Catalog -> Control / Kernel / Action`。Bootstrap 只是 Core 缺失时的恢复路径，不参与日常命令逻辑。
 5. Rust Core 根据 Entry 名和 Windows File ID 识别入口，并在 `data/proj.{入口名}/` 管理专用 DataRoot；复制产生新 Entry，改名仍延续原身份。同一 Entry 只保留一个 Entry Host，普通 CLI 和 Entry Worker 则是按次创建的短生命周期进程。
 6. Entry Profile 记录目标项目和开发环境等用户配置，CLI 与 Web 共用这份配置；项目自定义命令从目标项目的 `.swaw` 中发现。
@@ -33,7 +33,7 @@
 | `_lib/proj/bootstrap.ps1` / `bootstrap.json` | Core 缺失时使用固定工具链构建并发布共享 Rust Core |
 | `_lib/proj/build.ps1` | 使用固定工具链构建 App 与 Launcher 候选，不发布正式制品 |
 | `_lib/proj/_toolchain` | 受管工具链及模块 Export、状态、锁、环境生成与激活等共享机制 |
-| `_lib/proj/_app` | Rust Core 源码，承载身份、DataRoot、Profile、Catalog、命令执行、CLI、Entry Host 与 Entry Worker |
+| `_lib/proj/_app` | Rust 产品源码，按 Core、Host 与 Toolchain 领域承载身份、DataRoot、Profile、Catalog、命令执行、Web 生命周期及受管工具能力 |
 | `_lib/proj/_bin` | Bootstrap 或显式发布产生的共享运行时制品 |
 | `_lib/proj/.dev/{setup,status,bun,cargo,rustc,cl,cmd,ps}` | 管理受管开发环境，并提供开发工具与一次性 Shell 命令入口 |
 | `_lib/proj/.<name>` / `.swaw/<name>` | Kernel 命令 / 目标项目的 Action 命令 |
@@ -52,22 +52,22 @@
 ## 四、关键不变量与协议
 
 1. **身份与配置。** Entry 以 Windows File ID 保持身份：复制产生新身份，改名延续原身份，文件被替换时才要求显式认领（claim）。`_entry.json` 只记录 Entry 身份，`_profile.json` 只记录用户配置；运行时环境变量不能反过来成为配置来源。
-2. **目录即命令协议。** 命令地址由目录层级唯一推导，一个目录最多有一个规范执行入口；Help、Web 展示提示和 Guard 都是模块的伴随声明。Catalog 以 `swawkit.command-catalog/v3` 生成结构性的 `runnable` 与 `diagnostic`；Control 的 `run.core.json` 使用 `swawkit.core-command/v1`，`_view/web.json` 使用 `swawkit.command-view/web/v1`。全局与模块 Guard 在执行前判断运行前提。
+2. **目录即命令协议。** 命令地址由目录层级唯一推导，一个目录最多有一个规范执行入口；Help、Web 展示提示和 Guard 都是模块的伴随声明。Catalog 以 `swawkit.command-catalog/v3` 生成结构性的 `runnable` 与 `diagnostic`；Control 的 `run.core.json` 使用 `swawkit.core-command/v1`，Kernel 产品命令可用 `run.toolchain.json` 与 `swawkit.toolchain-command/v1` 静态选择同 Release Set 中的受限 Rust handler，`_view/web.json` 使用 `swawkit.command-view/web/v1`。全局与模块 Guard 在执行前判断运行前提。
 3. **模块数据根。** Core 按命令来源和相对目录，将每个目录命令模块同构映射到 `DataRoot/modules/{control|kernel|action}/...`。例如 `.dev.setup` 对应 `modules/kernel/.dev/setup/`。`SWAWKIT_PROJ_DATA_ROOT` 表示 Entry 根，`SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT` 表示当前模块数据根；普通命令的工作数据、状态、锁和 Export 都归入后者。只有 Core 缺失时的 Bootstrap 构建和确实需要跨 Entry 复用的下载缓存进入 `data/proj_cache/`。
 4. **模块 Export 与显式依赖。** 模块把稳定候选或供其他模块消费的产物发布到自身的 `export/`，中间文件留在 `work/`。`export/` 只是稳定发布边界，不自动等于一套资产系统：需要自动消费的构建产物通过 `manifest.json` 声明文件名、长度与 SHA-256，并由提供命令地址、`producerContract` 和 `_state.json` 建立可验证发布边界。依赖尚未 Ready 或制品与 Manifest 不一致时，错误信息直接给出应执行的提供命令。
 5. **Provider State。** `_state.json` 使用 `swawkit.command-provider-state/v1`，状态为 `unavailable` 或 `ready`。影响开发环境的 Profile 输入变化时，`.dev.setup` 状态同步变为 `unavailable`；重新执行 `.dev.setup` 后，完成的 Export 与 `ready` 状态一起成为新的有效发布。`inputRevision`、`token` 与 `producerContract` 共同标识这次发布并保证消费一致性。
 6. **环境变量是边界，不是状态。** 除系列根目录使用 `SWAWKIT_HOME` 外，Proj 拥有的变量统一使用 `SWAWKIT_PROJ_` 前缀：`SWAWKIT_PROJ_CORE_LAUNCH_*` 传递一次性启动声明，`SWAWKIT_PROJ_CORE_COMMAND_*` 描述单次命令上下文，`SWAWKIT_PROJ_MODULE_*` 用于模块私有适配。Core 在读取 Launcher 声明后、创建线程前清除进程中的 `SWAWKIT_HOME` 与全部 `SWAWKIT_PROJ_*`；Host 的长期事实保存在类型化对象和 DataRoot。每次执行命令时，Core 再从当前 Entry/Profile 生成命令环境，适配器私有变量在消费后清除。
 7. **执行一致性。** 普通 Kernel 和 Action 依次执行全局 Guard、模块 Guard 和 `run.*`；Guard 只检查前提，不安装工具或修复状态。CLI 直接进入这条执行链，Web 则通过同一个 Entry Launcher 创建 Entry Worker，再进入同一条链，因此两者共享解释器、cwd、Profile、DataRoot 与环境语义。
 8. **持久运行日志。** CLI 和 Web 运行都在所属模块数据根的 `_runs/{run-id}/` 写入同一套事实：`events.jsonl` 使用 `swawkit.command-run-event/v1` 追加带时间和阶段的 `kind=output|progress` 事件；`output` 保存 stdout/stderr UTF-8 文本，`progress` 保存稳定 ID、状态、数值、单位和消息。`_state.json` 使用 `swawkit.command-run-journal/v1` 原子发布来源、起止时间和终态。Journal 统一生成 sequence 与时间戳；CLI 控制台、Web 实时窗口和历史查询消费同一事件，而不是各自重新编号或从日志文件轮询实时输出。原始参数不落盘，只记录数量；每次运行最多保留 8 MiB 事件文件，达到上限后明确标记 `truncated`。日志写入是执行契约的一部分，初始化或完成日志失败会使本次运行失败，而不是静默丢失。
-9. **构建与发布分离。** build 只产出候选文件，显式 publish/update 命令才可替换正式制品。`proj.publish.app` 只消费 `proj.build.app` 的 Ready Provider 与匹配 Manifest，在共享锁内原子切换 Core；旧进程继续运行已映射版本，新调用使用新版本。工具下载、安装、更新和主动清理由显式命令触发，受管工具始终使用已验证的受管版本，而不是系统 PATH 中的同名程序。
+9. **构建与发布分离。** build 只产出候选文件，显式 publish/update 命令才可替换正式制品。`proj.publish.app` 只消费 `proj.build.app` 的 Ready Provider 与匹配 Manifest，在共享锁内原子切换 Release Set selector；旧进程继续运行已映射版本，新调用使用新版本。工具下载、安装、更新和主动清理由显式命令触发，受管工具始终使用已验证的受管版本，而不是系统 PATH 中的同名程序。
 
 ## 五、当前做到哪里
 
 1. Native Launcher 和 Rust Core 已接管正常启动、Entry 身份、DataRoot、Profile、命令发现、Guard、CLI、单实例 Entry Host 与 Entry Worker 主链。
 2. Entry Host 采用 Axum、Tray 和系统浏览器；Web 已能浏览命令、编辑 Profile，并启动、增量读取和取消 Kernel/Action 命令，还能按命令查看跨 Host 保留的 CLI/Web 历史日志。命令页使用可刷新的 `/commands/{source}/...` 深链；Finder 将“命令层级”和“当前命令视图”分成两个维度：只有路径末端命令会在原行下展开其实际能力对应的本地视图，普通命令为子命令、概览、帮助、可选执行和日志，Profile 变量命令为设置、概览和帮助；祖先命令保持折叠，Finder 后续列只表示真实子命令。Host 会原子发布带 Entry 身份、Boot ID、PID 和回环 URL 的瞬时运行描述；二次启动验证健康端点后由新进程打开控制台，Web 同时显示 Host 状态并提供显式退出入口，因此托盘不是唯一恢复路径。Control 仍由受限 Core handler 或专用 API 承担，不作为任意 Entry Worker 命令开放。
 3. `_profile.json` 是用户配置的唯一来源；相关环境输入变化会同步使 `.dev.setup` Provider State 失效。`.dev.setup` 的 `env.cmd`、`env.ps1` 位于自身 `export/`，`.dev.bun`、`.dev.cargo`、`.dev.rustc`、`.dev.cl` 等消费者通过统一检查后加载。
-4. 当前执行器支持 `run.exe`、`run.ps1` 和受限的 `run.cmd`。PowerShell 负责工具链、环境发布和命令适配，`.dev.cmd`、`.dev.ps` 提供一次性 Shell 调用。
-5. `proj.build.app` 与 `proj.build.launcher` 已把中间文件、锁和稳定候选分别收进各自 Action 数据根的 `work/`、`locks/` 与 `export/`，并发布制品 Manifest 与 Provider State；失败构建不会授予 Ready 状态。`proj.publish.app` 是第一个自动消费者，会拒绝缺失、过期或被篡改的候选并原子更新正式 Core。Bun、PowerShell、MSVC 和 Rust 的受管环境已经实现；正式测试同时覆盖 Launcher/Core 协议、模块 Export 与 Provider State、Entry Host 单实例、Entry Worker 输出和整棵进程树取消。
+4. 当前执行器支持 `run.exe`、由当前 Entry 开发环境执行的 Action `run.ts`、Kernel 专用 `run.toolchain.json`、`run.ps1` 和受限的 `run.cmd`。Action `run.ts` 严格解析 Entry Profile 与 `.dev.setup` Provider Export，不使用系统 PATH；`run.toolchain.json` 不执行目录脚本，而是固定调用同 Release Set 的 `swawkit-proj-toolchain.exe command-v1 <handler>`，Catalog 同时限制 handler 白名单与 Kernel 所有权。`.dev.status` 已完成首个垂直迁移：原 PowerShell 入口已删除，Bun/PowerShell、MSVC、Rust 的元数据、文件清单、重解析点和完整 SHA-256 校验由按 `command/status` 领域拆分的 Rust 实现承担。环境安装与发布仍由既有 PowerShell 主路径负责；低频下载、ZIP 校验与安全解压也已交给原生 Toolchain，只有冷 Bootstrap 在 Toolchain 尚不存在时保留系统原生 Shell 实现。
+5. `proj.build.app` 已拆分高频 CLI/Worker Core、常驻 Web/Tray Host 与低频原生 Toolchain，分别发布为 `swawkit-proj.exe`、`swawkit-proj-host.exe`、`swawkit-proj-toolchain.exe`，并组成不可变 Release Set。`proj.publish.app` 校验整组 Manifest 后写入 `_bin/releases/<release-id>/`，最后只原子切换 `_bin/current`；`_bin` 根目录不再保留可执行 bridge。当前维护的 Entry Launcher 已原地迁移到 selector 协议并保持文件身份，`proj.publish.launcher` 继续只更新新建 Entry 模板。失败构建不会授予 Ready 状态。正式测试同时覆盖 Launcher/Core/Host/Toolchain 协议、模块 Export 与 Provider State、Entry 环境 Bun 与 Action `run.ts`、Entry Host 单实例、Entry Worker 输出和整棵进程树取消。
 
 ## 六、Web 与执行边界
 
@@ -81,7 +81,7 @@
 
 1. 以真实命令为驱动扩展 `_view/web.json` 的最小交互协议，逐步覆盖参数类型、确认提示和结果展示；不要把临时输入和输出塞进 URL。
 2. Run Journal V1 先通过 8 MiB 单次上限约束失控输出；积累真实使用量后，再定义跨进程安全的按模块保留数量、清理入口和“进程异常退出后未完成”的对账规则，不提前加入常驻日志服务或 OpenTelemetry SDK。确有跨进程 Trace 或外部采集需求时，再从当前事件协议映射到 OTLP。
-3. 单独完成执行入口收敛：删除 `run.ps1` / `run.cmd` 适配器前，先把现有命令迁移到 `run.exe`、`run.ts` 或 `run.py` 并补齐 Bun/Node/Python 的启动契约，避免长期兼容层。
+3. 沿已验证的 `run.toolchain.json` 垂直切片继续收敛 Kernel 入口：下一批优先迁移 `.dev.setup` 的运行期编排与 Bun/PowerShell 安装域，每完成一个领域就删除对应 PowerShell 日常入口；冷 Bootstrap 的 Rust/MSVC 准备逻辑继续保留在系统原生 Shell。Action 可迁移到 Entry 环境提供的 `run.ts`。删除通用 `run.ps1` / `run.cmd` 适配器前，再补齐 `run.py` 的运行时决策和剩余迁移清单，避免长期兼容层。
 4. 继续收窄现有 Action 对 `_toolchain` 私有实现的直接依赖；等 Launcher 出现真实发布消费者时，再按 App 已验证的模式增加对应 publish 入口，不预先制造通用资产框架。
-5. 为退出后的 retired Core 增加低成本、可观察的日常清理触发点；当前发布会在每次执行时重试清理，仍被旧 Host 映射的版本明确保留在共享缓存中。
+5. 为不可变 Release Set 增加显式保留与清理命令：只删除不再由 `current` 指向、且未被旧 Host 映射的目录；不要把生命周期判断塞进每次发布。
 6. 长期目标是保持一个正式 Core、一套配置与命令协议，让 CLI、Web 和后续入口共享同一套行为语义，同时让每个目录化模块独立拥有自己的领域数据与演进节奏。

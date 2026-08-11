@@ -11,6 +11,7 @@ pub(crate) struct ResolvedCommand {
     pub directory: PathBuf,
     pub entry_path: PathBuf,
     pub adapter: CommandAdapter,
+    pub handler: Option<String>,
 }
 
 impl ResolvedCommand {
@@ -64,6 +65,7 @@ impl ResolvedCommand {
             directory: node.directory.clone(),
             entry_path: node.directory.join(entry_name),
             adapter,
+            handler: node.handler.clone(),
         })
     }
 }

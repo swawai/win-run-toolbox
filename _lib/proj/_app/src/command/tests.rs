@@ -14,7 +14,8 @@ use crate::{
 
 use super::{
     CommandExecutionContext, CommandExecutor, CommandProcessMode, ExecutionPhase, GuardPlan,
-    GuardScope, Invocation, ProcessEnvironment, ResolvedCommand, process::run_process,
+    GuardScope, Invocation, ProcessEnvironment, ResolvedCommand,
+    process::{AdapterLaunch, run_process},
 };
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
@@ -44,6 +45,8 @@ impl Fixture {
         for directory in [&kernel_root, &target_project_root, &action_root, &data_root] {
             fs::create_dir_all(directory).expect("create fixture directory");
         }
+        fs::write(root.join("swawkit-proj-toolchain.exe"), "fixture")
+            .expect("write Toolchain fixture");
         Self {
             root,
             kernel_root,
@@ -81,6 +84,7 @@ impl Fixture {
             entry_name: "fixture".to_owned(),
             entry_file: self.root.join("fixture.exe"),
             invocation_directory: self.target_project_root.clone(),
+            toolchain_executable: self.root.join("swawkit-proj-toolchain.exe"),
             profile: EntryProfileRecord::default(),
             environment_input_revision: EntryProfileRecord::default().environment_input_revision(),
             profile_revision: format!("sha256-{}", "0".repeat(64)),
@@ -164,6 +168,10 @@ fn process_environment_is_declarative_and_phase_specific() {
         Some(Some(context.entry_file.as_os_str()))
     );
     assert_eq!(
+        run.value("SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE"),
+        Some(Some(context.toolchain_executable.as_os_str()))
+    );
+    assert_eq!(
         run.value("SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION"),
         Some(Some(OsStr::new(&context.environment_input_revision)))
     );
@@ -217,6 +225,20 @@ fn process_environment_is_declarative_and_phase_specific() {
         guard.value("SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE"),
         Some(Some(OsStr::new("global")))
     );
+}
+
+#[test]
+fn process_environment_rejects_a_missing_runtime_toolchain() {
+    let fixture = Fixture::new();
+    fixture.command(".tool", "exit 0");
+    let command = ResolvedCommand::from_catalog(&fixture.catalog(), ".tool").unwrap();
+    let context = fixture.context();
+    fs::remove_file(&context.toolchain_executable).expect("remove Toolchain fixture");
+
+    let error = ProcessEnvironment::for_command(&context, &command, ExecutionPhase::Run)
+        .expect_err("missing Toolchain must reject command execution");
+
+    assert!(error.to_string().contains("Toolchain is unavailable"));
 }
 
 #[test]
@@ -439,6 +461,7 @@ fn exe_adapter_returns_the_exact_child_exit_code() {
         Path::new(&comspec),
         &arguments,
         &fixture.target_project_root,
+        &AdapterLaunch::Direct,
         &environment,
         CommandProcessMode::InheritConsole,
     )

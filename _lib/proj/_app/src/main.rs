@@ -2,23 +2,24 @@
 compile_error!("The Swaw Kit Proj application V0 supports Windows only.");
 
 mod cli;
-mod host_instance;
-mod tray;
 
 use std::error::Error;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
-use std::time::Duration;
+use std::os::windows::fs::MetadataExt;
+use std::os::windows::process::CommandExt;
+use std::process::{Command, Stdio};
 use swawkit_proj::{
     command::CommandProcessMode,
     context::EntryContext,
-    data_root::{DataRootSession, ResolveDataRootRequest},
-    host_runtime::HostRuntimeLocator,
-    launch::{LAUNCH_MODE_ENV, LaunchMode, LaunchRequest, clear_inherited_swawkit_environment},
+    launch::{
+        ENTRY_FILE_ENV, LAUNCH_MODE_ENV, LAUNCH_PROTOCOL_ENV, LAUNCH_PROTOCOL_VERSION, LaunchMode,
+        LaunchRequest, clear_inherited_swawkit_environment,
+    },
 };
+use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
-
-use crate::host_instance::{HostInstance, HostInstanceAcquisition};
 
 fn main() {
     let request = match LaunchRequest::from_process() {
@@ -59,26 +60,42 @@ fn run(request: LaunchRequest) -> Result<i32, Box<dyn Error>> {
         LaunchMode::Worker => {
             cli::run(&context, &request.argv, CommandProcessMode::NoWindow).map_err(Into::into)
         }
-        LaunchMode::InternalHost => {
-            let data_root = DataRootSession::new(ResolveDataRootRequest {
-                swawkit_home: &context.swawkit_home,
-                entry_file: &context.entry_file,
-            })?;
-            let runtime = HostRuntimeLocator::new(&context, data_root.entry_identity());
-            let instance = match HostInstance::acquire(data_root.entry_identity())? {
-                HostInstanceAcquisition::Primary(instance) => instance,
-                HostInstanceAcquisition::Existing => {
-                    let document = runtime.wait_for_healthy(Duration::from_secs(5))?;
-                    webbrowser::open(&document.url).map_err(|error| {
-                        format!("cannot activate the existing Entry Host: {error}")
-                    })?;
-                    return Ok(0);
-                }
-            };
-            tray::run(context, data_root, instance, runtime.acquire_owner())?;
-            Ok(0)
-        }
+        LaunchMode::InternalHost => launch_host(&request, &context),
     }
+}
+
+fn launch_host(request: &LaunchRequest, context: &EntryContext) -> Result<i32, Box<dyn Error>> {
+    if !request.argv.is_empty() {
+        return Err("the internal Host launch cannot carry user arguments".into());
+    }
+    let core = std::env::current_exe()?;
+    let host = core.with_file_name("swawkit-proj-host.exe");
+    let metadata = std::fs::symlink_metadata(&host).map_err(|error| {
+        format!(
+            "the Host executable is missing from the current release '{}': {error}",
+            host.display()
+        )
+    })?;
+    if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(format!(
+            "the Host executable is not a regular release file: {}",
+            host.display()
+        )
+        .into());
+    }
+
+    Command::new(&host)
+        .current_dir(&context.invocation_directory)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .env(LAUNCH_PROTOCOL_ENV, LAUNCH_PROTOCOL_VERSION)
+        .env(ENTRY_FILE_ENV, &context.entry_file)
+        .env(LAUNCH_MODE_ENV, LaunchMode::InternalHost.as_env_value())
+        .spawn()
+        .map_err(|error| format!("cannot start the Entry Host '{}': {error}", host.display()))?;
+    Ok(0)
 }
 
 fn show_host_error(error: &str) {

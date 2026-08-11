@@ -7,6 +7,7 @@ mod command_event;
 pub mod command_journal;
 pub mod context;
 pub mod data_root;
+pub mod development;
 pub mod entry;
 mod entry_runner;
 pub mod help;

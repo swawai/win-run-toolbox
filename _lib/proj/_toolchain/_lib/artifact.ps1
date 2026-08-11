@@ -97,7 +97,8 @@ function Invoke-ProjDevDownload {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
         [Parameter(Mandatory = $true)][string]$Destination,
-        [Parameter(Mandatory = $true)][string]$ControlledRoot
+        [Parameter(Mandatory = $true)][string]$ControlledRoot,
+        [AllowNull()][string]$ToolchainExecutable = $null
     )
 
     $Destination = Assert-ProjDevPathInsideDataRoot `
@@ -115,6 +116,29 @@ function Invoke-ProjDevDownload {
     $SourceKey = Get-ProjDevSha256Text -Value $Source
     $ProgressId = "download:$($SourceKey.Substring(0, 16))"
 
+    if (-not [string]::IsNullOrWhiteSpace($ToolchainExecutable)) {
+        if (-not (Test-ProjDevCommandEventProtocol)) {
+            Write-Host "[DL] $ArchiveName" -ForegroundColor DarkGray
+        }
+        $NativeSource = if ([IO.File]::Exists($Source)) {
+            Get-ProjDevFullPath -Path $Source
+        } else {
+            $Source
+        }
+        & $ToolchainExecutable `
+            'download-v1' `
+            $ControlledRoot `
+            $NativeSource `
+            $Destination `
+            $ProgressId
+        if ($LASTEXITCODE -ne 0) {
+            throw "Proj Toolchain download failed with exit code $LASTEXITCODE."
+        }
+        return
+    }
+
+    # Cold Bootstrap fallback: the native Toolchain does not exist until the
+    # first Rust/MSVC bootstrap build has completed.
     try {
         if (Test-ProjDevCommandEventProtocol) {
             Write-ProjDevProgressEvent `
@@ -240,7 +264,15 @@ function Invoke-ProjDevDownload {
 }
 
 function Test-ProjDevZipArchive {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [AllowNull()][string]$ToolchainExecutable = $null
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ToolchainExecutable)) {
+        & $ToolchainExecutable 'zip-test-v1' $Path *> $null
+        return $LASTEXITCODE -eq 0
+    }
 
     try {
         $Archive = [IO.Compression.ZipFile]::OpenRead($Path)
@@ -259,7 +291,8 @@ function Expand-ProjDevZipSafely {
     param(
         [Parameter(Mandatory = $true)][string]$ArchivePath,
         [Parameter(Mandatory = $true)][string]$Destination,
-        [Parameter(Mandatory = $true)][string]$ControlledRoot
+        [Parameter(Mandatory = $true)][string]$ControlledRoot,
+        [AllowNull()][string]$ToolchainExecutable = $null
     )
 
     $Destination = Assert-ProjDevPathInsideDataRoot `
@@ -267,6 +300,19 @@ function Expand-ProjDevZipSafely {
         -DataRoot $ControlledRoot `
         -Activity 'extracting a development archive'
     [void][IO.Directory]::CreateDirectory($Destination)
+    if (-not [string]::IsNullOrWhiteSpace($ToolchainExecutable)) {
+        & $ToolchainExecutable `
+            'zip-extract-v1' `
+            $ControlledRoot `
+            $ArchivePath `
+            $Destination
+        if ($LASTEXITCODE -ne 0) {
+            throw "Proj Toolchain ZIP extraction failed with exit code $LASTEXITCODE."
+        }
+        return
+    }
+
+    # Cold Bootstrap fallback; see Invoke-ProjDevDownload.
     $DestinationPrefix = $Destination.TrimEnd('\', '/') +
         [IO.Path]::DirectorySeparatorChar
     $Archive = [IO.Compression.ZipFile]::OpenRead($ArchivePath)
@@ -342,6 +388,7 @@ function Get-ProjDevVerifiedArchive {
         [Parameter(Mandatory = $true)][object]$Definition
     )
 
+    $ToolchainExecutable = Get-ProjDevToolchainExecutable -Context $Context
     $CacheRoot = Get-ProjDevArtifactCacheRoot `
         -Context $Context `
         -Definition $Definition
@@ -379,7 +426,9 @@ function Get-ProjDevVerifiedArchive {
 
         $Expected = Get-ProjDevExpectedSha256 -Definition $Definition
         if ([IO.File]::Exists($ArchivePath)) {
-            $ValidCachedArchive = Test-ProjDevZipArchive -Path $ArchivePath
+            $ValidCachedArchive = Test-ProjDevZipArchive `
+                -Path $ArchivePath `
+                -ToolchainExecutable $ToolchainExecutable
             if ($ValidCachedArchive -and
                 -not [string]::IsNullOrWhiteSpace($Expected)) {
                 $ValidCachedArchive =
@@ -397,7 +446,8 @@ function Get-ProjDevVerifiedArchive {
             Invoke-ProjDevDownload `
                 -Source ([string]$Definition.Url) `
                 -Destination $ArchivePath `
-                -ControlledRoot $Context.CacheDataRoot
+                -ControlledRoot $Context.CacheDataRoot `
+                -ToolchainExecutable $ToolchainExecutable
         }
         $Actual = Get-ProjDevFileSha256 -Path $ArchivePath
         if (-not [string]::IsNullOrWhiteSpace($Expected) -and
@@ -411,7 +461,9 @@ function Get-ProjDevVerifiedArchive {
         if ([string]::IsNullOrWhiteSpace($Expected)) {
             $Definition.Sha256 = $Actual
         }
-        if (-not (Test-ProjDevZipArchive -Path $ArchivePath)) {
+        if (-not (Test-ProjDevZipArchive `
+            -Path $ArchivePath `
+            -ToolchainExecutable $ToolchainExecutable)) {
             Remove-ProjDevControlledPath `
                 -Path $ArchivePath `
                 -DataRoot $Context.CacheDataRoot `

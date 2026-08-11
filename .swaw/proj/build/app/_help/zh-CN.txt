@@ -1,19 +1,23 @@
-使用当前入口 Profile 管理的 Rust 与 MSVC 工具链构建 Swaw Kit Proj 主程序候选文件。
+使用当前 Entry Profile 管理的 Rust 与 MSVC 工具链构建 Swaw Kit Proj Release Set。
 
-用法：
+用法:
   {{INVOCATION}}
 
 构建中间文件和最近一次成功结果保存在当前命令专有数据根：
   work/cargo/
-  export/swawkit-proj.exe
-  export/manifest.json
+  export/releases/<release-id>/swawkit-proj.exe
+  export/releases/<release-id>/swawkit-proj-host.exe
+  export/releases/<release-id>/swawkit-proj-toolchain.exe
+  export/releases/<release-id>/manifest.json
+  export/current
   _state.json
 
-该命令只构建候选文件，不会替换正在运行的：
-  _lib/proj/_bin/swawkit-proj.exe
+swawkit-proj.exe 是高频 CLI/Worker Core；swawkit-proj-host.exe 独立承载 Web、托盘与
+常驻 Host；swawkit-proj-toolchain.exe 承载低频下载、校验与解压原语。该命令只构建
+不可变候选 Release Set，不切换正式运行版本。
 
-发布候选：
-  swawkit proj.publish.app
+发布候选:
+  {{ENTRY}} proj.publish.app
 
 固定 Bootstrap 工具链属于源码树维护入口，不作为项目 Action 暴露：
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File _lib\proj\build.ps1

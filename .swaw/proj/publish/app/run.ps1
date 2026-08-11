@@ -17,10 +17,11 @@ if ([string]::IsNullOrWhiteSpace($ProjHome) -or
 $KernelRoot = Join-Path $ProjHome '_lib\proj'
 . (Join-Path $KernelRoot '_toolchain\runtime.ps1')
 . (Join-Path $PSScriptRoot '..\..\build\_lib\export.ps1')
-. (Join-Path $PSScriptRoot '..\_lib\core.ps1')
+. (Join-Path $PSScriptRoot '..\..\build\_lib\release-set.ps1')
+. (Join-Path $KernelRoot '_toolchain\_lib\runtime-release.ps1')
 
 $ProviderAddress = 'proj.build.app'
-$ProviderContract = 'swawkit.proj-build-app/v1'
+$ProviderContract = 'swawkit.proj-build-app/v3'
 $ProviderRoot = Get-ProjActionCommandDataRoot `
     -DataRoot $DataRoot `
     -Address $ProviderAddress
@@ -29,14 +30,18 @@ $ProviderLock = Enter-ProjDevFileLock `
     -ControlledRoot $DataRoot `
     -TimeoutSeconds 120
 try {
-    $Artifact = Get-ProjRequiredBuildArtifact `
+    $ReleaseSet = Get-ProjRequiredBuildReleaseSet `
         -DataRoot $DataRoot `
         -ProviderAddress $ProviderAddress `
         -EntryCommand $EntryCommand `
         -ProducerContract $ProviderContract `
-        -ArtifactName 'swawkit-proj.exe'
-    Publish-ProjCoreRuntime `
-        -Artifact $Artifact `
+        -ArtifactNames @(
+            'swawkit-proj.exe',
+            'swawkit-proj-host.exe',
+            'swawkit-proj-toolchain.exe'
+        )
+    Publish-ProjRuntimeReleaseSet `
+        -ReleaseSet $ReleaseSet `
         -ProjHome $ProjHome `
         -CacheDataRoot (Join-Path $ProjHome 'data\proj_cache') | Out-Null
 } finally {

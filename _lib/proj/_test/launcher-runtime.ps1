@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$LauncherPath = '',
-    [string]$CorePath = ''
+    [string]$CorePath = '',
+    [string]$HostPath = '',
+    [string]$ToolchainPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -72,7 +74,9 @@ function Invoke-ProjLauncherRuntimeProcess {
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 if ([string]::IsNullOrWhiteSpace($LauncherPath) -or
-    [string]::IsNullOrWhiteSpace($CorePath)) {
+    [string]::IsNullOrWhiteSpace($CorePath) -or
+    [string]::IsNullOrWhiteSpace($HostPath) -or
+    [string]::IsNullOrWhiteSpace($ToolchainPath)) {
     . (Join-Path $RepoRoot (
         '_lib\proj\_toolchain\bootstrap-layout.ps1'
     ))
@@ -83,11 +87,26 @@ if ([string]::IsNullOrWhiteSpace($LauncherPath) -or
     if ([string]::IsNullOrWhiteSpace($CorePath)) {
         $CorePath = Join-Path $Layout.BuildRoot 'release\swawkit-proj.exe'
     }
+    if ([string]::IsNullOrWhiteSpace($HostPath)) {
+        $HostPath = Join-Path $Layout.BuildRoot 'release\swawkit-proj-host.exe'
+    }
+    if ([string]::IsNullOrWhiteSpace($ToolchainPath)) {
+        $ToolchainPath = Join-Path $Layout.BuildRoot (
+            'release\swawkit-proj-toolchain.exe'
+        )
+    }
     & (Join-Path $RepoRoot '_lib\proj\build.ps1') | Out-Host
 }
 $LauncherPath = [IO.Path]::GetFullPath($LauncherPath)
 $CorePath = [IO.Path]::GetFullPath($CorePath)
-foreach ($RequiredFile in @($LauncherPath, $CorePath)) {
+$HostPath = [IO.Path]::GetFullPath($HostPath)
+$ToolchainPath = [IO.Path]::GetFullPath($ToolchainPath)
+foreach ($RequiredFile in @(
+    $LauncherPath,
+    $CorePath,
+    $HostPath,
+    $ToolchainPath
+)) {
     if (-not [IO.File]::Exists($RequiredFile)) {
         throw "Required built executable does not exist: $RequiredFile"
     }
@@ -98,7 +117,14 @@ $TemporaryRoot = Join-Path $RepoRoot (
 )
 $RuntimeHome = Join-Path $TemporaryRoot 'runtime-home'
 $RuntimeKernelRoot = Join-Path $RuntimeHome '_lib\proj'
-$RuntimeCorePath = Join-Path $RuntimeKernelRoot '_bin\swawkit-proj.exe'
+$RuntimeReleaseId = 'a' * 64
+$RuntimeBin = Join-Path $RuntimeKernelRoot '_bin'
+$RuntimeRelease = Join-Path (
+    Join-Path $RuntimeBin 'releases'
+) $RuntimeReleaseId
+$RuntimeCorePath = Join-Path $RuntimeRelease 'swawkit-proj.exe'
+$RuntimeHostPath = Join-Path $RuntimeRelease 'swawkit-proj-host.exe'
+$RuntimeToolchainPath = Join-Path $RuntimeRelease 'swawkit-proj-toolchain.exe'
 $EntryName = "test-launcher-$([Guid]::NewGuid().ToString('N'))"
 $EntryPath = Join-Path $RuntimeHome "Favorites\$EntryName.exe"
 $DataRoot = Join-Path $RuntimeHome "data\proj.$EntryName"
@@ -118,7 +144,7 @@ $BootstrapHome = Join-Path $TemporaryRoot 'bootstrap-home'
 $BootstrapEntry = Join-Path $BootstrapHome 'bootstrap-entry.exe'
 $BootstrapScript = Join-Path $BootstrapHome '_lib\proj\bootstrap.ps1'
 $BootstrapCore = Join-Path $BootstrapHome (
-    '_lib\proj\_bin\swawkit-proj.exe'
+    ('_lib\proj\_bin\releases\' + ('b' * 64) + '\swawkit-proj.exe')
 )
 $BootstrapMarker = Join-Path $BootstrapHome 'bootstrap-ran.txt'
 
@@ -174,6 +200,13 @@ try {
         [void][IO.Directory]::CreateDirectory($Directory)
     }
     [IO.File]::Copy($CorePath, $RuntimeCorePath, $false)
+    [IO.File]::Copy($HostPath, $RuntimeHostPath, $false)
+    [IO.File]::Copy($ToolchainPath, $RuntimeToolchainPath, $false)
+    [IO.File]::WriteAllText(
+        (Join-Path $RuntimeBin 'current'),
+        ($RuntimeReleaseId + "`n"),
+        [Text.UTF8Encoding]::new($false)
+    )
     [IO.File]::Copy(
         (Join-Path $RepoRoot '_lib\proj\_help\zh-CN.txt'),
         (Join-Path $RuntimeKernelRoot '_help\zh-CN.txt'),
@@ -187,10 +220,19 @@ try {
     $BootstrapFixture = @'
 $ErrorActionPreference = 'Stop'
 $HomeRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$RuntimePath = Join-Path $HomeRoot '_lib\proj\_bin\swawkit-proj.exe'
+$ReleaseId = 'b' * 64
+$RuntimeRoot = Join-Path $HomeRoot '_lib\proj\_bin'
+$RuntimePath = Join-Path (
+    Join-Path (Join-Path $RuntimeRoot 'releases') $ReleaseId
+) 'swawkit-proj.exe'
 $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
 [void][IO.Directory]::CreateDirectory((Split-Path -Path $RuntimePath -Parent))
 [IO.File]::Copy($CmdPath, $RuntimePath, $false)
+[IO.File]::WriteAllText(
+    (Join-Path $RuntimeRoot 'current'),
+    ($ReleaseId + "`n"),
+    [Text.UTF8Encoding]::new($false)
+)
 [IO.File]::WriteAllText(
     (Join-Path $HomeRoot 'bootstrap-ran.txt'),
     ((@(

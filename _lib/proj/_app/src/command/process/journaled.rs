@@ -14,7 +14,7 @@ use crate::run_journal::{
 };
 use crate::utf8_output::Utf8LossyDecoder;
 
-use super::prepare_command;
+use super::{AdapterLaunch, prepare_command};
 use crate::command::{CommandError, CommandProcessMode, CommandResult, ProcessEnvironment};
 
 const OUTPUT_READ_BUFFER_SIZE: usize = 8192;
@@ -24,6 +24,7 @@ pub(crate) fn run_process_journaled(
     entry_path: &Path,
     arguments: &[OsString],
     working_directory: &Path,
+    adapter_launch: &AdapterLaunch,
     environment: &ProcessEnvironment,
     process_mode: CommandProcessMode,
     journal: &RunJournal,
@@ -34,6 +35,7 @@ pub(crate) fn run_process_journaled(
         entry_path,
         arguments,
         working_directory,
+        adapter_launch,
         environment,
         process_mode,
     )?;

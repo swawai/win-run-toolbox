@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [Parameter(Mandatory = $true)][string]$ToolchainPath
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -124,6 +126,7 @@ $RuntimeEnvironmentNames = @(
     'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
     'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION',
     'SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION',
+    'SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256'
@@ -152,6 +155,10 @@ $TestTemporaryBase = [IO.Path]::GetFullPath(
 $TemporaryRoot = Join-Path $TestTemporaryBase (
     "swawkit-proj-msvc-$([Guid]::NewGuid().ToString('N'))"
 )
+$ResolvedToolchainPath = [IO.Path]::GetFullPath($ToolchainPath)
+if (-not [IO.File]::Exists($ResolvedToolchainPath)) {
+    throw "Toolchain test candidate is missing: $ResolvedToolchainPath"
+}
 
 try {
     $env:SWAWKIT_PROJ_MSVC_MODE = 'managed'
@@ -423,6 +430,7 @@ try {
     $env:SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR = $ProjectRoot
     $env:SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION = $InputRevision
     $env:SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION = $ProfileRevision
+    $env:SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE = $ResolvedToolchainPath
     foreach ($Name in [string[]]@(
         [Environment]::GetEnvironmentVariables('Process').Keys
     )) {

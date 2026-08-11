@@ -15,6 +15,7 @@ if ([string]::IsNullOrWhiteSpace($ProjHome) -or
 $KernelRoot = Join-Path $ProjHome '_lib\proj'
 . (Join-Path $KernelRoot '_toolchain\_modules\rust\runtime.ps1')
 . (Join-Path $PSScriptRoot '..\_lib\export.ps1')
+. (Join-Path $PSScriptRoot '..\_lib\release-set.ps1')
 
 $Cargo = Resolve-ProjDevRustCommand -ExecutableName 'cargo.exe'
 $BuildPath = Join-Path $KernelRoot '_app\build.ps1'
@@ -22,10 +23,6 @@ $WorkRoot = Assert-ProjDevPathInsideDataRoot `
     -Path (Join-Path $CommandDataRoot 'work\cargo') `
     -DataRoot $CommandDataRoot `
     -Activity 'building the Swaw Kit Proj application'
-$ExportPath = Assert-ProjDevPathInsideDataRoot `
-    -Path (Join-Path $CommandDataRoot 'export\swawkit-proj.exe') `
-    -DataRoot $CommandDataRoot `
-    -Activity 'publishing the Swaw Kit Proj application export'
 $BuildLock = Enter-ProjDevFileLock `
     -Path (Join-Path $CommandDataRoot 'locks\build.lock') `
     -ControlledRoot $CommandDataRoot `
@@ -34,12 +31,17 @@ try {
     & $BuildPath `
         -CargoPath ([string]$Cargo.Executable) `
         -TargetDirectory $WorkRoot | Out-Host
-    Publish-ProjBuildArtifact `
-        -SourcePath (Join-Path $WorkRoot 'release\swawkit-proj.exe') `
-        -ExportPath $ExportPath `
+    Publish-ProjBuildReleaseSet `
+        -Artifacts ([ordered]@{
+            'swawkit-proj.exe' = Join-Path $WorkRoot 'release\swawkit-proj.exe'
+            'swawkit-proj-host.exe' = Join-Path $WorkRoot 'release\swawkit-proj-host.exe'
+            'swawkit-proj-toolchain.exe' = Join-Path $WorkRoot (
+                'release\swawkit-proj-toolchain.exe'
+            )
+        }) `
         -CommandDataRoot $CommandDataRoot `
         -ProducerAddress 'proj.build.app' `
-        -ProducerContract 'swawkit.proj-build-app/v1'
+        -ProducerContract 'swawkit.proj-build-app/v3'
 } finally {
     $BuildLock.Dispose()
 }

@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$LauncherPath = '',
-    [string]$CorePath = ''
+    [string]$CorePath = '',
+    [string]$HostPath = '',
+    [string]$ToolchainPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +45,9 @@ $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 . (Join-Path $PSScriptRoot '_lib\runtime-fixture.ps1')
 $Artifacts = Resolve-ProjCandidateRuntimeArtifacts `
     -LauncherPath $LauncherPath `
-    -CorePath $CorePath
+    -CorePath $CorePath `
+    -HostPath $HostPath `
+    -ToolchainPath $ToolchainPath
 $TemporaryRoot = Join-Path $RepoRoot (
     "data\_test\swawkit-proj-claim-$([Guid]::NewGuid().ToString('N'))"
 )
@@ -53,7 +57,9 @@ try {
     $Runtime = New-ProjCandidateRuntimeFixture `
         -RuntimeHome (Join-Path $TemporaryRoot 'runtime-home') `
         -LauncherPath $Artifacts.LauncherPath `
-        -CorePath $Artifacts.CorePath
+        -CorePath $Artifacts.CorePath `
+        -HostPath $Artifacts.HostPath `
+        -ToolchainPath $Artifacts.ToolchainPath
     $EntryPath = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
         -RelativePath "Favorites\$EntryName.exe"

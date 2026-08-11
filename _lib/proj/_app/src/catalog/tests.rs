@@ -235,7 +235,7 @@ fn reports_an_invalid_parent_owned_web_view_without_stopping_discovery() {
 }
 
 #[test]
-fn restricts_core_entries_to_control_and_control_entries_to_core() {
+fn restricts_owned_entries_to_their_catalog_sources() {
     let fixture = Fixture::new();
     let kernel = fixture.directory("home/_lib/proj");
     let actions = fixture.directory("project/.swaw");
@@ -248,8 +248,25 @@ fn restricts_core_entries_to_control_and_control_entries_to_core() {
         "home/_lib/proj/..unknown/run.core.json",
         r#"{"schema":"swawkit.core-command/v1","handler":"dynamic.invoke"}"#,
     );
+    fixture.file(
+        "home/_lib/proj/.status/run.toolchain.json",
+        r#"{"schema":"swawkit.toolchain-command/v1","handler":"dev.status"}"#,
+    );
+    fixture.file(
+        "home/_lib/proj/.unknown-toolchain/run.toolchain.json",
+        r#"{"schema":"swawkit.toolchain-command/v1","handler":"dev.install"}"#,
+    );
+    fixture.file(
+        "project/.swaw/build/run.toolchain.json",
+        r#"{"schema":"swawkit.toolchain-command/v1","handler":"dev.status"}"#,
+    );
+    fixture.file("home/_lib/proj/.bun/run.ts", "");
 
     let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
+    let status = node(&snapshot, CommandSource::Kernel, ".status");
+    assert!(status.runnable);
+    assert_eq!(status.adapter.as_deref(), Some("toolchain"));
+    assert_eq!(status.handler.as_deref(), Some("dev.status"));
     for (source, address, expected) in [
         (
             CommandSource::Kernel,
@@ -265,6 +282,21 @@ fn restricts_core_entries_to_control_and_control_entries_to_core() {
             CommandSource::Control,
             "..unknown",
             "unsupported Core command handler",
+        ),
+        (
+            CommandSource::Kernel,
+            ".unknown-toolchain",
+            "unsupported Toolchain command handler",
+        ),
+        (
+            CommandSource::Action,
+            "build",
+            "restricted to Kernel commands",
+        ),
+        (
+            CommandSource::Kernel,
+            ".bun",
+            "restricted to project Action commands",
         ),
     ] {
         let command = node(&snapshot, source, address);

@@ -8,7 +8,8 @@ function New-ProjDevContext {
         [string]$EntryCommand = 'swawkit',
         [AllowNull()][string]$InvocationDirectory = $null,
         [AllowNull()][string]$EnvironmentInputRevision = $null,
-        [AllowNull()][string]$CommandProfileRevision = $null
+        [AllowNull()][string]$CommandProfileRevision = $null,
+        [AllowNull()][string]$ToolchainExecutable = $null
     )
 
     $ResolvedProjectRoot = Get-ProjDevFullPath -Path $ProjectRoot
@@ -29,6 +30,19 @@ function New-ProjDevContext {
     }
     if (-not [IO.Directory]::Exists($ResolvedInvocationDirectory)) {
         throw "Invocation directory does not exist: $ResolvedInvocationDirectory"
+    }
+    $ResolvedToolchainExecutable = if ([string]::IsNullOrWhiteSpace(
+        $ToolchainExecutable
+    )) {
+        $null
+    } else {
+        $Candidate = Get-ProjDevFullPath -Path $ToolchainExecutable
+        $Item = Get-Item -LiteralPath $Candidate -Force -ErrorAction SilentlyContinue
+        if ($null -eq $Item -or $Item.PSIsContainer -or
+            ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Declared Proj Toolchain executable is invalid: $Candidate"
+        }
+        $Candidate
     }
 
     $EnvironmentProviderAddress = '.dev.setup'
@@ -63,6 +77,7 @@ function New-ProjDevContext {
         ArtifactLockRoot = Join-Path $ResolvedCacheDataRoot '_locks'
         EntryCommand = $EntryCommand
         InvocationDirectory = $ResolvedInvocationDirectory
+        ToolchainExecutable = $ResolvedToolchainExecutable
     }
 }
 
@@ -91,5 +106,25 @@ function New-ProjDevContextFromEnvironment {
         -EntryCommand (Get-ProjDevRequiredEnvironmentValue -Name 'SWAWKIT_PROJ_ENTRY_COMMAND') `
         -InvocationDirectory $InvocationDirectory `
         -EnvironmentInputRevision (Get-ProjDevCommandEnvironmentInputRevision) `
-        -CommandProfileRevision (Get-ProjDevCommandProfileRevision)
+        -CommandProfileRevision (Get-ProjDevCommandProfileRevision) `
+        -ToolchainExecutable (Get-ProjDevRequiredEnvironmentValue `
+            -Name 'SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE')
+}
+
+function Get-ProjDevToolchainExecutable {
+    param([Parameter(Mandatory = $true)][object]$Context)
+
+    $Property = $Context.PSObject.Properties['ToolchainExecutable']
+    if ($null -eq $Property -or [string]::IsNullOrWhiteSpace(
+        [string]$Property.Value
+    )) {
+        return $null
+    }
+    $Path = Get-ProjDevFullPath -Path ([string]$Property.Value)
+    $Item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if ($null -eq $Item -or $Item.PSIsContainer -or
+        ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "The Proj Toolchain executable is unavailable: $Path"
+    }
+    return $Path
 }

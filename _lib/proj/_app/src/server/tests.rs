@@ -81,6 +81,7 @@ impl Fixture {
             entry_file: self.root.join("swawkit.exe"),
             entry_name: "swawkit".to_owned(),
             invocation_directory: self.root.clone(),
+            product_executable: self.root.join("swawkit-proj-host.exe"),
         }
     }
 

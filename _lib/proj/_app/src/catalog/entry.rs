@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use super::filesystem::{FileCandidate, directory_files};
 
-const ENTRY_PROTOCOL: [(&str, CommandAdapter); 6] = [
+const ENTRY_PROTOCOL: [(&str, CommandAdapter); 7] = [
     ("run.core.json", CommandAdapter::Core),
+    ("run.toolchain.json", CommandAdapter::Toolchain),
     ("run.exe", CommandAdapter::Exe),
     ("run.ts", CommandAdapter::Bun),
     ("run.py", CommandAdapter::Python),
@@ -19,6 +20,7 @@ const CORE_HANDLERS: [&str; 5] = [
     "entry.profile.set",
     "host.start",
 ];
+const TOOLCHAIN_HANDLERS: [&str; 1] = ["dev.status"];
 
 #[derive(Debug)]
 pub(crate) struct ResolvedEntry {
@@ -64,9 +66,21 @@ pub(crate) fn resolve_entry(directory: &Path) -> io::Result<Option<ResolvedEntry
                 file.path.display()
             ));
         }
-        let handler = (adapter == CommandAdapter::Core)
-            .then(|| read_core_handler(&file.path))
-            .transpose()?;
+        let handler = match adapter {
+            CommandAdapter::Core => Some(read_handler_manifest(
+                &file.path,
+                "swawkit.core-command/v1",
+                "Core",
+                &CORE_HANDLERS,
+            )?),
+            CommandAdapter::Toolchain => Some(read_handler_manifest(
+                &file.path,
+                "swawkit.toolchain-command/v1",
+                "Toolchain",
+                &TOOLCHAIN_HANDLERS,
+            )?),
+            _ => None,
+        };
         existing.push(ResolvedEntry {
             name: canonical_name,
             adapter,
@@ -92,6 +106,7 @@ pub(crate) fn resolve_entry(directory: &Path) -> io::Result<Option<ResolvedEntry
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CommandAdapter {
     Core,
+    Toolchain,
     Exe,
     Bun,
     Python,
@@ -103,6 +118,7 @@ impl CommandAdapter {
     pub(crate) fn from_name(value: &str) -> Option<Self> {
         match value {
             "core" => Some(Self::Core),
+            "toolchain" => Some(Self::Toolchain),
             "exe" => Some(Self::Exe),
             "bun" => Some(Self::Bun),
             "python" => Some(Self::Python),
@@ -115,6 +131,7 @@ impl CommandAdapter {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Core => "core",
+            Self::Toolchain => "toolchain",
             Self::Exe => "exe",
             Self::Bun => "bun",
             Self::Python => "python",
@@ -130,38 +147,43 @@ impl CommandAdapter {
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CoreManifest {
+struct HandlerManifest {
     schema: String,
     handler: String,
 }
 
-fn read_core_handler(path: &Path) -> io::Result<String> {
+fn read_handler_manifest(
+    path: &Path,
+    expected_schema: &str,
+    owner: &str,
+    allowed_handlers: &[&str],
+) -> io::Result<String> {
     let content = fs::read_to_string(path)?;
-    let manifest: CoreManifest = serde_json::from_str(&content).map_err(|error| {
+    let manifest: HandlerManifest = serde_json::from_str(&content).map_err(|error| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "invalid Core command manifest '{}': {error}",
+                "invalid {owner} command manifest '{}': {error}",
                 path.display()
             ),
         )
     })?;
-    if manifest.schema != "swawkit.core-command/v1" {
+    if manifest.schema != expected_schema {
         return invalid_data(format!(
-            "unsupported Core command schema '{}' in '{}'",
+            "unsupported {owner} command schema '{}' in '{}'",
             manifest.schema,
             path.display()
         ));
     }
     if manifest.handler.is_empty() || manifest.handler.trim() != manifest.handler {
         return invalid_data(format!(
-            "Core command handler must be a non-empty trimmed string in '{}'",
+            "{owner} command handler must be a non-empty trimmed string in '{}'",
             path.display()
         ));
     }
-    if !CORE_HANDLERS.contains(&manifest.handler.as_str()) {
+    if !allowed_handlers.contains(&manifest.handler.as_str()) {
         return invalid_data(format!(
-            "unsupported Core command handler '{}' in '{}'",
+            "unsupported {owner} command handler '{}' in '{}'",
             manifest.handler,
             path.display()
         ));

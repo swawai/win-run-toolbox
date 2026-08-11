@@ -45,16 +45,21 @@ try {
     Pop-Location
 }
 
-$BuiltPath = Join-Path $TargetDirectory 'release\swawkit-proj.exe'
-if (-not [IO.File]::Exists($BuiltPath)) {
-    throw "Cargo reported success but the application is missing: $BuiltPath"
+foreach ($Name in @(
+    'swawkit-proj.exe',
+    'swawkit-proj-host.exe',
+    'swawkit-proj-toolchain.exe'
+)) {
+    $BuiltPath = Join-Path (Join-Path $TargetDirectory 'release') $Name
+    if (-not [IO.File]::Exists($BuiltPath)) {
+        throw "Cargo reported success but the application is missing: $BuiltPath"
+    }
+    $BuiltItem = Get-Item -LiteralPath $BuiltPath
+    if ($BuiltItem.Length -le 0) {
+        throw "Cargo produced an empty application: $BuiltPath"
+    }
+    Write-Host (
+        "[BUILT] $($BuiltItem.FullName) ($($BuiltItem.Length) bytes)"
+    ) -ForegroundColor Green
+    Write-Output $BuiltItem.FullName
 }
-$BuiltItem = Get-Item -LiteralPath $BuiltPath
-if ($BuiltItem.Length -le 0) {
-    throw "Cargo produced an empty application: $BuiltPath"
-}
-
-Write-Host (
-    "[BUILT] $($BuiltItem.FullName) ($($BuiltItem.Length) bytes)"
-) -ForegroundColor Green
-Write-Output $BuiltItem.FullName

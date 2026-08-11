@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
+use std::env;
 use std::ffi::{OsStr, OsString};
+use std::os::windows::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+
+use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 
 use crate::{
     binding::ProjectBinding,
@@ -30,6 +34,7 @@ pub struct CommandExecutionContext {
     pub entry_name: String,
     pub entry_file: PathBuf,
     pub invocation_directory: PathBuf,
+    pub toolchain_executable: PathBuf,
     pub profile: EntryProfileRecord,
     pub environment_input_revision: String,
     pub profile_revision: String,
@@ -60,6 +65,7 @@ impl CommandExecutionContext {
             entry_name: entry.entry_name.clone(),
             entry_file: entry.entry_file.clone(),
             invocation_directory: entry.invocation_directory.clone(),
+            toolchain_executable: entry.sibling_product_executable("swawkit-proj-toolchain.exe"),
             profile: profile.record().clone(),
             environment_input_revision: profile.environment_input_revision().to_owned(),
             profile_revision: profile.profile_revision().to_owned(),
@@ -123,6 +129,11 @@ impl ProcessEnvironment {
         environment.set("SWAWKIT_PROJ_DATA_ROOT", &context.data_root);
         environment.set("SWAWKIT_PROJ_ENTRY_COMMAND", &context.entry_name);
         environment.set("SWAWKIT_PROJ_CORE_COMMAND_ENTRY_FILE", &context.entry_file);
+        validate_toolchain_executable(&context.toolchain_executable)?;
+        environment.set(
+            "SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE",
+            &context.toolchain_executable,
+        );
         environment.set(
             "SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION",
             &context.environment_input_revision,
@@ -143,6 +154,21 @@ impl ProcessEnvironment {
                 self.set(name, value);
             }
         }
+    }
+
+    pub(crate) fn prepend_path(&mut self, directory: &Path) -> CommandResult<()> {
+        let mut paths = vec![directory.to_path_buf()];
+        if let Some(inherited) = env::var_os("PATH") {
+            paths.extend(env::split_paths(&inherited));
+        }
+        let value = env::join_paths(paths).map_err(|error| {
+            CommandError::new(format!(
+                "cannot publish the Entry tool path '{}': {error}",
+                directory.display()
+            ))
+        })?;
+        self.set("PATH", value);
+        Ok(())
     }
 
     fn set(&mut self, name: impl Into<OsString>, value: impl AsRef<OsStr>) {
@@ -181,6 +207,22 @@ impl ProcessEnvironment {
             .get(OsStr::new(name))
             .map(|value| value.as_deref())
     }
+}
+
+fn validate_toolchain_executable(path: &Path) -> CommandResult<()> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| {
+        CommandError::new(format!(
+            "the Runtime Release Toolchain is unavailable at '{}': {error}",
+            path.display()
+        ))
+    })?;
+    if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(CommandError::new(format!(
+            "the Runtime Release Toolchain is not a regular file: '{}'",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) fn command_data_root(

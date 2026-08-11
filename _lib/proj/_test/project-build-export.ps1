@@ -22,13 +22,13 @@ $TemporaryRoot = Join-Path $RepoRoot (
     "data\_test\swawkit-project-build-export-$([Guid]::NewGuid().ToString('N'))"
 )
 $DataRoot = Join-Path $TemporaryRoot 'data'
-$CommandDataRoot = Join-Path $DataRoot 'modules\action\proj\build\app'
+$CommandDataRoot = Join-Path $DataRoot 'modules\action\proj\build\launcher'
 $WorkRoot = Join-Path $CommandDataRoot 'work'
 $ExportRoot = Join-Path $CommandDataRoot 'export'
 $CandidatePath = Join-Path $WorkRoot 'candidate.exe'
 $ExportPath = Join-Path $ExportRoot 'candidate.exe'
-$ProducerAddress = 'proj.build.app'
-$ProducerContract = 'swawkit.proj-build-app/v1'
+$ProducerAddress = 'proj.build.launcher'
+$ProducerContract = 'swawkit.proj-build-launcher/v1'
 
 try {
     [void][IO.Directory]::CreateDirectory($WorkRoot)
@@ -214,13 +214,25 @@ try {
         Assert-ProjProjectBuildExport `
             -Condition (-not $Action.Contains('SWAWKIT_PROJ_DATA_ROOT')) `
             -Message 'a project build Action still writes through the Entry data root'
-        Assert-ProjProjectBuildExport `
-            -Condition $Action.Contains('Publish-ProjBuildArtifact') `
-            -Message 'a project build Action bypasses the export boundary'
     }
+    Assert-ProjProjectBuildExport `
+        -Condition $AppAction.Contains('Publish-ProjBuildReleaseSet') `
+        -Message 'the App Action bypasses the Release Set export boundary'
+    Assert-ProjProjectBuildExport `
+        -Condition $LauncherAction.Contains('Publish-ProjBuildArtifact') `
+        -Message 'the Launcher Action bypasses the artifact export boundary'
     Assert-ProjProjectBuildExport `
         -Condition (-not $LauncherAction.Contains('LauncherBuildRoot')) `
         -Message 'the Launcher Action still writes to the Bootstrap build root'
+    $LauncherPublishAction = [IO.File]::ReadAllText((Join-Path $RepoRoot (
+        '.swaw\proj\publish\launcher\run.ps1'
+    )))
+    Assert-ProjProjectBuildExport `
+        -Condition (
+            $LauncherPublishAction.Contains('Get-ProjRequiredBuildArtifact') -and
+            $LauncherPublishAction.Contains('ReparsePoint')
+        ) `
+        -Message 'the Launcher publisher bypasses its verified safe-target boundary'
 } finally {
     if ([IO.Directory]::Exists($TemporaryRoot)) {
         [IO.Directory]::Delete($TemporaryRoot, $true)

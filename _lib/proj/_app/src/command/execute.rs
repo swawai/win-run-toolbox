@@ -1,13 +1,14 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use crate::catalog::CatalogSnapshot;
+use crate::catalog::{CatalogSnapshot, CommandAdapter, CommandSource};
 use crate::run_journal::{RunJournal, RunJournalPhase, RunJournalSource, StartRunJournal};
 
 use super::{
     CommandError, CommandExecutionContext, CommandResult, ExecutionPhase, GuardPlan, Invocation,
-    ProcessEnvironment, command_data_root,
-    process::{run_process, run_process_journaled, validate_adapter},
+    ProcessEnvironment, ResolvedCommand, command_data_root,
+    process::{AdapterLaunch, run_process, run_process_journaled, validate_adapter},
+    resolve_entry_bun,
 };
 
 pub struct CommandExecutor<'a> {
@@ -26,7 +27,7 @@ impl<'a> CommandExecutor<'a> {
         argv: &[OsString],
     ) -> CommandResult<()> {
         let invocation = Invocation::resolve(catalog, argv)?;
-        validate_adapter(invocation.command.adapter)?;
+        validate_command_adapter(&invocation.command)?;
         GuardPlan::discover(kernel_root, &invocation.command)?;
         Ok(())
     }
@@ -70,7 +71,17 @@ impl<'a> CommandExecutor<'a> {
         invocation: &Invocation,
         journal: Option<&RunJournal>,
     ) -> CommandResult<i32> {
-        validate_adapter(invocation.command.adapter)?;
+        validate_command_adapter(&invocation.command)?;
+        let adapter_launch = match invocation.command.adapter {
+            CommandAdapter::Bun => AdapterLaunch::Bun(resolve_entry_bun(self.context)?),
+            CommandAdapter::Toolchain => AdapterLaunch::Toolchain {
+                executable: self.context.toolchain_executable.clone(),
+                handler: invocation.command.handler.clone().ok_or_else(|| {
+                    CommandError::new("Catalog invariant failed: Toolchain command has no handler")
+                })?,
+            },
+            _ => AdapterLaunch::Direct,
+        };
         let guard_plan = GuardPlan::discover(&self.context.kernel_root, &invocation.command)?;
 
         for guard in guard_plan.guards {
@@ -88,6 +99,7 @@ impl<'a> CommandExecutor<'a> {
                 &guard.entry_path,
                 &[],
                 &self.context.target_project_root,
+                &AdapterLaunch::Direct,
                 &environment,
                 self.context.process_mode,
                 journal,
@@ -98,16 +110,23 @@ impl<'a> CommandExecutor<'a> {
             }
         }
 
-        let environment = ProcessEnvironment::for_command(
+        let mut environment = ProcessEnvironment::for_command(
             self.context,
             &invocation.command,
             ExecutionPhase::Run,
         )?;
+        if let AdapterLaunch::Bun(executable) = &adapter_launch {
+            let directory = executable.parent().ok_or_else(|| {
+                CommandError::new("the resolved Entry Bun path has no parent directory")
+            })?;
+            environment.prepend_path(directory)?;
+        }
         run(
             invocation.command.adapter,
             &invocation.command.entry_path,
             &invocation.arguments,
             &self.context.target_project_root,
+            &adapter_launch,
             &environment,
             self.context.process_mode,
             journal,
@@ -122,6 +141,7 @@ fn run(
     entry_path: &Path,
     arguments: &[OsString],
     working_directory: &Path,
+    adapter_launch: &AdapterLaunch,
     environment: &ProcessEnvironment,
     process_mode: super::CommandProcessMode,
     journal: Option<&RunJournal>,
@@ -133,6 +153,7 @@ fn run(
             entry_path,
             arguments,
             working_directory,
+            adapter_launch,
             environment,
             process_mode,
             journal,
@@ -143,8 +164,27 @@ fn run(
             entry_path,
             arguments,
             working_directory,
+            adapter_launch,
             environment,
             process_mode,
         ),
     }
+}
+
+fn validate_command_adapter(command: &ResolvedCommand) -> CommandResult<()> {
+    validate_adapter(command.adapter)?;
+    if command.adapter == CommandAdapter::Bun && command.source != CommandSource::Action {
+        return Err(CommandError::new(format!(
+            "the run.ts adapter is only supported for Action commands; '{}' is product-owned \
+             and must use a Rust-native entry",
+            command.address
+        )));
+    }
+    if command.adapter == CommandAdapter::Toolchain && command.source != CommandSource::Kernel {
+        return Err(CommandError::new(format!(
+            "the run.toolchain.json adapter is only supported for Kernel commands; '{}' has an invalid owner",
+            command.address
+        )));
+    }
+    Ok(())
 }

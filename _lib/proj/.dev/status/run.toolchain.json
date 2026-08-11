@@ -1,0 +1,4 @@
+{
+  "schema": "swawkit.toolchain-command/v1",
+  "handler": "dev.status"
+}

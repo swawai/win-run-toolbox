@@ -1,0 +1,13 @@
+把 proj.build.launcher 发布的已验证候选设置为新建 Entry 使用的 Launcher 模板。
+
+用法:
+  {{INVOCATION}}
+
+前置:
+  {{ENTRY}} proj.build.launcher
+
+发布目标:
+  Favorites/template.proj1.exe
+
+该命令不会替换现有 Entry Launcher，因此不会改变既有 Entry 的文件身份或 DataRoot
+绑定。当前维护的 Entry 已迁移到 Release Set selector；新建 Entry 也使用同一协议。

@@ -1,13 +1,16 @@
-把 proj.build.app 发布的已验证候选切换为现役 Core。
+把 proj.build.app 发布的已验证 Release Set 原子切换为当前产品版本。
 
-用法：
-  swawkit proj.publish.app
+用法:
+  {{INVOCATION}}
 
-前置：
-  swawkit proj.build.app
+前置:
+  {{ENTRY}} proj.build.app
 
-发布会校验 Provider State、Manifest、文件长度与 SHA-256，并在共享发布锁内原子替换：
-  _lib/proj/_bin/swawkit-proj.exe
+发布先完整写入不可变目录：
+  _lib/proj/_bin/releases/<release-id>/
 
-当前调用和已经打开的 Web Host 会继续运行旧版本；新的 swawkit 调用会使用新版本。
-若候选与现役版本相同，命令会幂等返回，不重复替换。
+确认 Core、Host、Toolchain、Manifest 的长度与 SHA-256 后，只原子更新：
+  _lib/proj/_bin/current
+
+正在运行的旧 Host 会继续使用旧 Release Set；新调用读取 current。_bin 根目录不再保留
+可执行文件副本。新建 Entry 的 Launcher 模板由 proj.publish.launcher 单独发布。

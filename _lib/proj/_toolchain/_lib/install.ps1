@@ -229,7 +229,9 @@ function Install-ProjDevArchiveTool {
             Expand-ProjDevZipSafely `
                 -ArchivePath $ArchivePath `
                 -Destination $ExtractRoot `
-                -ControlledRoot $Context.DataRoot
+                -ControlledRoot $Context.DataRoot `
+                -ToolchainExecutable (Get-ProjDevToolchainExecutable `
+                    -Context $Context)
             $SourceRoot = if ([string]::IsNullOrWhiteSpace(
                 [string]$Definition.ArchiveSubdir
             )) {

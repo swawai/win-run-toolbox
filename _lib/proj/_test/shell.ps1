@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$LauncherPath = '',
-    [string]$CorePath = ''
+    [string]$CorePath = '',
+    [string]$HostPath = '',
+    [string]$ToolchainPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,7 +69,9 @@ $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 . (Join-Path $PSScriptRoot '_lib\runtime-fixture.ps1')
 $Artifacts = Resolve-ProjCandidateRuntimeArtifacts `
     -LauncherPath $LauncherPath `
-    -CorePath $CorePath
+    -CorePath $CorePath `
+    -HostPath $HostPath `
+    -ToolchainPath $ToolchainPath
 $EntryName = "test-shell-$([Guid]::NewGuid().ToString('N'))"
 $TestRoot = Join-Path $RepoRoot 'data\_test'
 $TemporaryRoot = Join-Path $TestRoot (
@@ -85,7 +89,9 @@ try {
     $Runtime = New-ProjCandidateRuntimeFixture `
         -RuntimeHome (Join-Path $TemporaryRoot 'runtime-home') `
         -LauncherPath $Artifacts.LauncherPath `
-        -CorePath $Artifacts.CorePath
+        -CorePath $Artifacts.CorePath `
+        -HostPath $Artifacts.HostPath `
+        -ToolchainPath $Artifacts.ToolchainPath
     $script:ProjShellEntry = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
         -RelativePath "Favorites\$EntryName.exe"

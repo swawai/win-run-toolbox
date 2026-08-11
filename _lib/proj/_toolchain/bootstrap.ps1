@@ -54,6 +54,8 @@ function New-ProjBootstrapToolchainContext {
         ArtifactLockRoot = Join-Path $CacheRoot '_locks'
         EntryCommand = 'Swaw Kit Proj Bootstrap'
         InvocationDirectory = $Layout.AppRoot
+        # Cold Bootstrap necessarily precedes the product Toolchain binary.
+        ToolchainExecutable = $null
     }
 }
 

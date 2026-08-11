@@ -13,22 +13,42 @@ pub struct EntryContext {
     pub entry_file: PathBuf,
     pub entry_name: String,
     pub invocation_directory: PathBuf,
+    pub product_executable: PathBuf,
 }
 
 impl EntryContext {
     pub fn from_launch(request: &LaunchRequest) -> Result<Self, ContextError> {
+        Self::from_product_launch(request, "swawkit-proj.exe")
+    }
+
+    pub fn from_host_launch(request: &LaunchRequest) -> Result<Self, ContextError> {
+        Self::from_product_launch(request, "swawkit-proj-host.exe")
+    }
+
+    fn from_product_launch(
+        request: &LaunchRequest,
+        executable_name: &str,
+    ) -> Result<Self, ContextError> {
         let executable = env::current_exe().map_err(|error| {
             ContextError::new(format!("cannot locate the shared Proj executable: {error}"))
         })?;
-        Self::from_sources(request, &executable)
+        Self::from_sources(request, &executable, executable_name)
     }
 
     pub fn kernel_root(&self) -> PathBuf {
         self.swawkit_home.join("_lib").join("proj")
     }
 
-    fn from_sources(request: &LaunchRequest, executable: &Path) -> Result<Self, ContextError> {
-        let swawkit_home = derive_swawkit_home(executable)?;
+    pub fn sibling_product_executable(&self, name: &str) -> PathBuf {
+        self.product_executable.with_file_name(name)
+    }
+
+    fn from_sources(
+        request: &LaunchRequest,
+        executable: &Path,
+        executable_name: &str,
+    ) -> Result<Self, ContextError> {
+        let swawkit_home = derive_swawkit_home(executable, executable_name)?;
 
         let entry_file = absolute_path(&request.entry_file, "project entry file")?;
         if !entry_file.is_file() {
@@ -62,21 +82,32 @@ impl EntryContext {
             entry_file,
             entry_name,
             invocation_directory,
+            product_executable: executable.to_path_buf(),
         })
     }
 }
 
-fn derive_swawkit_home(executable: &Path) -> Result<PathBuf, ContextError> {
+fn derive_swawkit_home(executable: &Path, executable_name: &str) -> Result<PathBuf, ContextError> {
     let executable = absolute_path(executable, "shared Proj executable")?;
-    if executable.file_name() != Some(OsStr::new("swawkit-proj.exe")) {
-        return Err(invalid_layout(&executable));
+    if executable.file_name() != Some(OsStr::new(executable_name)) {
+        return Err(invalid_layout(&executable, executable_name));
     }
-    let runtime_directory = expected_parent(&executable, "_bin")?;
-    let kernel_root = expected_parent(runtime_directory, "proj")?;
-    let library_root = expected_parent(kernel_root, "_lib")?;
+    let release_directory = executable
+        .parent()
+        .ok_or_else(|| invalid_layout(&executable, executable_name))?;
+    let release_id = release_directory
+        .file_name()
+        .and_then(OsStr::to_str)
+        .filter(|value| is_release_id(value))
+        .ok_or_else(|| invalid_layout(&executable, executable_name))?;
+    debug_assert_eq!(release_id.len(), 64);
+    let releases_directory = expected_parent(release_directory, "releases", executable_name)?;
+    let runtime_directory = expected_parent(releases_directory, "_bin", executable_name)?;
+    let kernel_root = expected_parent(runtime_directory, "proj", executable_name)?;
+    let library_root = expected_parent(kernel_root, "_lib", executable_name)?;
     let swawkit_home = library_root
         .parent()
-        .ok_or_else(|| invalid_layout(&executable))?;
+        .ok_or_else(|| invalid_layout(&executable, executable_name))?;
     if !swawkit_home.is_dir() {
         return Err(ContextError::new(format!(
             "derived SWAWKIT_HOME does not exist: {}",
@@ -86,19 +117,32 @@ fn derive_swawkit_home(executable: &Path) -> Result<PathBuf, ContextError> {
     Ok(swawkit_home.to_path_buf())
 }
 
-fn expected_parent<'a>(path: &'a Path, name: &str) -> Result<&'a Path, ContextError> {
-    let parent = path.parent().ok_or_else(|| invalid_layout(path))?;
+fn expected_parent<'a>(
+    path: &'a Path,
+    name: &str,
+    executable_name: &str,
+) -> Result<&'a Path, ContextError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_layout(path, executable_name))?;
     if parent.file_name() != Some(OsStr::new(name)) {
-        return Err(invalid_layout(path));
+        return Err(invalid_layout(path, executable_name));
     }
     Ok(parent)
 }
 
-fn invalid_layout(path: &Path) -> ContextError {
+fn invalid_layout(path: &Path, executable_name: &str) -> ContextError {
     ContextError::new(format!(
-        "shared Proj executable must be published as '_lib\\proj\\_bin\\swawkit-proj.exe': {}",
+        "shared Proj executable must belong to '_lib\\proj\\_bin\\releases\\<release-id>\\{executable_name}': {}",
         path.display()
     ))
+}
+
+fn is_release_id(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn absolute_path(path: &Path, label: &str) -> Result<PathBuf, ContextError> {
@@ -150,7 +194,10 @@ mod tests {
             let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
             let root =
                 env::temp_dir().join(format!("swawkit-context-{}-{sequence}", std::process::id()));
-            let executable = root.join("_lib/proj/_bin/swawkit-proj.exe");
+            let executable = root.join(format!(
+                "_lib/proj/_bin/releases/{}/swawkit-proj.exe",
+                "a".repeat(64)
+            ));
             let entry_file = root.join("Favorites/project-one.exe");
             let invocation_dir = root.join("work");
             for directory in [
@@ -181,7 +228,7 @@ mod tests {
         }
 
         fn context(&self) -> Result<EntryContext, ContextError> {
-            EntryContext::from_sources(&self.request(), &self.executable)
+            EntryContext::from_sources(&self.request(), &self.executable, "swawkit-proj.exe")
         }
     }
 
@@ -206,7 +253,8 @@ mod tests {
     fn rejects_an_executable_outside_the_shared_runtime_layout() {
         let fixture = Fixture::new();
         let misplaced = fixture.root.join("swawkit-proj.exe");
-        let error = EntryContext::from_sources(&fixture.request(), &misplaced).unwrap_err();
+        let error = EntryContext::from_sources(&fixture.request(), &misplaced, "swawkit-proj.exe")
+            .unwrap_err();
 
         assert!(error.to_string().contains("_lib\\proj\\_bin"));
     }

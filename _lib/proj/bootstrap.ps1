@@ -6,8 +6,36 @@ Set-StrictMode -Version 2.0
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
 . (Join-Path $PSScriptRoot '_toolchain\bootstrap.ps1')
+. (Join-Path $PSScriptRoot '_toolchain\_lib\runtime-release.ps1')
 $Layout = Get-ProjBootstrapLayout
-if ([IO.File]::Exists($Layout.RuntimePath)) {
+function Test-ProjBootstrapRuntime {
+    param([Parameter(Mandatory = $true)][object]$BuildLayout)
+
+    $SelectorItem = Get-Item `
+        -LiteralPath $BuildLayout.RuntimeCurrentPath `
+        -Force `
+        -ErrorAction SilentlyContinue
+    if ($null -eq $SelectorItem) {
+        return $false
+    }
+    if ($SelectorItem.PSIsContainer -or
+        ($SelectorItem.Attributes -band
+            [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw (
+            'The Bootstrap runtime selector is unsafe: ' +
+            $BuildLayout.RuntimeCurrentPath
+        )
+    }
+    try {
+        [void](Read-ProjSelectedRuntimeReleaseSet `
+            -RuntimeRoot $BuildLayout.RuntimeRoot)
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+if (Test-ProjBootstrapRuntime -BuildLayout $Layout) {
     $global:LASTEXITCODE = 0
     return
 }
@@ -18,7 +46,7 @@ $BootstrapLock = Enter-ProjDevFileLock `
     -ControlledRoot $Context.DataRoot `
     -TimeoutSeconds 1800
 try {
-    if (-not [IO.File]::Exists($Layout.RuntimePath)) {
+    if (-not (Test-ProjBootstrapRuntime -BuildLayout $Layout)) {
         Invoke-ProjBootstrapToolchain -Action {
             param($Toolchain, $BuildLayout)
 
@@ -38,10 +66,16 @@ try {
                 $BuildLock.Dispose()
             }
             & $BuildLayout.AppPublishPath `
-                -CandidatePath (Join-Path $TargetDirectory (
+                -CandidateCorePath (Join-Path $TargetDirectory (
                     'release\swawkit-proj.exe'
                 )) `
-                -RuntimePath $BuildLayout.RuntimePath `
+                -CandidateHostPath (Join-Path $TargetDirectory (
+                    'release\swawkit-proj-host.exe'
+                )) `
+                -CandidateToolchainPath (Join-Path $TargetDirectory (
+                    'release\swawkit-proj-toolchain.exe'
+                )) `
+                -ProjHome $BuildLayout.ProjHome `
                 -CandidateRoot $Toolchain.Context.DataRoot
         }
     }

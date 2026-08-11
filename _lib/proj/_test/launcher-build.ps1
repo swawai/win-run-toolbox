@@ -86,7 +86,7 @@ $BuildPath = Join-Path $RepoRoot '_lib\proj\build.ps1'
 $CandidatePath = $Layout.LauncherCandidatePath
 $TemplatePath = $Layout.LauncherTemplatePath
 $RootEntryPath = Join-Path $RepoRoot 'swawkit.exe'
-$RuntimePath = $Layout.RuntimePath
+$RuntimePath = $Layout.RuntimeCurrentPath
 $TemplateBefore = Get-ProjLauncherBuildFileState -Path $TemplatePath
 $RootBefore = Get-ProjLauncherBuildFileState -Path $RootEntryPath
 $RuntimeBefore = Get-ProjLauncherBuildFileState -Path $RuntimePath
@@ -123,7 +123,7 @@ foreach ($Protected in @(
         Before = $RootBefore
     }
     [pscustomobject]@{
-        Name = 'published Core runtime'
+        Name = 'published runtime selector'
         Path = $RuntimePath
         Before = $RuntimeBefore
     }

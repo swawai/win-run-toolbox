@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [Parameter(Mandatory = $true)][string]$ToolchainPath
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -18,6 +20,7 @@ $EnvironmentNames = @(
     'SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR',
     'SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION',
     'SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION',
+    'SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE',
     'SWAWKIT_PROJ_BUN_MODE',
     'SWAWKIT_PROJ_BUN_VERSION',
     'SWAWKIT_PROJ_BUN_SHA256',
@@ -45,6 +48,10 @@ $ControlHome = [IO.Path]::GetFullPath((Join-Path $ProjRoot '..\..'))
 $SystemPowerShell = Join-Path $env:SystemRoot (
     'System32\WindowsPowerShell\v1.0\powershell.exe'
 )
+$ResolvedToolchainPath = [IO.Path]::GetFullPath($ToolchainPath)
+if (-not [IO.File]::Exists($ResolvedToolchainPath)) {
+    throw "Toolchain test candidate is missing: $ResolvedToolchainPath"
+}
 
 try {
     $ProjectRoot = Join-Path $TemporaryRoot 'project'
@@ -290,6 +297,7 @@ try {
         SWAWKIT_PROJ_ENTRY_COMMAND = 'swawkit'
         SWAWKIT_PROJ_CORE_COMMAND_INVOCATION_DIR = $InvocationRoot
         SWAWKIT_PROJ_CORE_COMMAND_ENVIRONMENT_INPUT_REVISION = ('sha256-' + ('a' * 64))
+        SWAWKIT_PROJ_CORE_TOOLCHAIN_EXECUTABLE = $ResolvedToolchainPath
         SWAWKIT_PROJ_BUN_MODE = 'disabled'
         SWAWKIT_PROJ_BUN_VERSION = '1.2.15'
     }

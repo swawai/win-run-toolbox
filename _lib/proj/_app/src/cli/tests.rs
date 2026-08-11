@@ -45,11 +45,20 @@ impl Fixture {
             fs::create_dir_all(directory).expect("create fixture directory");
         }
         fs::write(&entry_file, "fixture").expect("write entry file");
+        let product_executable = root.join("_lib/proj/_bin/releases/fixture/swawkit-proj.exe");
+        fs::create_dir_all(product_executable.parent().unwrap())
+            .expect("create Runtime Release fixture");
+        fs::write(
+            product_executable.with_file_name("swawkit-proj-toolchain.exe"),
+            "fixture",
+        )
+        .expect("write Toolchain fixture");
         let context = EntryContext {
             swawkit_home: root.clone(),
             entry_file,
             entry_name: "fixture".to_owned(),
             invocation_directory: project_root.clone(),
+            product_executable,
         };
         Self {
             root,
@@ -237,9 +246,9 @@ fn invalid_or_unsupported_commands_fail_before_process_execution() {
     let missing =
         run_with_approver(&fixture.context, &argv(&[".missing"]), &mut unexpected).unwrap_err();
     assert!(missing.to_string().contains("command not found"));
-    let unsupported =
+    let product_owned_script =
         run_with_approver(&fixture.context, &argv(&[".future"]), &mut unexpected).unwrap_err();
-    assert!(unsupported.to_string().contains("does not yet support"));
+    assert!(product_owned_script.to_string().contains("product-owned"));
     assert!(
         read_entry_record(&fixture.data_root())
             .valid_record()

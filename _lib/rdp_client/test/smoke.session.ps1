@@ -17,6 +17,7 @@ $Entry = Join-Path $ScratchRoot 'account.rdp.cmd'
 $FakeSshEntry = Join-Path $ScratchRoot 'peer.ssh.cmd'
 $ConnectCapture = Join-Path $ScratchRoot 'connect.txt'
 $ListCapture = Join-Path $ScratchRoot 'list.txt'
+$DesktopCapture = Join-Path $ScratchRoot 'desktop.txt'
 
 . (Join-Path $RuntimeRoot 'entry.ps1')
 . (Join-Path $RuntimeRoot 'peer-ssh.ps1')
@@ -184,6 +185,8 @@ function Invoke-RdpClientPeerSshPowerShell {
             [int]$TimeoutSeconds
         )
 
+        $script:ObservedSessionQueryTimeout = $TimeoutSeconds
+
         if (-not $RemoteSource.Contains('WTSEnumerateSessions') -or
             -not $RemoteSource.Contains('WTSGetActiveConsoleSessionId') -or
             -not $RemoteSource.Contains('ConnectTime')) {
@@ -196,7 +199,8 @@ function Invoke-RdpClientPeerSshPowerShell {
     }
     $Transported = Get-RdpClientPeerSessionState -SshEntryPath 'unused.cmd'
     if ($Transported.ComputerName -ne 'TEST-SERVER' -or
-        @($Transported.Sessions).Count -ne 2) {
+        @($Transported.Sessions).Count -ne 2 -or
+        $script:ObservedSessionQueryTimeout -ne 60) {
         throw 'The structured peer session state was not decoded correctly.'
     }
 
@@ -265,14 +269,106 @@ exit 0
         $FakeList,
         (New-Object Text.UTF8Encoding($false))
     )
+    $FakeDesktop = @'
+param(
+    [string]$Action,
+    [string]$EntryFile,
+    [string]$SshEntryFile,
+    [string]$SessionId,
+    [string]$CommandName,
+    [string]$X,
+    [string]$Y,
+    [switch]$Display,
+    [string]$Timeout,
+    [string]$OutputPath
+)
+[IO.File]::WriteAllLines($env:RDP_SESSION_DESKTOP_CAPTURE, @(
+    "Action=$Action",
+    "SessionId=$SessionId",
+    "X=$X",
+    "Y=$Y",
+    "Display=$($Display.IsPresent)",
+    "Timeout=$Timeout",
+    "OutputPath=$OutputPath"
+))
+exit 0
+'@
+    [IO.File]::WriteAllText(
+        (Join-Path $Runtime 'desktop.ps1'),
+        $FakeDesktop,
+        (New-Object Text.UTF8Encoding($false))
+    )
 
     $env:RDP_SESSION_CONNECT_CAPTURE = $ConnectCapture
     $env:RDP_SESSION_LIST_CAPTURE = $ListCapture
+    $env:RDP_SESSION_DESKTOP_CAPTURE = $DesktopCapture
     Invoke-SessionTestEntry -Arguments @('.2') -ExpectedExitCode 0 | Out-Null
     $IdCapture = [IO.File]::ReadAllText($ConnectCapture)
     if (-not $IdCapture.Contains('Launch=True') -or
         -not $IdCapture.Contains('SessionId=2')) {
         throw "The .2 selector was not routed correctly.`n$IdCapture"
+    }
+
+    Invoke-SessionTestEntry `
+        -Arguments @('.2', 'connect') `
+        -ExpectedExitCode 0 |
+        Out-Null
+    $ExplicitConnect = [IO.File]::ReadAllText($ConnectCapture)
+    if (-not $ExplicitConnect.Contains('SessionId=2')) {
+        throw "The explicit connect action was not routed correctly.`n$ExplicitConnect"
+    }
+
+    $ScreenshotOutput = Join-Path $ScratchRoot 'capture image.png'
+    Invoke-SessionTestEntry `
+        -Arguments @(
+            '.2',
+            'screenshot',
+            '--display',
+            '--timeout',
+            '60s',
+            '--output',
+            $ScreenshotOutput
+        ) `
+        -ExpectedExitCode 0 |
+        Out-Null
+    $ScreenshotCapture = [IO.File]::ReadAllText($DesktopCapture)
+    foreach ($Expected in @(
+        'Action=screenshot',
+        'SessionId=2',
+        'Display=True',
+        'Timeout=60s',
+        "OutputPath=$ScreenshotOutput"
+    )) {
+        if (-not $ScreenshotCapture.Contains($Expected)) {
+            throw "Screenshot syntax lost '$Expected'.`n$ScreenshotCapture"
+        }
+    }
+
+    Invoke-SessionTestEntry `
+        -Arguments @('.2', 'pixel', '640', '360', '--display') `
+        -ExpectedExitCode 0 |
+        Out-Null
+    $PixelCapture = [IO.File]::ReadAllText($DesktopCapture)
+    foreach ($Expected in @(
+        'Action=pixel',
+        'X=640',
+        'Y=360',
+        'Display=True'
+    )) {
+        if (-not $PixelCapture.Contains($Expected)) {
+            throw "Pixel syntax lost '$Expected'.`n$PixelCapture"
+        }
+    }
+
+    Invoke-SessionTestEntry `
+        -Arguments @('.2', 'click', '12', '34') `
+        -ExpectedExitCode 0 |
+        Out-Null
+    $ClickCapture = [IO.File]::ReadAllText($DesktopCapture)
+    if (-not $ClickCapture.Contains('Action=click') -or
+        -not $ClickCapture.Contains('X=12') -or
+        -not $ClickCapture.Contains('Y=34')) {
+        throw "Click syntax was not routed correctly.`n$ClickCapture"
     }
 
     $env:RDP_CLIENT_SESSION_PARAMETER = '-SessionId 99'
@@ -299,6 +395,12 @@ exit 0
 
     foreach ($Invalid in @(
         [string[]]@('.2', 'unexpected'),
+        [string[]]@('.2', 'connect', 'unexpected'),
+        [string[]]@('.2', 'pixel', '640'),
+        [string[]]@('.2', 'click', '640', '360', '--output', 'x.png'),
+        [string[]]@('.2', 'screenshot', '--display', '--display'),
+        [string[]]@('.2', 'screenshot', '--timeout'),
+        [string[]]@('.2', 'screenshot', '--output'),
         [string[]]@('.list', 'unexpected')
     )) {
         $InvalidOutput = Invoke-SessionTestEntry `
@@ -322,6 +424,7 @@ exit 0
 } finally {
     Remove-Item Env:RDP_SESSION_CONNECT_CAPTURE -ErrorAction SilentlyContinue
     Remove-Item Env:RDP_SESSION_LIST_CAPTURE -ErrorAction SilentlyContinue
+    Remove-Item Env:RDP_SESSION_DESKTOP_CAPTURE -ErrorAction SilentlyContinue
     if ([IO.Directory]::Exists($ScratchRoot)) {
         [IO.Directory]::Delete($ScratchRoot, $true)
     }

@@ -7,6 +7,7 @@ $Utf8 = New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $Utf8
 $OutputEncoding = $Utf8
 $HelperUploadPath = ''
+$DesktopWorkerUploadPath = ''
 
 function Get-RdpClientNativeArchitecture {
     $Architecture = $env:PROCESSOR_ARCHITEW6432
@@ -47,24 +48,6 @@ function Get-RdpClientPsExecDownload {
             }
         }
         default { throw "Unsupported Windows architecture: $Architecture" }
-    }
-}
-
-function Get-RdpClientPsExecSignature {
-    param([Parameter(Mandatory = $true)][string]$Path)
-
-    $Signature = Get-AuthenticodeSignature -LiteralPath $Path
-    $Subject = ''
-    if ($null -ne $Signature.SignerCertificate) {
-        $Subject = [string]$Signature.SignerCertificate.Subject
-    }
-    return [pscustomobject]@{
-        Status    = [string]$Signature.Status
-        Subject   = $Subject
-        IsTrusted = (
-            [string]$Signature.Status -eq 'Valid' -and
-            $Subject -match '(?:^|,\s*)O=Microsoft Corporation(?:,|$)'
-        )
     }
 }
 
@@ -165,41 +148,7 @@ function Join-RdpClientProcessArguments {
     return $Quoted -join ' '
 }
 
-function Invoke-RdpClientCapturedProcess {
-    param(
-        [Parameter(Mandatory = $true)][string]$FilePath,
-        [AllowNull()][object[]]$Arguments = @()
-    )
-
-    $Process = New-Object Diagnostics.Process
-    $Started = $false
-    try {
-        $Process.StartInfo.FileName = $FilePath
-        $Process.StartInfo.Arguments = Join-RdpClientProcessArguments $Arguments
-        $Process.StartInfo.UseShellExecute = $false
-        $Process.StartInfo.CreateNoWindow = $true
-        $Process.StartInfo.RedirectStandardInput = $false
-        $Process.StartInfo.RedirectStandardOutput = $true
-        $Process.StartInfo.RedirectStandardError = $true
-        $Process.StartInfo.StandardOutputEncoding = $Utf8
-        $Process.StartInfo.StandardErrorEncoding = $Utf8
-        $Process.Start() | Out-Null
-        $Started = $true
-        $StdOutTask = $Process.StandardOutput.ReadToEndAsync()
-        $StdErrTask = $Process.StandardError.ReadToEndAsync()
-        $Process.WaitForExit()
-        return [pscustomobject]@{
-            ExitCode = $Process.ExitCode
-            StdOut   = $StdOutTask.Result
-            StdErr   = $StdErrTask.Result
-        }
-    } finally {
-        if ($Started -and -not $Process.HasExited) {
-            try { $Process.Kill() } catch { }
-        }
-        $Process.Dispose()
-    }
-}
+__RDP_CLIENT_PSEXEC_LIBRARY__
 
 try {
     $PayloadBase64 = '__RDP_CLIENT_PSEXEC_PAYLOAD__'
@@ -221,11 +170,17 @@ try {
     $ManagedDirectory = Join-Path $LocalAppData 'swaw-kit\rdp-client'
     $ManagedPath = Join-Path $ManagedDirectory 'psexec.exe'
     $HelperPath = Join-Path $ManagedDirectory 'helper.ps1'
+    $DesktopWorkerPath = Join-Path $ManagedDirectory 'desktop-task.ps1'
     $ExpectedHelperHash = [string]$Request.HelperSha256
     if ($ExpectedHelperHash -notmatch '^[A-Fa-f0-9]{64}$') {
         throw 'The expected PsExec session helper hash is invalid.'
     }
     $ExpectedHelperHash = $ExpectedHelperHash.ToUpperInvariant()
+    $ExpectedDesktopWorkerHash = [string]$Request.DesktopWorkerSha256
+    if ($ExpectedDesktopWorkerHash -notmatch '^[A-Fa-f0-9]{64}$') {
+        throw 'The expected PsExec desktop worker hash is invalid.'
+    }
+    $ExpectedDesktopWorkerHash = $ExpectedDesktopWorkerHash.ToUpperInvariant()
     if ($Request.Action -eq 'add' -and -not [bool]$Request.DryRun) {
         $HelperUploadName = [string]$Request.HelperUploadName
         if ($HelperUploadName -notmatch
@@ -233,27 +188,36 @@ try {
             throw 'The PsExec session helper upload name is invalid.'
         }
         $HelperUploadPath = Join-Path $HOME $HelperUploadName
+        $DesktopWorkerUploadName = [string]$Request.DesktopWorkerUploadName
+        if ($DesktopWorkerUploadName -notmatch
+            '^\.swaw-kit-psexec-desktop-[A-Fa-f0-9]{32}\.ps1$') {
+            throw 'The PsExec desktop worker upload name is invalid.'
+        }
+        $DesktopWorkerUploadPath = Join-Path $HOME $DesktopWorkerUploadName
     }
     $Present = [IO.File]::Exists($ManagedPath)
     $Signature = $null
     if ($Present) {
         $Signature = Get-RdpClientPsExecSignature -Path $ManagedPath
     }
-    $HelperPresent = [IO.File]::Exists($HelperPath)
-    $HelperHash = ''
-    if ($HelperPresent) {
-        $HelperHash = (
-            Get-FileHash -LiteralPath $HelperPath -Algorithm SHA256
-        ).Hash.ToUpperInvariant()
-    }
-    $HelperReady = $HelperPresent -and $HelperHash -eq $ExpectedHelperHash
+    $Helper = Get-RdpClientManagedScriptState `
+        -Path $HelperPath `
+        -ExpectedHash $ExpectedHelperHash
+    $DesktopWorker = Get-RdpClientManagedScriptState `
+        -Path $DesktopWorkerPath `
+        -ExpectedHash $ExpectedDesktopWorkerHash
 
     if ($Request.Action -eq 'status') {
         Write-RdpClientPsExecHeader `
             -Title 'status' `
             -PeerAddress $PeerAddress `
             -Architecture $Architecture
-        $Ready = $Present -and $Signature.IsTrusted -and $HelperReady
+        $Ready = (
+            $Present -and
+            $Signature.IsTrusted -and
+            $Helper.Ready -and
+            $DesktopWorker.Ready
+        )
         if ($Present) {
             Write-RdpClientPsExecFile -Action 'PRESENT' -Path $ManagedPath
             $Version = [Diagnostics.FileVersionInfo]::GetVersionInfo(
@@ -262,10 +226,15 @@ try {
         } else {
             Write-RdpClientPsExecFile -Action 'ABSENT' -Path $ManagedPath
         }
-        if ($HelperPresent) {
+        if ($Helper.Present) {
             Write-RdpClientPsExecFile -Action 'PRESENT' -Path $HelperPath
         } else {
             Write-RdpClientPsExecFile -Action 'ABSENT' -Path $HelperPath
+        }
+        if ($DesktopWorker.Present) {
+            Write-RdpClientPsExecFile -Action 'PRESENT' -Path $DesktopWorkerPath
+        } else {
+            Write-RdpClientPsExecFile -Action 'ABSENT' -Path $DesktopWorkerPath
         }
         if ($Present) {
             $Signer = if ($Signature.IsTrusted) {
@@ -283,14 +252,23 @@ try {
                 -Name 'PsExec VERIFY' `
                 -Value $SignatureDetail
         }
-        if ($HelperPresent) {
-            $HelperDetail = "sha256=$HelperHash"
-            if (-not $HelperReady) {
+        if ($Helper.Present) {
+            $HelperDetail = "sha256=$($Helper.Hash)"
+            if (-not $Helper.Ready) {
                 $HelperDetail += "  expected=$ExpectedHelperHash"
             }
             Write-RdpClientPsExecField `
                 -Name 'Helper VERIFY' `
                 -Value $HelperDetail
+        }
+        if ($DesktopWorker.Present) {
+            $WorkerDetail = "sha256=$($DesktopWorker.Hash)"
+            if (-not $DesktopWorker.Ready) {
+                $WorkerDetail += "  expected=$ExpectedDesktopWorkerHash"
+            }
+            Write-RdpClientPsExecField `
+                -Name 'Desktop VERIFY' `
+                -Value $WorkerDetail
         }
         Write-RdpClientPsExecField `
             -Name 'State:' `
@@ -312,12 +290,19 @@ try {
             } else {
                 Write-RdpClientPsExecFile -Action 'ADD' -Path $ManagedPath
             }
-            if ($HelperReady) {
+            if ($Helper.Ready) {
                 Write-RdpClientPsExecFile -Action 'PRESENT' -Path $HelperPath
-            } elseif ($HelperPresent) {
+            } elseif ($Helper.Present) {
                 Write-RdpClientPsExecFile -Action 'REPLACE' -Path $HelperPath
             } else {
                 Write-RdpClientPsExecFile -Action 'ADD' -Path $HelperPath
+            }
+            if ($DesktopWorker.Ready) {
+                Write-RdpClientPsExecFile -Action 'PRESENT' -Path $DesktopWorkerPath
+            } elseif ($DesktopWorker.Present) {
+                Write-RdpClientPsExecFile -Action 'REPLACE' -Path $DesktopWorkerPath
+            } else {
+                Write-RdpClientPsExecFile -Action 'ADD' -Path $DesktopWorkerPath
             }
             Write-RdpClientPsExecField `
                 -Name 'PsExec SOURCE' `
@@ -328,6 +313,9 @@ try {
             Write-RdpClientPsExecField `
                 -Name 'Helper VERIFY' `
                 -Value "sha256=$ExpectedHelperHash"
+            Write-RdpClientPsExecField `
+                -Name 'Desktop VERIFY' `
+                -Value "sha256=$ExpectedDesktopWorkerHash"
             Write-Output '[RDP] Dry run: no peer changes were made.'
             exit 0
         }
@@ -371,43 +359,37 @@ try {
 
         $HelperChanged = $false
         $HelperChangeAction = ''
-        if (-not $HelperReady) {
-            $HelperChangeAction = if ($HelperPresent) { 'REPLACED' } else { 'ADDED' }
-            if (-not [IO.File]::Exists($HelperUploadPath)) {
-                throw 'The uploaded PsExec session helper was not found.'
-            }
-            $HelperBytes = [IO.File]::ReadAllBytes($HelperUploadPath)
-            $Hasher = [Security.Cryptography.SHA256]::Create()
-            try {
-                $SourceHash = [BitConverter]::ToString(
-                    $Hasher.ComputeHash($HelperBytes)
-                ).Replace('-', '')
-            } finally {
-                $Hasher.Dispose()
-            }
-            if ($SourceHash -ne $ExpectedHelperHash) {
-                throw 'The PsExec session helper source failed SHA-256 verification.'
-            }
-            $TemporaryHelperPath = Join-Path $ManagedDirectory (
-                '.psexec-helper-' + [Guid]::NewGuid().ToString('N') + '.ps1'
-            )
-            try {
-                [IO.File]::WriteAllBytes($TemporaryHelperPath, $HelperBytes)
-                Move-Item `
-                    -LiteralPath $TemporaryHelperPath `
-                    -Destination $HelperPath `
-                    -Force
-                $HelperChanged = $true
-            } finally {
-                if ([IO.File]::Exists($TemporaryHelperPath)) {
-                    Remove-Item -LiteralPath $TemporaryHelperPath -Force
-                }
-            }
+        if (-not $Helper.Ready) {
+            $HelperChangeAction = if ($Helper.Present) { 'REPLACED' } else { 'ADDED' }
+            Install-RdpClientManagedScript `
+                -UploadPath $HelperUploadPath `
+                -DestinationPath $HelperPath `
+                -ExpectedHash $ExpectedHelperHash `
+                -Label 'PsExec session helper'
+            $HelperChanged = $true
         }
-        if ([IO.File]::Exists($HelperUploadPath)) {
-            Remove-Item -LiteralPath $HelperUploadPath -Force
+        $DesktopWorkerChanged = $false
+        $DesktopWorkerChangeAction = ''
+        if (-not $DesktopWorker.Ready) {
+            $DesktopWorkerChangeAction = if ($DesktopWorker.Present) {
+                'REPLACED'
+            } else {
+                'ADDED'
+            }
+            Install-RdpClientManagedScript `
+                -UploadPath $DesktopWorkerUploadPath `
+                -DestinationPath $DesktopWorkerPath `
+                -ExpectedHash $ExpectedDesktopWorkerHash `
+                -Label 'PsExec desktop worker'
+            $DesktopWorkerChanged = $true
+        }
+        foreach ($UploadPath in @($HelperUploadPath, $DesktopWorkerUploadPath)) {
+            if ([IO.File]::Exists($UploadPath)) {
+                Remove-Item -LiteralPath $UploadPath -Force
+            }
         }
         $HelperUploadPath = ''
+        $DesktopWorkerUploadPath = ''
         Write-RdpClientPsExecHeader `
             -Title 'add' `
             -PeerAddress $PeerAddress `
@@ -426,6 +408,13 @@ try {
         } else {
             Write-RdpClientPsExecFile -Action 'PRESENT' -Path $HelperPath
         }
+        if ($DesktopWorkerChanged) {
+            Write-RdpClientPsExecFile `
+                -Action $DesktopWorkerChangeAction `
+                -Path $DesktopWorkerPath
+        } else {
+            Write-RdpClientPsExecFile -Action 'PRESENT' -Path $DesktopWorkerPath
+        }
         Write-Output '[RDP] Peer PsExec is ready.'
         exit 0
     }
@@ -441,10 +430,15 @@ try {
             } else {
                 Write-RdpClientPsExecFile -Action 'ABSENT' -Path $ManagedPath
             }
-            if ($HelperPresent) {
+            if ($Helper.Present) {
                 Write-RdpClientPsExecFile -Action 'REMOVE' -Path $HelperPath
             } else {
                 Write-RdpClientPsExecFile -Action 'ABSENT' -Path $HelperPath
+            }
+            if ($DesktopWorker.Present) {
+                Write-RdpClientPsExecFile -Action 'REMOVE' -Path $DesktopWorkerPath
+            } else {
+                Write-RdpClientPsExecFile -Action 'ABSENT' -Path $DesktopWorkerPath
             }
             Write-Output '[RDP] Dry run: no peer changes were made.'
             exit 0
@@ -452,8 +446,11 @@ try {
         if ($Present) {
             Remove-Item -LiteralPath $ManagedPath -Force
         }
-        if ($HelperPresent) {
+        if ($Helper.Present) {
             Remove-Item -LiteralPath $HelperPath -Force
+        }
+        if ($DesktopWorker.Present) {
+            Remove-Item -LiteralPath $DesktopWorkerPath -Force
         }
         if ([IO.Directory]::Exists($ManagedDirectory) -and
             @(Get-ChildItem -LiteralPath $ManagedDirectory -Force).Count -eq 0) {
@@ -467,9 +464,12 @@ try {
             -Action $(if ($Present) { 'REMOVED' } else { 'ABSENT' }) `
             -Path $ManagedPath
         Write-RdpClientPsExecFile `
-            -Action $(if ($HelperPresent) { 'REMOVED' } else { 'ABSENT' }) `
+            -Action $(if ($Helper.Present) { 'REMOVED' } else { 'ABSENT' }) `
             -Path $HelperPath
-        if ($Present -or $HelperPresent) {
+        Write-RdpClientPsExecFile `
+            -Action $(if ($DesktopWorker.Present) { 'REMOVED' } else { 'ABSENT' }) `
+            -Path $DesktopWorkerPath
+        if ($Present -or $Helper.Present -or $DesktopWorker.Present) {
             Write-Output '[RDP] Removed the managed PsExec files.'
         } else {
             Write-Output '[RDP] Managed PsExec files were already absent.'
@@ -486,8 +486,101 @@ try {
             'Run .peer psexec add to replace it.'
         )
     }
+    if ($Request.Action -eq 'desktop') {
+        if (-not $DesktopWorker.Ready) {
+            throw (
+                'Managed PsExec desktop worker is absent or outdated. ' +
+                'Run .peer psexec add first.'
+            )
+        }
+        $DesktopSessionId = [int]0
+        if (-not [int]::TryParse(
+            [string]$Request.SessionId,
+            [ref]$DesktopSessionId
+        ) -or $DesktopSessionId -le 0) {
+            throw 'Desktop task session ID must be a positive integer.'
+        }
+        $DesktopRequestBase64 = [string]$Request.DesktopRequestBase64
+        if ($DesktopRequestBase64 -notmatch '^[A-Za-z0-9+/=]+$' -or
+            $DesktopRequestBase64.Length -gt 8192) {
+            throw 'Desktop task request is invalid or too large.'
+        }
+        $DesktopTimeoutSeconds = [int]0
+        if (-not [int]::TryParse(
+            [string]$Request.DesktopTimeoutSeconds,
+            [ref]$DesktopTimeoutSeconds
+        ) -or $DesktopTimeoutSeconds -lt 1 -or
+            $DesktopTimeoutSeconds -gt 600) {
+            throw 'Desktop task timeout must be between 1 and 600 seconds.'
+        }
+
+        Write-RdpClientPsExecHeader `
+            -Title 'desktop task' `
+            -PeerAddress $PeerAddress `
+            -Architecture $Architecture
+        $DesktopResultPath = Join-Path $ManagedDirectory (
+            '.desktop-result-' + [Guid]::NewGuid().ToString('N') + '.txt'
+        )
+        $DesktopProcessIdentityPath = Join-Path $ManagedDirectory (
+            '.desktop-identity-' + [Guid]::NewGuid().ToString('N') + '.json'
+        )
+        $DesktopWorkerFinished = $false
+        try {
+            $LauncherExitCode = Invoke-RdpClientUncapturedProcess `
+                -FilePath $ManagedPath `
+                -TimeoutSeconds ([Math]::Min(30, $DesktopTimeoutSeconds)) `
+                -Arguments @(
+                    '-accepteula',
+                    '-nobanner',
+                    '-i',
+                    [string]$DesktopSessionId,
+                    '-s',
+                    '-d',
+                    'powershell.exe',
+                    '-NoLogo',
+                    '-NoProfile',
+                    '-NonInteractive',
+                    '-WindowStyle',
+                    'Hidden',
+                    '-ExecutionPolicy',
+                    'Bypass',
+                    '-File',
+                    $DesktopWorkerPath,
+                    '-RequestBase64',
+                    $DesktopRequestBase64,
+                    '-ResultPath',
+                    $DesktopResultPath,
+                    '-ProcessIdentityPath',
+                    $DesktopProcessIdentityPath
+                )
+            # PsExec 2.43 may expose the detached child PID as its process exit
+            # code. The worker-created identity file is the start authority.
+            Wait-RdpClientDesktopWorkerIdentityFile `
+                -Path $DesktopProcessIdentityPath `
+                -TimeoutSeconds ([Math]::Min(10, $DesktopTimeoutSeconds)) `
+                -LauncherExitCode $LauncherExitCode
+            $DesktopResult = Wait-RdpClientDesktopResultFile `
+                -Path $DesktopResultPath `
+                -Encoding $Utf8 `
+                -TimeoutSeconds $DesktopTimeoutSeconds
+            $DesktopWorkerFinished = $true
+            Write-Output $DesktopResult.Marker
+            exit $(if ($DesktopResult.Success) { 0 } else { 1 })
+        } finally {
+            if (-not $DesktopWorkerFinished) {
+                Stop-RdpClientDesktopWorkerProcess `
+                    -IdentityPath $DesktopProcessIdentityPath
+            }
+            if ([IO.File]::Exists($DesktopResultPath)) {
+                Remove-Item -LiteralPath $DesktopResultPath -Force
+            }
+            if ([IO.File]::Exists($DesktopProcessIdentityPath)) {
+                Remove-Item -LiteralPath $DesktopProcessIdentityPath -Force
+            }
+        }
+    }
     if ($Request.Action -eq 'launch') {
-        if (-not $HelperReady) {
+        if (-not $Helper.Ready) {
             throw (
                 'Managed PsExec session helper is absent or outdated. ' +
                 'Run .peer psexec add first.'
@@ -573,9 +666,11 @@ try {
     }
     exit $ExitCode
 } catch {
-    if (-not [string]::IsNullOrWhiteSpace($HelperUploadPath) -and
-        [IO.File]::Exists($HelperUploadPath)) {
-        try { Remove-Item -LiteralPath $HelperUploadPath -Force } catch { }
+    foreach ($UploadPath in @($HelperUploadPath, $DesktopWorkerUploadPath)) {
+        if (-not [string]::IsNullOrWhiteSpace($UploadPath) -and
+            [IO.File]::Exists($UploadPath)) {
+            try { Remove-Item -LiteralPath $UploadPath -Force } catch { }
+        }
     }
     Write-Output "[ERROR] $($_.Exception.Message)"
     exit 1

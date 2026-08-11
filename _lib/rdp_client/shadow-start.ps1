@@ -28,6 +28,7 @@ Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'peer-ssh.ps1')
 . (Join-Path $PSScriptRoot 'session.ps1')
 . (Join-Path $PSScriptRoot 'session-connect.ps1')
+. (Join-Path $PSScriptRoot 'session-display.ps1')
 . (Join-Path $PSScriptRoot 'shadow-console.ps1')
 
 try {

@@ -5,6 +5,13 @@ setlocal DisableDelayedExpansion
 if not "%RDP_CLIENT_PROTOCOL%"=="1" goto :InvalidEntryProtocol
 if not defined RDP_ENTRY_COMMAND set "RDP_ENTRY_COMMAND=rdp"
 set "RDP_CLIENT_SESSION_PARAMETER="
+set "RDP_DESKTOP_ACTION="
+set "RDP_DESKTOP_DISPLAY="
+set "RDP_DESKTOP_TIMEOUT=60s"
+set "RDP_DESKTOP_TIMEOUT_SET="
+set "RDP_DESKTOP_OUTPUT_PATH="
+set "RDP_DESKTOP_X="
+set "RDP_DESKTOP_Y="
 
 if "%~1"=="" goto :Connect
 if /i "%~1"==".help" goto :ShowHelp
@@ -18,7 +25,7 @@ if /i "%~1"==".peer" goto :Peer
 if /i "%~1"==".hosts" goto :Hosts
 if /i "%~1"==".sign" goto :Signing
 set "RDP_CLIENT_SELECTOR=%~1"
-if "%RDP_CLIENT_SELECTOR:~0,1%"=="." goto :SessionIdConnect
+if "%RDP_CLIENT_SELECTOR:~0,1%"=="." goto :SessionSelector
 goto :UnknownCommand
 
 :Connect
@@ -36,15 +43,85 @@ if not "%~4"=="" goto :InvalidRdpCommand
 set "RDP_CLIENT_FORCE=-Force"
 goto :RunRdp
 
-:SessionIdConnect
+:SessionSelector
 set "RDP_CLIENT_SESSION_ID=%RDP_CLIENT_SELECTOR:~1%"
 if "%RDP_CLIENT_SESSION_ID%"=="" goto :UnknownCommand
 for /f "delims=0123456789" %%I in ("%RDP_CLIENT_SESSION_ID%") do goto :UnknownCommand
-if not "%~2"=="" goto :InvalidSessionCommand
+if "%~2"=="" goto :SessionConnect
+if /i "%~2"=="connect" goto :SessionConnect
+if /i "%~2"=="screenshot" goto :SessionScreenshot
+if /i "%~2"=="pixel" goto :SessionPixel
+if /i "%~2"=="click" goto :SessionClick
+goto :InvalidSessionCommand
+
+:SessionConnect
+if not "%~3"=="" goto :InvalidSessionCommand
 set "RDP_CLIENT_LAUNCH=-Launch"
 set "RDP_CLIENT_FORCE="
 set "RDP_CLIENT_SESSION_PARAMETER=-SessionId %RDP_CLIENT_SESSION_ID%"
 goto :RunRdp
+
+:SessionScreenshot
+set "RDP_DESKTOP_ACTION=screenshot"
+goto :ParseNextDesktopOption
+
+:SessionPixel
+set "RDP_DESKTOP_ACTION=pixel"
+goto :ParseDesktopCoordinates
+
+:SessionClick
+set "RDP_DESKTOP_ACTION=click"
+
+:ParseDesktopCoordinates
+if "%~3"=="" goto :InvalidSessionCommand
+if "%~4"=="" goto :InvalidSessionCommand
+set "RDP_DESKTOP_X=%~3"
+set "RDP_DESKTOP_Y=%~4"
+shift /3
+shift /3
+
+:ParseNextDesktopOption
+if "%~3"=="" goto :RunDesktop
+if /i "%~3"=="--display" goto :ParseDesktopDisplay
+if /i "%~3"=="--timeout" goto :ParseDesktopTimeout
+if /i "%~3"=="--output" goto :ParseDesktopOutput
+goto :InvalidSessionCommand
+
+:ParseDesktopDisplay
+if defined RDP_DESKTOP_DISPLAY goto :InvalidSessionCommand
+set "RDP_DESKTOP_DISPLAY=-Display"
+shift /3
+goto :ParseNextDesktopOption
+
+:ParseDesktopTimeout
+if defined RDP_DESKTOP_TIMEOUT_SET goto :InvalidSessionCommand
+if "%~4"=="" goto :InvalidSessionCommand
+set "RDP_DESKTOP_TIMEOUT=%~4"
+set "RDP_DESKTOP_TIMEOUT_SET=1"
+shift /3
+shift /3
+goto :ParseNextDesktopOption
+
+:ParseDesktopOutput
+if /i not "%RDP_DESKTOP_ACTION%"=="screenshot" goto :InvalidSessionCommand
+if defined RDP_DESKTOP_OUTPUT_PATH goto :InvalidSessionCommand
+if "%~4"=="" goto :InvalidSessionCommand
+set "RDP_DESKTOP_OUTPUT_PATH=%~4"
+shift /3
+shift /3
+goto :ParseNextDesktopOption
+
+:RunDesktop
+if not defined RDP_ENTRY_FILE goto :InvalidEntryFile
+set "RDP_DESKTOP_SCRIPT=%~dp0desktop.ps1"
+if not exist "%RDP_DESKTOP_SCRIPT%" (
+    echo [ERROR] RDP desktop task script not found:
+    echo   "%RDP_DESKTOP_SCRIPT%"
+    exit /b 1
+)
+
+PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_DESKTOP_SCRIPT%" -Action "%RDP_DESKTOP_ACTION%" -EntryFile "%RDP_ENTRY_FILE%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -SessionId "%RDP_CLIENT_SESSION_ID%" -CommandName "%RDP_ENTRY_COMMAND%" -X "%RDP_DESKTOP_X%" -Y "%RDP_DESKTOP_Y%" -Timeout "%RDP_DESKTOP_TIMEOUT%" -OutputPath "%RDP_DESKTOP_OUTPUT_PATH%" %RDP_DESKTOP_DISPLAY%
+exit /b %ERRORLEVEL%
 
 :SessionList
 if not "%~2"=="" goto :InvalidSessionCommand
@@ -378,7 +455,10 @@ exit /b 1
 :InvalidSessionCommand
 echo [ERROR] Session usage:
 echo   "%RDP_ENTRY_COMMAND% .list"
-echo   "%RDP_ENTRY_COMMAND% .<session-id>"
+echo   "%RDP_ENTRY_COMMAND% .<session-id> [connect]"
+echo   "%RDP_ENTRY_COMMAND% .<session-id> screenshot [--display] [--timeout <seconds>] [--output <absolute.png>]"
+echo   "%RDP_ENTRY_COMMAND% .<session-id> pixel <x> <y> [--display] [--timeout <seconds>]"
+echo   "%RDP_ENTRY_COMMAND% .<session-id> click <x> <y> [--display] [--timeout <seconds>]"
 exit /b 1
 
 :InvalidPeerCommand

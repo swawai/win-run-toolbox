@@ -11,6 +11,7 @@ $RuntimeRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $RuntimeRoot 'entry.ps1')
 . (Join-Path $RuntimeRoot 'session.ps1')
 . (Join-Path $RuntimeRoot 'session-connect.ps1')
+. (Join-Path $RuntimeRoot 'session-display.ps1')
 . (Join-Path $RuntimeRoot 'shadow-console.ps1')
 
 function Assert-ThrowsContaining {

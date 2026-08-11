@@ -87,6 +87,12 @@ try {
             "$EntryCommand .rdp create --force",
             "$EntryCommand .list",
             "$EntryCommand .2",
+            "$EntryCommand .2 screenshot",
+            "$EntryCommand .2 screenshot --display",
+            "$EntryCommand .2 pixel 640 360",
+            "$EntryCommand .2 click 640 360",
+            '--timeout 60s',
+            '.peer psexec add',
             'RDP_PEER_SSH_ENTRY',
             "$EntryCommand .shadow doctor",
             "$EntryCommand .shadow console",
@@ -300,7 +306,11 @@ try {
 
     foreach ($InvalidSessionArguments in @(
         [string[]]@('.list', 'unexpected'),
-        [string[]]@('.2', 'unexpected')
+        [string[]]@('.2', 'unexpected'),
+        [string[]]@('.2', 'pixel', '640'),
+        [string[]]@('.2', 'click', '640', '360', '--output', 'x.png'),
+        [string[]]@('.2', 'screenshot', '--display', '--display'),
+        [string[]]@('.2', 'screenshot', '--timeout')
     )) {
         $InvalidSession = Invoke-HelpTestCommand `
             -Arguments $InvalidSessionArguments `

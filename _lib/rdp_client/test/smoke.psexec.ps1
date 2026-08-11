@@ -116,10 +116,18 @@ function Assert-Request {
     if ([string]$Request.HelperSha256 -notmatch '^[A-F0-9]{64}$') {
         throw 'The PsExec request has no valid session-helper hash.'
     }
+    if ([string]$Request.DesktopWorkerSha256 -notmatch '^[A-F0-9]{64}$') {
+        throw 'The PsExec request has no valid desktop-worker hash.'
+    }
     if ($Action -eq 'add' -and -not $DryRun -and
         [string]$Request.HelperUploadName -notmatch
         '^\.swaw-kit-psexec-helper-[A-Fa-f0-9]{32}\.ps1$') {
         throw 'PsExec add did not reference the uploaded session helper.'
+    }
+    if ($Action -eq 'add' -and -not $DryRun -and
+        [string]$Request.DesktopWorkerUploadName -notmatch
+        '^\.swaw-kit-psexec-desktop-[A-Fa-f0-9]{32}\.ps1$') {
+        throw 'PsExec add did not reference the uploaded desktop worker.'
     }
 }
 
@@ -133,7 +141,9 @@ try {
         'process-job.ps1',
         'psexec.ps1',
         'psexec.remote.ps1',
-        'helper.ps1'
+        'psexec-lib.remote.ps1',
+        'helper.ps1',
+        'desktop-task.remote.ps1'
     )) {
         [IO.File]::Copy(
             (Join-Path (Join-Path $PSScriptRoot '..') $RuntimeFile),
@@ -202,6 +212,27 @@ exit [int]$env:RDP_PSEXEC_FAKE_EXIT
         -ExpectedExitCode 0 |
         Out-Null
     Assert-Request -Request (Get-CapturedRequest) -Action add -DryRun $false
+
+    $env:RDP_PSEXEC_FAKE_EXIT = '19'
+    $FailedAddOutput = Invoke-PsExecTestEntry `
+        -Arguments @('.peer', 'psexec', 'add') `
+        -ExpectedExitCode 19
+    Remove-Item Env:RDP_PSEXEC_FAKE_EXIT
+    $CleanupSource = Get-CapturedRemoteSource
+    foreach ($ExpectedCleanupSource in @(
+        'Invalid PsExec upload cleanup name.',
+        'Remove-Item -LiteralPath $p -Force',
+        '^\.swaw-kit-psexec-(?:helper|desktop)-'
+    )) {
+        if (-not $CleanupSource.Contains($ExpectedCleanupSource)) {
+            throw "Failed PsExec add did not run safe upload cleanup."
+        }
+    }
+    if (-not $FailedAddOutput.Contains(
+        '[WARN] Could not clean temporary peer PsExec uploads'
+    )) {
+        throw 'Failed upload cleanup should preserve the command failure and warn.'
+    }
 
     Invoke-PsExecTestEntry `
         -Arguments @('.peer', 'psexec', 'add', '--dry-run') `
@@ -276,6 +307,10 @@ exit [int]$env:RDP_PSEXEC_FAKE_EXIT
         (Join-Path $PSScriptRoot '..\psexec.remote.ps1'),
         [Text.Encoding]::UTF8
     )
+    $RemoteTemplate += [IO.File]::ReadAllText(
+        (Join-Path $PSScriptRoot '..\psexec-lib.remote.ps1'),
+        [Text.Encoding]::UTF8
+    )
     foreach ($ExpectedSource in @(
         'PROCESSOR_ARCHITEW6432',
         'https://live.sysinternals.com/PsExec64.exe',
@@ -292,14 +327,34 @@ exit [int]$env:RDP_PSEXEC_FAKE_EXIT
         'RedirectStandardError = $true',
         'started on .+ with process ID',
         "Join-Path `$ManagedDirectory 'helper.ps1'",
+        "Join-Path `$ManagedDirectory 'desktop-task.ps1'",
         'HelperUploadName',
         'HelperSha256',
+        'DesktopWorkerUploadName',
+        'DesktopWorkerSha256',
         'Write-RdpClientPsExecField',
         'Write-RdpClientPsExecFile',
         "'PsExec SOURCE'",
         "'Helper VERIFY'",
         "Write-Output '  ---'",
         "`$Request.Action -eq 'launch'",
+        "`$Request.Action -eq 'desktop'",
+        'DesktopRequestBase64',
+        "'-RequestBase64'",
+        "'-ResultPath'",
+        "'-d'",
+        'DesktopTimeoutSeconds',
+        'Wait-RdpClientDesktopResultFile',
+        'Invoke-RdpClientUncapturedProcess',
+        'Stop-RdpClientDesktopWorkerProcess',
+        'StartTime.ToUniversalTime().Ticks',
+        'Wait-RdpClientDesktopWorkerIdentityFile',
+        'worker-created identity file is the start authority',
+        '.desktop-identity-',
+        '.desktop-result-',
+        'interactive desktop worker result',
+        "'-i'",
+        "'-WindowStyle'",
         "'-s'"
     )) {
         if (-not $RemoteTemplate.Contains($ExpectedSource)) {
@@ -316,6 +371,55 @@ exit [int]$env:RDP_PSEXEC_FAKE_EXIT
     }
     if ($RemoteTemplate.Contains('psexec-session-launch.ps1')) {
         throw 'The unpublished PsExec helper filename must not remain supported.'
+    }
+
+    . (Join-Path $PSScriptRoot '..\psexec-lib.remote.ps1')
+    $IdentityPath = Join-Path $ScratchRoot 'owned-process-identity.json'
+    $OwnedProcess = Start-Process `
+        -FilePath 'powershell.exe' `
+        -ArgumentList @(
+            '-NoLogo',
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            'Start-Sleep -Seconds 60'
+        ) `
+        -WindowStyle Hidden `
+        -PassThru
+    try {
+        $OwnedStartTime = $OwnedProcess.StartTime.ToUniversalTime().Ticks
+        [IO.File]::WriteAllText(
+            $IdentityPath,
+            (ConvertTo-Json -Compress -InputObject ([ordered]@{
+                Version           = 1
+                ProcessId         = $OwnedProcess.Id
+                StartTimeUtcTicks = $OwnedStartTime + 1
+            })),
+            (New-Object Text.UTF8Encoding($false))
+        )
+        Stop-RdpClientDesktopWorkerProcess -IdentityPath $IdentityPath
+        $OwnedProcess.Refresh()
+        if ($OwnedProcess.HasExited) {
+            throw 'Worker cleanup must not kill a PID with a different start time.'
+        }
+        [IO.File]::WriteAllText(
+            $IdentityPath,
+            (ConvertTo-Json -Compress -InputObject ([ordered]@{
+                Version           = 1
+                ProcessId         = $OwnedProcess.Id
+                StartTimeUtcTicks = $OwnedStartTime
+            })),
+            (New-Object Text.UTF8Encoding($false))
+        )
+        Stop-RdpClientDesktopWorkerProcess -IdentityPath $IdentityPath
+        if (-not $OwnedProcess.WaitForExit(5000)) {
+            throw 'Worker cleanup did not stop its exact owned process.'
+        }
+    } finally {
+        if (-not $OwnedProcess.HasExited) {
+            Stop-Process -InputObject $OwnedProcess -Force
+        }
+        $OwnedProcess.Dispose()
     }
 
     $HelperTemplate = [IO.File]::ReadAllText(

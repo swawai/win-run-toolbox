@@ -70,6 +70,86 @@ function Get-RdpClientExpectedPeerAddresses {
     } | Sort-Object -Unique)
 }
 
+function Get-RdpClientFileSha256 {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not [IO.File]::Exists($Path)) {
+        throw "RDP peer managed script was not found: $Path"
+    }
+    $Bytes = [IO.File]::ReadAllBytes($Path)
+    $Hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        return [BitConverter]::ToString(
+            $Hasher.ComputeHash($Bytes)
+        ).Replace('-', '')
+    } finally {
+        $Hasher.Dispose()
+    }
+}
+
+function Remove-RdpClientPsExecUploadsBestEffort {
+    param(
+        [AllowNull()][AllowEmptyString()][string]$SshEntryPath,
+        [AllowNull()][object[]]$UploadNames = @()
+    )
+
+    $Names = @($UploadNames | Where-Object {
+        -not [string]::IsNullOrWhiteSpace([string]$_)
+    } | ForEach-Object { [string]$_ })
+    if ([string]::IsNullOrWhiteSpace($SshEntryPath) -or $Names.Count -eq 0) {
+        return
+    }
+    foreach ($Name in $Names) {
+        if ($Name -notmatch
+            '^\.swaw-kit-psexec-(?:helper|desktop)-[A-Fa-f0-9]{32}\.ps1$') {
+            [Console]::Error.WriteLine(
+                "[WARN] Refused to clean an invalid PsExec upload name: $Name"
+            )
+            return
+        }
+    }
+
+    try {
+        $Utf8 = New-Object Text.UTF8Encoding($false)
+        $PayloadJson = [ordered]@{ Names = $Names } |
+            ConvertTo-Json -Compress -Depth 3
+        $PayloadBase64 = [Convert]::ToBase64String(
+            $Utf8.GetBytes($PayloadJson)
+        )
+        $CleanupSource = @"
+`$ErrorActionPreference = 'Stop'
+`$u = New-Object Text.UTF8Encoding(`$false)
+`$j = `$u.GetString([Convert]::FromBase64String('$PayloadBase64'))
+`$r = `$j | ConvertFrom-Json
+foreach (`$n in @(`$r.Names)) {
+    if ([string]`$n -notmatch '^\.swaw-kit-psexec-(?:helper|desktop)-[A-Fa-f0-9]{32}\.ps1$') {
+        throw 'Invalid PsExec upload cleanup name.'
+    }
+    `$p = Join-Path `$HOME ([string]`$n)
+    if ([IO.File]::Exists(`$p)) {
+        Remove-Item -LiteralPath `$p -Force
+    }
+}
+"@
+        $Cleanup = Invoke-RdpClientPeerSshPowerShell `
+            -SshEntryPath $SshEntryPath `
+            -RemoteSource $CleanupSource `
+            -TimeoutSeconds 20
+        if ($Cleanup.ExitCode -ne 0) {
+            throw "cleanup exited with $($Cleanup.ExitCode)"
+        }
+    } catch {
+        [Console]::Error.WriteLine(
+            '[WARN] Could not clean temporary peer PsExec uploads ' +
+            "($($Names -join ', ')): $($_.Exception.Message)"
+        )
+    }
+}
+
+$ResolvedSshEntry = ''
+$HelperUploadName = ''
+$DesktopWorkerUploadName = ''
+
 try {
     if (@('run', 'launch') -notcontains $Action -and $ArgumentCount -ne 0) {
         throw 'PsExec management commands do not accept native arguments.'
@@ -107,19 +187,9 @@ try {
     }
 
     $HelperPath = Join-Path $PSScriptRoot 'helper.ps1'
-    if (-not [IO.File]::Exists($HelperPath)) {
-        throw "RDP peer PsExec session helper was not found: $HelperPath"
-    }
-    $HelperBytes = [IO.File]::ReadAllBytes($HelperPath)
-    $Hasher = [Security.Cryptography.SHA256]::Create()
-    try {
-        $HelperSha256 = [BitConverter]::ToString(
-            $Hasher.ComputeHash($HelperBytes)
-        ).Replace('-', '')
-    } finally {
-        $Hasher.Dispose()
-    }
-    $HelperUploadName = ''
+    $DesktopWorkerPath = Join-Path $PSScriptRoot 'desktop-task.remote.ps1'
+    $HelperSha256 = Get-RdpClientFileSha256 -Path $HelperPath
+    $DesktopWorkerSha256 = Get-RdpClientFileSha256 -Path $DesktopWorkerPath
     if ($Action -eq 'add' -and -not $DryRun.IsPresent) {
         $HelperUploadName = (
             '.swaw-kit-psexec-helper-' +
@@ -136,15 +206,32 @@ try {
                 ($Copy.Output -join ' ')
             )
         }
+        $DesktopWorkerUploadName = (
+            '.swaw-kit-psexec-desktop-' +
+            [Guid]::NewGuid().ToString('N') +
+            '.ps1'
+        )
+        $Copy = Invoke-RdpClientPeerSshCopy `
+            -SshEntryPath $ResolvedSshEntry `
+            -SourcePath $DesktopWorkerPath `
+            -RemoteName $DesktopWorkerUploadName
+        if ($Copy.ExitCode -ne 0) {
+            throw (
+                'Failed to upload the PsExec desktop worker. ' +
+                ($Copy.Output -join ' ')
+            )
+        }
     }
     $PayloadJson = [ordered]@{
-        Action             = $Action
-        DryRun             = $DryRun.IsPresent
-        Arguments          = $Arguments
-        SessionId          = $SessionId
-        HelperSha256       = $HelperSha256
-        HelperUploadName   = $HelperUploadName
-        ExpectedAddresses = @(Get-RdpClientExpectedPeerAddresses `
+        Action                  = $Action
+        DryRun                  = $DryRun.IsPresent
+        Arguments               = $Arguments
+        SessionId               = $SessionId
+        HelperSha256            = $HelperSha256
+        HelperUploadName        = $HelperUploadName
+        DesktopWorkerSha256     = $DesktopWorkerSha256
+        DesktopWorkerUploadName = $DesktopWorkerUploadName
+        ExpectedAddresses       = @(Get-RdpClientExpectedPeerAddresses `
             -EntryPath $ResolvedRdpEntry)
     } | ConvertTo-Json -Compress -Depth 4
     $PayloadBase64 = [Convert]::ToBase64String($Utf8.GetBytes($PayloadJson))
@@ -154,6 +241,21 @@ try {
         throw "RDP peer PsExec script was not found: $RemoteScriptPath"
     }
     $RemoteSource = [IO.File]::ReadAllText($RemoteScriptPath, [Text.Encoding]::UTF8)
+    $LibraryPath = Join-Path $PSScriptRoot 'psexec-lib.remote.ps1'
+    if (-not [IO.File]::Exists($LibraryPath)) {
+        throw "RDP peer PsExec library was not found: $LibraryPath"
+    }
+    $LibraryMarker = '__RDP_CLIENT_PSEXEC_LIBRARY__'
+    if ([regex]::Matches(
+        $RemoteSource,
+        [regex]::Escape($LibraryMarker)
+    ).Count -ne 1) {
+        throw 'RDP peer PsExec script has an invalid library marker.'
+    }
+    $RemoteSource = $RemoteSource.Replace(
+        $LibraryMarker,
+        [IO.File]::ReadAllText($LibraryPath, [Text.Encoding]::UTF8)
+    )
     $Marker = '__RDP_CLIENT_PSEXEC_PAYLOAD__'
     if ([regex]::Matches($RemoteSource, [regex]::Escape($Marker)).Count -ne 1) {
         throw 'RDP peer PsExec script has an invalid payload marker.'
@@ -164,8 +266,18 @@ try {
         -SshEntryPath $ResolvedSshEntry `
         -RemoteSource $RemoteSource
     $Invocation.Output | Write-Output
+    if ($Action -eq 'add' -and $Invocation.ExitCode -ne 0) {
+        Remove-RdpClientPsExecUploadsBestEffort `
+            -SshEntryPath $ResolvedSshEntry `
+            -UploadNames @($HelperUploadName, $DesktopWorkerUploadName)
+    }
     exit $Invocation.ExitCode
 } catch {
+    if ($Action -eq 'add') {
+        Remove-RdpClientPsExecUploadsBestEffort `
+            -SshEntryPath $ResolvedSshEntry `
+            -UploadNames @($HelperUploadName, $DesktopWorkerUploadName)
+    }
     [Console]::Error.WriteLine("[ERROR] $($_.Exception.Message)")
     [Console]::Error.WriteLine(
         "[ERROR] Run `"$CommandName .help`" for peer PsExec usage."

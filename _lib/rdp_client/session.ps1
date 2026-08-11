@@ -2,7 +2,8 @@ Set-StrictMode -Version 2.0
 
 function Get-RdpClientPeerSessionState {
     param(
-        [Parameter(Mandatory = $true)][string]$SshEntryPath
+        [Parameter(Mandatory = $true)][string]$SshEntryPath,
+        [ValidateRange(1, 600)][int]$TimeoutSeconds = 60
     )
 
     $RemoteScriptPath = Join-Path $PSScriptRoot 'session-query.remote.ps1'
@@ -17,7 +18,7 @@ function Get-RdpClientPeerSessionState {
     $Invocation = Invoke-RdpClientPeerSshPowerShell `
         -SshEntryPath $SshEntryPath `
         -RemoteSource $RemoteSource `
-        -TimeoutSeconds 20
+        -TimeoutSeconds $TimeoutSeconds
     if ($Invocation.ExitCode -ne 0) {
         throw "SSH session query failed with exit code $($Invocation.ExitCode)."
     }

@@ -6,8 +6,17 @@
   {{COMMAND}} .help zh                      Show Chinese help
   {{COMMAND}} .list                         List peer session IDs; requires RDP_PEER_SSH_ENTRY in the entry command
   {{COMMAND}} .2                            Connect ordinary RDP to session ID 2; switch and verify when needed
+  {{COMMAND}} .2 screenshot                 Capture session 2 without changing its display route
+  {{COMMAND}} .2 screenshot --display       Temporarily establish a rendered RDP display when needed, capture, then close it
+  {{COMMAND}} .2 screenshot --output D:\shot.png Save to an absolute PNG path; the target must not already exist
+  {{COMMAND}} .2 pixel 640 360              Read a pixel in session-image coordinates
+  {{COMMAND}} .2 click 640 360              Left-click session-image coordinates; append --display when the session is not display-ready
+  {{COMMAND}} .2 screenshot --display --timeout 60s Limit display establishment and the desktop task to 60 seconds
   {{COMMAND}} .rdp create                   Generate the RDP file only; refuse to overwrite an existing target
   {{COMMAND}} .rdp create --force           Generate the RDP file and overwrite an existing target
+
+  Desktop actions require RDP_PEER_SSH_ENTRY and managed PsExec; run {{COMMAND}} .peer psexec add first.
+  An active but locked session is rejected; --display does not unlock or reroute it.
 
 
 # Manage whether Shadow mode is enabled on the peer (requires RDP_PEER_SSH_ENTRY in the entry command):
@@ -23,13 +32,13 @@
 
 
 # Shadow mode:
-  {{COMMAND}} .shadow doctor                Check Shadow prerequisites from this client to the peer
-  {{COMMAND}} .shadow 2                     Request to view session ID 2 (the peer user receives a consent prompt)
-  {{COMMAND}} .shadow 2 --no-consent        View without peer-user consent
-  {{COMMAND}} .shadow 3 --control           Request control; can be combined with --no-consent
-  {{COMMAND}} .shadow console               Find the active user session attached to the console and shadow it
-  {{COMMAND}} .shadow console --display     If console has no active desktop, bootstrap one through temporary ordinary RDP, then shadow it
-  {{COMMAND}} .shadow console --tscon 3     Explicitly attach session 3 to console, then shadow it; may disconnect the previous console session
+  {{COMMAND}} .shadow doctor                         Check Shadow prerequisites from this client to the peer
+  {{COMMAND}} .shadow 2                              [interactive] Request to view session ID 2 (the peer user receives a consent prompt)
+  {{COMMAND}} .shadow 2 --no-consent                 View session ID 2 without target-user consent (append --control to control it)
+  {{COMMAND}} .shadow 3 --control --no-consent       Control session ID 3; without --control, all forms are view-only
+  {{COMMAND}} .shadow console --no-consent           View the current active console session (uses SSH to resolve its session ID)
+  {{COMMAND}} .shadow console --tscon 3 --no-consent Explicitly attach session 3 to console, then view it; may disconnect the previous console session
+  {{COMMAND}} .shadow console --display --no-consent If console has no active desktop, bootstrap one with temporary ordinary RDP, attach it safely, then view it
 
 
 # Manage and invoke peer PsExec through SSH:

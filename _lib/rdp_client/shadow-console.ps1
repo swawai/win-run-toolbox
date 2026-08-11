@@ -73,60 +73,6 @@ function Wait-RdpClientSessionAtConsole {
     throw "Session $SessionId did not become the active console session."
 }
 
-function Start-RdpClientDisplayBootstrap {
-    param(
-        [Parameter(Mandatory = $true)][string]$EntryFile,
-        [Parameter(Mandatory = $true)][string]$SshEntryFile,
-        [Parameter(Mandatory = $true)][string]$CommandName
-    )
-
-    $ConnectScript = Join-Path $PSScriptRoot 'connect.ps1'
-    if (-not [IO.File]::Exists($ConnectScript)) {
-        throw "RDP connection script was not found: $ConnectScript"
-    }
-
-    $PreviousPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $Output = @(& PowerShell.exe `
-            -NoLogo `
-            -NoProfile `
-            -ExecutionPolicy Bypass `
-            -File $ConnectScript `
-            -EntryFile $EntryFile `
-            -SshEntryFile $SshEntryFile `
-            -CommandName $CommandName `
-            -Launch `
-            -ReportMstscProcessId 2>&1 | ForEach-Object { [string]$_ })
-        $ExitCode = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $PreviousPreference
-    }
-
-    $MarkerPattern = '^RDP_CLIENT_MSTSC_PROCESS_V1:(?<ProcessId>[0-9]+)$'
-    $Markers = @($Output | Where-Object { $_ -match $MarkerPattern })
-    foreach ($Line in @($Output | Where-Object { $_ -notmatch $MarkerPattern })) {
-        Write-Host $Line
-    }
-    if ($ExitCode -ne 0) {
-        throw "The temporary ordinary RDP connection failed with exit code $ExitCode."
-    }
-    if ($Markers.Count -ne 1 -or $Markers[0] -notmatch $MarkerPattern) {
-        throw 'The temporary ordinary RDP connection did not report its mstsc process.'
-    }
-
-    $ProcessId = [int]0
-    if (-not [int]::TryParse($Matches.ProcessId, [ref]$ProcessId) -or
-        $ProcessId -le 0) {
-        throw 'The temporary ordinary RDP connection reported an invalid process ID.'
-    }
-    try {
-        return [Diagnostics.Process]::GetProcessById($ProcessId)
-    } catch {
-        throw 'The temporary mstsc process exited before its session could be identified.'
-    }
-}
-
 function Move-RdpClientSessionToConsole {
     param(
         [Parameter(Mandatory = $true)][string]$SshEntryPath,

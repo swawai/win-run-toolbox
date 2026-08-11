@@ -320,7 +320,8 @@ function Connect-RdpClientSessionById {
         [Parameter(Mandatory = $true)][pscustomobject]$BeforeState,
         [Parameter(Mandatory = $true)][string]$EntryUserName,
         [Parameter(Mandatory = $true)][uint32]$TargetSessionId,
-        [Parameter(Mandatory = $true)]$MstscProcess
+        [Parameter(Mandatory = $true)]$MstscProcess,
+        [ValidateRange(1, 600)][int]$TimeoutSeconds = 120
     )
 
     $Landing = $null
@@ -330,7 +331,8 @@ function Connect-RdpClientSessionById {
             -SshEntryPath $SshEntryPath `
             -BeforeState $BeforeState `
             -EntryUserName $EntryUserName `
-            -MstscProcess $MstscProcess
+            -MstscProcess $MstscProcess `
+            -TimeoutSeconds $TimeoutSeconds
 
         if ([uint64]$Landing.Id -ne [uint64]$TargetSessionId) {
             Write-Host (

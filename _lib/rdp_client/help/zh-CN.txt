@@ -6,8 +6,17 @@
   {{COMMAND}} .help zh                      显示中文帮助
   {{COMMAND}} .list                         列出对端会话ID；依赖 SSH 远程-即入口命令中须指定 RDP_PEER_SSH_ENTRY
   {{COMMAND}} .2                            以普通 RDP 精确连接会话 ID 2；必要时自动切换并验证
+  {{COMMAND}} .2 screenshot                 截取会话 2，不改变其显示路由
+  {{COMMAND}} .2 screenshot --display       必要时临时建立可渲染的 RDP 显示，截图完成后关闭
+  {{COMMAND}} .2 screenshot --output D:\shot.png 保存到绝对 PNG 路径；目标文件必须尚不存在
+  {{COMMAND}} .2 pixel 640 360              按会话截图坐标读取像素
+  {{COMMAND}} .2 click 640 360              按会话截图坐标左键点击；会话未就绪时追加 --display
+  {{COMMAND}} .2 screenshot --display --timeout 60s 显示建立和桌面任务最多等待 60 秒
   {{COMMAND}} .rdp create                   仅生成 RDP 文件；目标已存在时拒绝覆盖
   {{COMMAND}} .rdp create --force           生成 RDP 文件并覆盖已有目标
+
+  桌面动作依赖 RDP_PEER_SSH_ENTRY 和托管 PsExec；请先运行 {{COMMAND}} .peer psexec add。
+  活动但锁定的会话会直接拒绝桌面动作；--display 不会自动解锁或改路由。
 
 
 # 管理对端开启或关闭 Shadow 模式（依赖 SSH 远程-即入口命令中须指定 RDP_PEER_SSH_ENTRY）：
@@ -23,13 +32,13 @@
 
 
 # Shadow 模式：
-  {{COMMAND}} .shadow doctor                检查当前客户端到对端的 Shadow 前置条件
-  {{COMMAND}} .shadow 2                     申请查看 ID 为 2 的会话（对端会弹出，是否同意的对话框）
-  {{COMMAND}} .shadow 2 --no-consent        无需对方同意
-  {{COMMAND}} .shadow 3 --control           申请控制，可叠加 --no-consent
-  {{COMMAND}} .shadow console               自动查找当前挂接到 console 的活动用户会话并 shadow
-  {{COMMAND}} .shadow console --display     console 无活动桌面时，以临时普通 RDP 建立桌面后 shadow
-  {{COMMAND}} .shadow console --tscon 3     明确将会话 3 挂接到 console 后 shadow；可能断开原 console 会话
+  {{COMMAND}} .shadow doctor                         检查当前客户端到对端的 Shadow 前置条件
+  {{COMMAND}} .shadow 2                              [交互]申请查看 ID 为 2 的会话（对端会弹出，是否同意的对话框）
+  {{COMMAND}} .shadow 2 --no-consent                 查看 ID 为 2 的会话，免目标用户同意（要控制请追加 --control）
+  {{COMMAND}} .shadow 3 --control --no-consent       控制 ID 为 3 的会话；不加 --control 的均为查看
+  {{COMMAND}} .shadow console --no-consent           查看当前活动的 console 会话（依赖 SSH 查询具体会话 ID）
+  {{COMMAND}} .shadow console --tscon 3 --no-consent 明确将会话 3 挂接到 console 后查看；可能断开原 console 会话
+  {{COMMAND}} .shadow console --display --no-consent console 无活动桌面时，以临时普通 RDP 建立桌面并安全挂接后查看
 
 
 # 通过 SSH 管理和调用对端 PsExec：

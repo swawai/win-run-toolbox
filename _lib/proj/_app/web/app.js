@@ -88,10 +88,9 @@ const detail = createDetailView(elements);
 const commandRun = createCommandRunView(elements);
 const commandActivity = createCommandActivityView(elements);
 const entryProfile = createEntryProfileView(elements, {
-  async onProfileChanged(document, address) {
+  async onProfileChanged(document) {
     explorer.setSetupRequired(!document.requiredComplete);
     await loadCatalog();
-    explorer.selectAddress(address);
   },
 });
 const explorer = createExplorerView({

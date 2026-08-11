@@ -52,9 +52,13 @@ export async function putEntryProfileVariable(
   return normalizeProfileDocument(document);
 }
 
-export function createEntryProfileView(elements, { onProfileChanged }) {
+export function createEntryProfileView(
+  elements,
+  { fetchImpl = fetch, onProfileChanged },
+) {
   let currentDocument = null;
   let currentCommand = null;
+  let saveInFlight = false;
 
   function variableName(command) {
     return command.address.slice(command.address.lastIndexOf(".") + 1);
@@ -77,7 +81,8 @@ export function createEntryProfileView(elements, { onProfileChanged }) {
   }
 
   function render(command) {
-    if (command.handler !== SETTER_HANDLER) {
+    if (command?.handler !== SETTER_HANDLER) {
+      currentCommand = null;
       return false;
     }
     currentCommand = command;
@@ -89,7 +94,7 @@ export function createEntryProfileView(elements, { onProfileChanged }) {
     elements.profileVariableName.textContent = name;
     elements.profileValue.value = known ? currentDocument.variables[name] : "";
     elements.profileValue.disabled = !known;
-    elements.profileSaveButton.disabled = !known;
+    elements.profileSaveButton.disabled = !known || saveInFlight;
     elements.profileFeedback.textContent = known || !currentDocument
       ? ""
       : "Catalog 声明了 Profile 中不存在的变量。";
@@ -110,7 +115,7 @@ export function createEntryProfileView(elements, { onProfileChanged }) {
   async function loadProfile() {
     currentDocument = null;
     renderState();
-    const response = await fetch("/api/v2/profile", {
+    const response = await fetchImpl("/api/v2/profile", {
       cache: "no-store",
       headers: { Accept: "application/json" },
     });
@@ -121,10 +126,13 @@ export function createEntryProfileView(elements, { onProfileChanged }) {
   }
 
   async function saveProfile() {
-    if (!currentDocument || !currentCommand) {
+    if (!currentDocument || !currentCommand || saveInFlight) {
       return;
     }
-    const name = variableName(currentCommand);
+    const command = currentCommand;
+    const name = variableName(command);
+    const operationIsCurrent = () => currentCommand?.address === command.address;
+    saveInFlight = true;
     elements.profileSaveButton.disabled = true;
     elements.profileFeedback.dataset.state = "";
     elements.profileFeedback.textContent = "正在保存…";
@@ -133,26 +141,36 @@ export function createEntryProfileView(elements, { onProfileChanged }) {
         name,
         elements.profileValue.value,
         currentDocument.revision,
+        fetchImpl,
       );
       acceptDocument(document);
-      elements.profileFeedback.textContent = "变量已保存";
-      await onProfileChanged(document, currentCommand.address);
+      await onProfileChanged(document);
+      if (operationIsCurrent()) {
+        elements.profileFeedback.textContent = "变量已保存";
+      }
     } catch (error) {
-      elements.profileFeedback.dataset.state = "error";
       if (error instanceof EntryProfileConflictError) {
         try {
           const latest = await loadProfile();
-          await onProfileChanged(latest, currentCommand.address);
-          elements.profileFeedback.textContent = "Profile 已被其他进程修改，已重新载入最新值。";
+          await onProfileChanged(latest);
+          if (operationIsCurrent()) {
+            elements.profileFeedback.dataset.state = "error";
+            elements.profileFeedback.textContent = "Profile 已被其他进程修改，已重新载入最新值。";
+          }
         } catch {
-          elements.profileFeedback.textContent = "Profile 已变化，请重新加载页面后再保存。";
+          if (operationIsCurrent()) {
+            elements.profileFeedback.dataset.state = "error";
+            elements.profileFeedback.textContent = "Profile 已变化，请重新加载页面后再保存。";
+          }
         }
-      } else {
+      } else if (operationIsCurrent()) {
+        elements.profileFeedback.dataset.state = "error";
         elements.profileFeedback.textContent = error instanceof Error
           ? error.message
           : "保存变量时发生未知错误。";
       }
     } finally {
+      saveInFlight = false;
       const known = currentDocument
         && currentCommand
         && Object.hasOwn(currentDocument.variables, variableName(currentCommand));

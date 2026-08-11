@@ -148,6 +148,41 @@ describe("command journal view", () => {
     expect(dom.commandJournalList.children[0].children[0].disabled).toBeFalse();
   });
 
+  test("opens the validated directory for one persisted run", async () => {
+    const dom = elements();
+    const requests = [];
+    const view = createCommandJournalView(dom, {
+      document: documentObject(),
+      fetchJournal: async (url, options = {}) => {
+        requests.push({ url, options });
+        if (options.method === "POST") {
+          return response(204);
+        }
+        return url.includes("/run-1?")
+          ? response(200, journal())
+          : response(200, history([summary()]));
+      },
+    });
+
+    view.select(command, { active: true });
+    await settle();
+    await settle();
+    dom.commandJournalList.children[0].children[1].dispatch("click");
+    await settle();
+
+    expect(requests.at(-1)).toEqual({
+      url: "/api/v2/command-run-journals/run-1/open-directory?command=kernel/.dev.status",
+      options: {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-SwawKit-Control": "open-journal-directory",
+        },
+      },
+    });
+    expect(dom.commandJournalFeedback.dataset.state).toBe("success");
+  });
+
   test("reentering logs selects the newest run while an in-view refresh retains selection", async () => {
     const dom = elements();
     const newerSummary = {

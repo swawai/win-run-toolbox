@@ -1,4 +1,5 @@
 import {
+  openCommandJournalDirectory,
   readCommandJournal,
   readCommandJournalHistory,
 } from "./command-journal-client.js";
@@ -64,20 +65,50 @@ export function createCommandJournalView(elements, options = {}) {
       const heading = documentObject.createElement("span");
       const status = documentObject.createElement("strong");
       const time = documentObject.createElement("time");
+      const summary = documentObject.createElement("span");
       const meta = documentObject.createElement("small");
       const presentation = journalStatus(run);
+      const open = documentObject.createElement("button");
+      item.className = "command-journal-record";
       button.type = "button";
+      button.className = "command-journal-select";
       button.disabled = loading;
       button.dataset.selected = String(run.id === selectedId);
       button.addEventListener("click", () => void loadRun(run.id, { reset: true }));
       status.textContent = presentation.label;
       status.dataset.state = presentation.tone;
       time.textContent = formatTime(run.startedAtUnixMs);
-      heading.append(status, time);
-      meta.textContent = `${sourceLabels[run.source]} · ${run.eventCount} 条事件`;
-      button.append(heading, meta);
-      item.append(button);
+      heading.append(time);
+      meta.textContent = `${sourceLabels[run.source]} · ${run.eventCount} 条输出事件`;
+      summary.className = "command-journal-record-summary";
+      summary.append(meta, status);
+      button.append(heading, summary);
+      open.type = "button";
+      open.className = "command-journal-open secondary-button";
+      open.disabled = loading;
+      open.textContent = "打开目录";
+      open.setAttribute("aria-label", `打开 ${formatTime(run.startedAtUnixMs)} 的日志目录`);
+      open.addEventListener("click", () => void openDirectory(run.id));
+      item.append(button, open);
       elements.commandJournalList.append(item);
+    }
+  }
+
+  async function openDirectory(id) {
+    const locator = commandJournalLocator(command);
+    if (!active || !locator) {
+      return;
+    }
+    feedback("正在打开日志目录…");
+    try {
+      await openCommandJournalDirectory(locator, id, fetchJournal);
+      if (active && commandJournalLocator(command) === locator) {
+        feedback("已在资源管理器中打开日志目录。", "success");
+      }
+    } catch (error) {
+      if (active && commandJournalLocator(command) === locator) {
+        feedback(error instanceof Error ? error.message : "打开日志目录失败。", "error");
+      }
     }
   }
 

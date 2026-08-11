@@ -175,3 +175,59 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
     };
     assert_eq!(profile.record().git.name, "Applied User");
 }
+
+#[test]
+fn command_logs_read_history_after_the_target_stops_being_runnable() {
+    let fixture = Fixture::new();
+    fixture.core_command("..logs", "command.logs");
+    let command_directory = fixture.command(
+        ".demo",
+        "run.cmd",
+        "@echo off\r\necho journal fixture\r\nexit /b 0\r\n",
+    );
+    fixture.bind();
+    let mut unexpected_claim =
+        |_claim: &DataRootClaim| Err(ClaimApprovalError::new("claim was not expected"));
+
+    assert_eq!(
+        run_with_approver(&fixture.context, &argv(&[".demo"]), &mut unexpected_claim,).unwrap(),
+        0
+    );
+    let runs_root = fixture.data_root().join("modules/kernel/.demo/_runs");
+    let run_id = fs::read_dir(&runs_root)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .into_owned();
+    fs::remove_file(command_directory.join("run.cmd")).unwrap();
+
+    assert_eq!(
+        run_with_approver(
+            &fixture.context,
+            &argv(&["..logs", "kernel/.demo"]),
+            &mut unexpected_claim,
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        run_with_approver(
+            &fixture.context,
+            &argv(&["..logs", "kernel/.demo", "--run", &run_id, "--after", "0"]),
+            &mut unexpected_claim,
+        )
+        .unwrap(),
+        0
+    );
+
+    let invalid = run_with_approver(
+        &fixture.context,
+        &argv(&["..logs", "kernel..demo"]),
+        &mut unexpected_claim,
+    )
+    .unwrap_err();
+    assert!(invalid.to_string().contains("<source>/<address>"));
+}

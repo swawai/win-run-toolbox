@@ -4,19 +4,20 @@ use std::io;
 use axum::{
     Json,
     extract::{Path, RawQuery, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 
-use crate::run_journal::{read_run, read_run_history};
 use crate::{
-    catalog::{CatalogSnapshot, CommandSource},
-    command::catalog_command_data_root,
+    catalog::CatalogSnapshot,
+    command_journal::{CommandJournalAccess, CommandJournalAccessError, CommandLocator},
     data_root::DataRootSessionState,
     profile::EntryProfileStore,
 };
 
-use super::{ServerState, api_error, data_root_status};
+use super::{ServerState, api_error, data_root_status, host_control};
+
+const OPEN_DIRECTORY_COMMAND: &str = "open-journal-directory";
 
 pub(super) async fn get_command_journals(
     State(state): State<ServerState>,
@@ -30,12 +31,7 @@ pub(super) async fn get_command_journals(
         Ok(prepared) => prepared,
         Err(error) => return error.into_response(),
     };
-    let address = prepared.address;
-    match tokio::task::spawn_blocking(move || {
-        read_run_history(&prepared.module_data_root, &address)
-    })
-    .await
-    {
+    match tokio::task::spawn_blocking(move || prepared.journal.history()).await {
         Ok(Ok(document)) => Json(document).into_response(),
         Ok(Err(error)) => journal_error(error).into_response(),
         Err(error) => api_error(
@@ -59,12 +55,7 @@ pub(super) async fn get_command_journal(
         Ok(prepared) => prepared,
         Err(error) => return error.into_response(),
     };
-    let address = prepared.address;
-    match tokio::task::spawn_blocking(move || {
-        read_run(&prepared.module_data_root, &address, &id, query.after)
-    })
-    .await
-    {
+    match tokio::task::spawn_blocking(move || prepared.journal.run(&id, query.after)).await {
         Ok(Ok(document)) => Json(document).into_response(),
         Ok(Err(error)) => journal_error(error).into_response(),
         Err(error) => api_error(
@@ -75,44 +66,41 @@ pub(super) async fn get_command_journal(
     }
 }
 
+pub(super) async fn post_open_command_journal_directory(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    if !host_control::has_control_header(&headers, OPEN_DIRECTORY_COMMAND) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let query = match parse_query(query.as_deref(), false) {
+        Ok(query) => query,
+        Err(error) => return api_error(StatusCode::BAD_REQUEST, error).into_response(),
+    };
+    let prepared = match prepare_journal(&state, query.command).await {
+        Ok(prepared) => prepared,
+        Err(error) => return error.into_response(),
+    };
+    match tokio::task::spawn_blocking(move || prepared.journal.open_run_directory(&id)).await {
+        Ok(Ok(_)) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(error)) => journal_error(error).into_response(),
+        Err(error) => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("command journal directory worker failed: {error}"),
+        )
+        .into_response(),
+    }
+}
+
 struct JournalQuery {
     command: CommandLocator,
     after: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CommandLocator {
-    source: CommandSource,
-    address: String,
-}
-
-impl CommandLocator {
-    fn parse(value: String) -> Result<Self, String> {
-        let (source, address) = value.split_once('/').ok_or_else(|| {
-            "the command locator must use the '<source>/<address>' form".to_owned()
-        })?;
-        if address.is_empty() || address.contains('/') {
-            return Err("the command locator must contain one non-empty address".to_owned());
-        }
-        let source = match source {
-            "kernel" => CommandSource::Kernel,
-            "action" => CommandSource::Action,
-            _ => {
-                return Err(
-                    "the command locator source must be either 'kernel' or 'action'".to_owned(),
-                );
-            }
-        };
-        Ok(Self {
-            source,
-            address: address.to_owned(),
-        })
-    }
-}
-
 struct PreparedJournal {
-    address: String,
-    module_data_root: std::path::PathBuf,
+    journal: CommandJournalAccess,
 }
 
 async fn prepare_journal(
@@ -134,30 +122,15 @@ async fn prepare_journal(
     tokio::task::spawn_blocking(move || {
         let profile_state = profile_store.read();
         let binding = profile_state.ready().map(|profile| profile.binding());
-        if locator.source == CommandSource::Action && binding.is_none() {
-            return Err(api_error(
-                StatusCode::CONFLICT,
-                "a ready Entry Profile is required to locate Action command journals",
-            ));
-        }
         let catalog = CatalogSnapshot::discover(&context, binding).map_err(|_| {
             api_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "catalog discovery failed",
             )
         })?;
-        let command = catalog
-            .commands
-            .iter()
-            .find(|command| command.source == locator.source && command.address == locator.address)
-            .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "command not found"))?;
-        let module_data_root =
-            catalog_command_data_root(&context, &data_root_path, binding, command)
-                .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-        Ok(PreparedJournal {
-            address: locator.address,
-            module_data_root,
-        })
+        CommandJournalAccess::resolve(&context, &data_root_path, &profile_state, &catalog, locator)
+            .map(|journal| PreparedJournal { journal })
+            .map_err(access_error)
     })
     .await
     .map_err(|error| {
@@ -195,7 +168,7 @@ fn parse_query(query: Option<&str>, accepts_after: bool) -> Result<JournalQuery,
         .ok_or_else(|| {
             "the command journal query requires a non-empty 'command' parameter".to_owned()
         })
-        .and_then(CommandLocator::parse)?;
+        .and_then(|value| CommandLocator::parse(value).map_err(|error| error.to_string()))?;
     let after = match values.remove("after") {
         Some(value) if accepts_after => value.parse().map_err(|_| {
             "the command journal 'after' cursor must be an unsigned integer".to_owned()
@@ -253,21 +226,43 @@ fn journal_error(error: io::Error) -> (StatusCode, Json<super::ApiError>) {
     }
 }
 
+fn access_error(error: CommandJournalAccessError) -> (StatusCode, Json<super::ApiError>) {
+    match error {
+        CommandJournalAccessError::InvalidLocator(message) => {
+            api_error(StatusCode::BAD_REQUEST, message)
+        }
+        CommandJournalAccessError::ProfileRequired => {
+            api_error(StatusCode::CONFLICT, error.to_string())
+        }
+        CommandJournalAccessError::CommandNotFound => {
+            api_error(StatusCode::NOT_FOUND, error.to_string())
+        }
+        CommandJournalAccessError::CatalogInvariant(message) => {
+            api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn query_contract_decodes_command_locator_and_rejects_ambiguity() {
+        let readable = parse_query(Some("command=kernel/.dev.status"), false).unwrap();
+        assert_eq!(readable.command.to_string(), "kernel/.dev.status");
         let query = parse_query(Some("command=kernel%2F.demo&after=12"), true).unwrap();
-        assert_eq!(query.command.source, CommandSource::Kernel);
-        assert_eq!(query.command.address, ".demo");
+        assert_eq!(
+            query.command.source(),
+            crate::catalog::CommandSource::Kernel
+        );
+        assert_eq!(query.command.address(), ".demo");
         assert_eq!(query.after, 12);
         assert_eq!(
             parse_query(Some("command=action%2Fdemo.build"), false)
                 .unwrap()
                 .command
-                .address,
+                .address(),
             "demo.build"
         );
         assert!(parse_query(Some("command=kernel%2F.demo&command=action%2Fdemo"), false).is_err());

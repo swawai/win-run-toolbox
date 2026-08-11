@@ -249,7 +249,7 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
 
     let journal = response_json(
         send(
-            app,
+            app.clone(),
             Method::GET,
             &format!("/api/v2/command-run-journals/{id}?command=kernel%2F.demo&after=1"),
             Some(AUTHORITY),
@@ -262,6 +262,29 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
     assert_eq!(journal["events"][0]["sequence"], 2);
     assert_eq!(journal["events"][0]["phase"], "worker");
     assert_eq!(journal["events"][0]["text"], "second\n");
+    let open_location =
+        "/api/v2/command-run-journals/missing-run/open-directory?command=kernel/.demo";
+    assert_eq!(
+        send(app.clone(), Method::POST, open_location, Some(AUTHORITY))
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(open_location)
+                .header(HOST, AUTHORITY)
+                .header("x-swawkit-control", "open-journal-directory")
+                .body(Body::empty())
+                .expect("valid open journal directory request"),
+        )
+        .await
+        .expect("open journal directory response")
+        .status(),
+        StatusCode::NOT_FOUND
+    );
     runs.shutdown().expect("shutdown command runs");
 }
 

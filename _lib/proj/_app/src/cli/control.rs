@@ -2,11 +2,13 @@ use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use swawkit_proj::{
     catalog::{CatalogSnapshot, CommandNode, CommandSource, is_help_marker},
+    command_journal::{CommandJournalAccess, CommandLocator},
     context::EntryContext,
     help::render_help,
-    profile::{EntryProfileDocument, EntryProfileRecord, EntryProfileStore},
+    profile::{EntryProfileDocument, EntryProfileRecord, EntryProfileState, EntryProfileStore},
 };
 
 use super::{CliError, write_output};
@@ -65,6 +67,8 @@ pub(super) fn dispatch(
     snapshot: &CatalogSnapshot,
     argv: &[OsString],
     context: &EntryContext,
+    data_root: &Path,
+    profile_state: &EntryProfileState,
     profile_store: &EntryProfileStore,
     host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
 ) -> Result<Option<i32>, CliError> {
@@ -81,6 +85,9 @@ pub(super) fn dispatch(
     let command = resolve_control(snapshot, address)?;
     let arguments = argv.get(1..).unwrap_or_default();
     let exit_code = match command.handler.as_deref() {
+        Some("command.logs") => {
+            show_command_logs(arguments, context, data_root, profile_state, snapshot)?
+        }
         Some("host.start") => start_host(arguments, context, host_launcher)?,
         Some("entry.profile") => show_profile(arguments, profile_store)?,
         Some("entry.profile.set") => set_profile(address, arguments, profile_store)?,
@@ -97,6 +104,72 @@ pub(super) fn dispatch(
         }
     };
     Ok(Some(exit_code))
+}
+
+fn show_command_logs(
+    arguments: &[OsString],
+    context: &EntryContext,
+    data_root: &Path,
+    profile_state: &EntryProfileState,
+    catalog: &CatalogSnapshot,
+) -> Result<i32, CliError> {
+    let Some(locator) = arguments.first() else {
+        return Err(command_logs_usage());
+    };
+    let locator = CommandLocator::parse(unicode_argument(locator, "command locator")?)
+        .map_err(|error| CliError::new(error.to_string()))?;
+    let journal =
+        CommandJournalAccess::resolve(context, data_root, profile_state, catalog, locator)
+            .map_err(|error| CliError::new(error.to_string()))?;
+
+    match arguments.get(1..) {
+        Some([]) => {
+            let document = journal.history().map_err(journal_read_error)?;
+            write_command_json(&document)?;
+        }
+        Some([option, id]) if option == "--run" => {
+            let id = unicode_argument(id, "run id")?;
+            let document = journal.run(id, 0).map_err(journal_read_error)?;
+            write_command_json(&document)?;
+        }
+        Some([option, id, cursor_option, cursor])
+            if option == "--run" && cursor_option == "--after" =>
+        {
+            let id = unicode_argument(id, "run id")?;
+            let after = unicode_argument(cursor, "after cursor")?
+                .parse::<u64>()
+                .map_err(|_| CliError::new("after cursor must be an unsigned integer"))?;
+            let document = journal.run(id, after).map_err(journal_read_error)?;
+            write_command_json(&document)?;
+        }
+        Some([option, id]) if option == "--open" => {
+            let id = unicode_argument(id, "run id")?;
+            let path = journal
+                .open_run_directory(id)
+                .map_err(|error| CliError::new(format!("cannot open command journal: {error}")))?;
+            write_output(&path.display().to_string())
+                .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
+        }
+        _ => return Err(command_logs_usage()),
+    }
+    Ok(0)
+}
+
+fn command_logs_usage() -> CliError {
+    CliError::new(
+        "usage: ..logs <source/address> [--run <run-id> [--after <cursor>] | --open <run-id>]",
+    )
+}
+
+fn journal_read_error(error: std::io::Error) -> CliError {
+    CliError::new(format!("cannot read command journal: {error}"))
+}
+
+fn write_command_json(document: &impl Serialize) -> Result<(), CliError> {
+    let output = serde_json::to_string_pretty(document)
+        .map_err(|error| CliError::new(format!("cannot serialize command journal: {error}")))?;
+    write_output(&output)
+        .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))
 }
 
 pub(super) fn resolve_control<'a>(

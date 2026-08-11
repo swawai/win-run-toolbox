@@ -13,7 +13,8 @@ use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 
 use crate::atomic_file;
 
-pub(crate) use read::{read_run, read_run_history};
+pub use read::{RunJournalDocument, RunJournalHistoryDocument};
+pub(crate) use read::{read_run, read_run_directory, read_run_history};
 
 pub(crate) const JOURNAL_STATE_SCHEMA: &str = "swawkit.command-run-journal/v1";
 pub(crate) const JOURNAL_EVENT_SCHEMA: &str = "swawkit.command-run-event/v1";

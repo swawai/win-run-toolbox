@@ -103,9 +103,15 @@ fn run_with_dependencies(
             .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
         return Ok(0);
     }
-    if let Some(exit_code) =
-        control::dispatch(&snapshot, argv, context, &profile_store, host_launcher)?
-    {
+    if let Some(exit_code) = control::dispatch(
+        &snapshot,
+        argv,
+        context,
+        resolved.path(),
+        &profile_state,
+        &profile_store,
+        host_launcher,
+    )? {
         return Ok(exit_code);
     }
     CommandExecutor::preflight(&context.kernel_root(), &snapshot, argv)

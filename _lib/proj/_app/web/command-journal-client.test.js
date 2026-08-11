@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   normalizeCommandJournal,
   normalizeCommandJournalHistory,
+  openCommandJournalDirectory,
   readCommandJournal,
   readCommandJournalHistory,
 } from "./command-journal-client.js";
@@ -103,10 +104,29 @@ describe("command journal protocol client", () => {
     });
 
     expect(requests[0].url)
-      .toBe("/api/v2/command-run-journals?command=kernel%2F.dev.status");
+      .toBe("/api/v2/command-run-journals?command=kernel/.dev.status");
     expect(requests[1].url)
-      .toBe("/api/v2/command-run-journals/run%2F17?command=kernel%2F.dev.status&after=1");
+      .toBe("/api/v2/command-run-journals/run%2F17?command=kernel/.dev.status&after=1");
     expect(requests.every(({ options }) => options.cache === "no-store")).toBeTrue();
+  });
+
+  test("opens only the exact validated run directory through a POST", async () => {
+    const requests = [];
+    await openCommandJournalDirectory("kernel/.dev.status", "run/17", async (url, options) => {
+      requests.push({ url, options });
+      return response(204, null);
+    });
+
+    expect(requests).toEqual([{
+      url: "/api/v2/command-run-journals/run%2F17/open-directory?command=kernel/.dev.status",
+      options: {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-SwawKit-Control": "open-journal-directory",
+        },
+      },
+    }]);
   });
 
   test("surfaces API errors and rejects mismatched identities", async () => {

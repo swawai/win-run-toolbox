@@ -48,11 +48,7 @@ pub(super) async fn post_shutdown(
     State(state): State<ServerState>,
     headers: HeaderMap,
 ) -> StatusCode {
-    let authorized = headers
-        .get(CONTROL_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value == SHUTDOWN_COMMAND);
-    if !authorized {
+    if !has_control_header(&headers, SHUTDOWN_COMMAND) {
         return StatusCode::FORBIDDEN;
     }
     if state.host_control.request() {
@@ -60,6 +56,13 @@ pub(super) async fn post_shutdown(
     } else {
         StatusCode::NO_CONTENT
     }
+}
+
+pub(super) fn has_control_header(headers: &HeaderMap, command: &str) -> bool {
+    headers
+        .get(CONTROL_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == command)
 }
 
 pub(super) async fn health(State(state): State<ServerState>) -> Response {

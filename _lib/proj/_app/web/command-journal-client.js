@@ -177,19 +177,24 @@ async function apiError(response, fallback) {
   }
 }
 
-function locatorAddress(locator) {
+function locatorParts(locator) {
   string(locator, "command locator");
   const separator = locator.indexOf("/");
   if (separator <= 0 || separator === locator.length - 1 || locator.indexOf("/", separator + 1) >= 0) {
     throw contractError("命令定位值必须使用 <source>/<address> 格式。");
   }
-  return locator.slice(separator + 1);
+  const source = locator.slice(0, separator);
+  const address = locator.slice(separator + 1);
+  return {
+    address,
+    encoded: `${encodeURIComponent(source)}/${encodeURIComponent(address)}`,
+  };
 }
 
 export async function readCommandJournalHistory(locator, fetchJournal = fetch) {
-  const address = locatorAddress(locator);
+  const { address, encoded } = locatorParts(locator);
   const response = await fetchJournal(
-    `${JOURNALS_URL}?command=${encodeURIComponent(locator)}`,
+    `${JOURNALS_URL}?command=${encoded}`,
     { cache: "no-store", headers: { Accept: "application/json" } },
   );
   if (response.status !== 200) {
@@ -206,11 +211,11 @@ export async function readCommandJournalHistory(locator, fetchJournal = fetch) {
 }
 
 export async function readCommandJournal(locator, id, after = 0, fetchJournal = fetch) {
-  const address = locatorAddress(locator);
+  const { address, encoded } = locatorParts(locator);
   string(id, "run id");
   integer(after, "after");
   const response = await fetchJournal(
-    `${JOURNALS_URL}/${encodeURIComponent(id)}?command=${encodeURIComponent(locator)}&after=${after}`,
+    `${JOURNALS_URL}/${encodeURIComponent(id)}?command=${encoded}&after=${after}`,
     { cache: "no-store", headers: { Accept: "application/json" } },
   );
   if (response.status !== 200) {
@@ -227,4 +232,25 @@ export async function readCommandJournal(locator, id, after = 0, fetchJournal = 
     throw contractError("日志响应没有从请求的 cursor 之后继续。");
   }
   return journal;
+}
+
+export async function openCommandJournalDirectory(locator, id, fetchJournal = fetch) {
+  const { encoded } = locatorParts(locator);
+  string(id, "run id");
+  const response = await fetchJournal(
+    `${JOURNALS_URL}/${encodeURIComponent(id)}/open-directory?command=${encoded}`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "X-SwawKit-Control": "open-journal-directory",
+      },
+    },
+  );
+  if (response.status !== 204) {
+    throw new CommandJournalError(
+      await apiError(response, `Host 返回 HTTP ${response.status}`),
+      response.status,
+    );
+  }
 }

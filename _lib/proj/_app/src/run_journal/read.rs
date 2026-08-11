@@ -21,7 +21,7 @@ const MAX_STORED_EVENTS_FILE_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct RunJournalHistoryDocument {
+pub struct RunJournalHistoryDocument {
     protocol: &'static str,
     address: String,
     runs: Vec<RunJournalSummary>,
@@ -44,7 +44,7 @@ struct RunJournalSummary {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct RunJournalDocument {
+pub struct RunJournalDocument {
     protocol: &'static str,
     id: String,
     address: String,
@@ -165,6 +165,29 @@ pub(crate) fn read_run(
         events,
         truncated: state.truncated || response_truncated,
     })
+}
+
+pub(crate) fn read_run_directory(
+    module_data_root: &Path,
+    address: &str,
+    id: &str,
+) -> io::Result<std::path::PathBuf> {
+    if !valid_run_id(id) {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "run journal not found",
+        ));
+    }
+    let run_root = module_data_root.join(JOURNAL_DIRECTORY_NAME).join(id);
+    if !run_root.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "run journal not found",
+        ));
+    }
+    assert_plain_directory(&run_root)?;
+    read_state(&run_root, id, address)?;
+    Ok(run_root)
 }
 
 fn read_state(run_root: &Path, expected_id: &str, address: &str) -> io::Result<StoredRunState> {

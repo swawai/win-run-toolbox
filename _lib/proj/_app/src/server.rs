@@ -201,6 +201,10 @@ fn router_with_runs(
             get(command_journal::get_command_journal),
         )
         .route(
+            "/api/v2/command-run-journals/{id}/open-directory",
+            axum::routing::post(command_journal::post_open_command_journal_directory),
+        )
+        .route(
             "/api/v2/profile/variables/{name}",
             axum::routing::put(put_profile_variable),
         )

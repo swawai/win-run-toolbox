@@ -15,6 +15,7 @@ const DETAIL_CSS: &str = include_str!("../web/styles/detail.css");
 const ENTRY_PROFILE_CSS: &str = include_str!("../web/styles/entry-profile.css");
 const CLAIM_CSS: &str = include_str!("../web/styles/claim.css");
 const COMMAND_RUN_CSS: &str = include_str!("../web/styles/command-run.css");
+const COMMAND_JOURNAL_CSS: &str = include_str!("../web/styles/command-journal.css");
 
 const APP_JS: &str = include_str!("../web/app.js");
 const CATALOG_MODEL_JS: &str = include_str!("../web/catalog-model.js");
@@ -30,6 +31,8 @@ const COMMAND_RUN_JS: &str = include_str!("../web/command-run.js");
 const COMMAND_RUN_CLIENT_JS: &str = include_str!("../web/command-run-client.js");
 const COMMAND_RUN_MODEL_JS: &str = include_str!("../web/command-run-model.js");
 const COMMAND_RUN_OUTPUT_JS: &str = include_str!("../web/command-run-output.js");
+const COMMAND_JOURNAL_JS: &str = include_str!("../web/command-journal.js");
+const COMMAND_JOURNAL_CLIENT_JS: &str = include_str!("../web/command-journal-client.js");
 
 pub(crate) async fn index() -> Html<&'static str> {
     Html(INDEX_HTML)
@@ -46,6 +49,7 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "styles/entry-profile.css" => Some(("text/css; charset=utf-8", ENTRY_PROFILE_CSS)),
         "styles/claim.css" => Some(("text/css; charset=utf-8", CLAIM_CSS)),
         "styles/command-run.css" => Some(("text/css; charset=utf-8", COMMAND_RUN_CSS)),
+        "styles/command-journal.css" => Some(("text/css; charset=utf-8", COMMAND_JOURNAL_CSS)),
         "app.js" => Some(("text/javascript; charset=utf-8", APP_JS)),
         "catalog-model.js" => Some(("text/javascript; charset=utf-8", CATALOG_MODEL_JS)),
         "command-activity.js" => Some(("text/javascript; charset=utf-8", COMMAND_ACTIVITY_JS)),
@@ -60,6 +64,10 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "command-run-client.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_CLIENT_JS)),
         "command-run-model.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_MODEL_JS)),
         "command-run-output.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_OUTPUT_JS)),
+        "command-journal.js" => Some(("text/javascript; charset=utf-8", COMMAND_JOURNAL_JS)),
+        "command-journal-client.js" => {
+            Some(("text/javascript; charset=utf-8", COMMAND_JOURNAL_CLIENT_JS))
+        }
         _ => None,
     };
 

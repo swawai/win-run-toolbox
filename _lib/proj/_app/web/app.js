@@ -2,6 +2,7 @@ import { createCatalog, hasChildren } from "./catalog-model.js";
 import { createDataRootClaimView } from "./claim.js";
 import { createCommandActivityView } from "./command-activity.js";
 import { createCommandRunView } from "./command-run.js";
+import { createCommandJournalView } from "./command-journal.js";
 import { createDetailView } from "./detail.js";
 import { createExplorerView } from "./explorer.js";
 import { createHostControlView } from "./host-control.js";
@@ -32,6 +33,17 @@ const elements = {
   commandDetail: document.querySelector("#command-detail"),
   commandHelpActivity: document.querySelector("#command-help-activity"),
   commandHelpAddress: document.querySelector("#command-help-address"),
+  commandJournalActivity: document.querySelector("#command-journal-activity"),
+  commandJournalAddress: document.querySelector("#command-journal-address"),
+  commandJournalDetail: document.querySelector("#command-journal-detail"),
+  commandJournalEmpty: document.querySelector("#command-journal-empty"),
+  commandJournalFeedback: document.querySelector("#command-journal-feedback"),
+  commandJournalList: document.querySelector("#command-journal-list"),
+  commandJournalMeta: document.querySelector("#command-journal-meta"),
+  commandJournalOutput: document.querySelector("#command-journal-output"),
+  commandJournalRefresh: document.querySelector("#command-journal-refresh"),
+  commandJournalState: document.querySelector("#command-journal-state"),
+  commandJournalTruncated: document.querySelector("#command-journal-truncated"),
   commandRunActivity: document.querySelector("#command-run-activity"),
   commandRunAdd: document.querySelector("#command-run-add"),
   commandRunAddress: document.querySelector("#command-run-address"),
@@ -86,6 +98,7 @@ const elements = {
 let catalog = null;
 const detail = createDetailView(elements);
 const commandRun = createCommandRunView(elements);
+const commandJournal = createCommandJournalView(elements);
 const commandActivity = createCommandActivityView(elements);
 const entryProfile = createEntryProfileView(elements, {
   async onProfileChanged(document) {
@@ -110,6 +123,7 @@ const explorer = createExplorerView({
       hasChildren: hasChildren(catalog, command),
       view: options.view,
     });
+    commandJournal.select(command, { active: selection.view === "logs" });
     elements.detailPanel.hidden = selection.view === "children";
     updateCommandPath(
       window.history,

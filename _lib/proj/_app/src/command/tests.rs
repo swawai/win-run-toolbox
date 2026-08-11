@@ -4,6 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use serde_json::Value;
+
 use crate::{
     catalog::{CatalogSnapshot, CommandAdapter},
     launch::{ENTRY_FILE_ENV, LAUNCH_MODE_ENV},
@@ -267,6 +269,7 @@ if ($adapterNames.Count -ne 0) {
     throw ('PowerShell adapter variables leaked: ' +
         ([string[]]$adapterNames -join ', '))
 }
+
 $encoded = @($args | ForEach-Object {
     [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$_))
 }) -join ','
@@ -312,6 +315,47 @@ __EXIT__
     assert_eq!(lines[0], "global|guard|global|.tool|");
     assert_eq!(lines[1], "command|guard|command|.tool|");
     assert_eq!(lines[2], "target|run||.tool|,YSBi,cXVvdGUieA==");
+}
+
+#[test]
+fn journaled_execution_persists_guard_and_target_output_in_the_module_data_root() {
+    let fixture = Fixture::new();
+    fixture.command(
+        ".journal",
+        "[Console]::Out.WriteLine('target out'); [Console]::Error.WriteLine('target err'); exit 4",
+    );
+    fixture.guard(
+        &fixture.kernel_root,
+        "_global",
+        "[Console]::Out.WriteLine('guard out'); exit 0",
+    );
+    let catalog = fixture.catalog();
+
+    let exit_code = CommandExecutor::new(&fixture.context(), &catalog)
+        .execute_journaled(&argv(&[".journal", "argument-not-persisted"]))
+        .unwrap();
+
+    assert_eq!(exit_code, 4);
+    let runs_root = fixture.data_root.join("modules/kernel/.journal/_runs");
+    let run_root = fs::read_dir(runs_root)
+        .unwrap()
+        .next()
+        .expect("one command journal")
+        .unwrap()
+        .path();
+    let state: Value = serde_json::from_slice(&fs::read(run_root.join("_state.json")).unwrap())
+        .expect("run journal state");
+    assert_eq!(state["address"], ".journal");
+    assert_eq!(state["source"], "cli");
+    assert_eq!(state["status"], "exited");
+    assert_eq!(state["exitCode"], 4);
+    assert_eq!(state["argumentCount"], 1);
+    let events = fs::read_to_string(run_root.join("events.jsonl")).unwrap();
+    assert!(events.contains("\"phase\":\"guard-global\""));
+    assert!(events.contains("\"phase\":\"run\""));
+    assert!(events.contains("guard out"));
+    assert!(events.contains("target err"));
+    assert!(!events.contains("argument-not-persisted"));
 }
 
 #[test]

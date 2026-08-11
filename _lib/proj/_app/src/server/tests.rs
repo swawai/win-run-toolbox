@@ -209,6 +209,7 @@ async fn serves_only_the_declared_local_surface() {
     let index_html = String::from_utf8_lossy(&body);
     assert!(index_html.contains("Swaw Kit Proj"));
     assert!(index_html.contains("class=\"command-run-output\" id=\"command-run-output\""));
+    assert!(index_html.contains("class=\"command-journal-output\" id=\"command-journal-output\""));
 
     for path in [
         "/commands",
@@ -239,6 +240,10 @@ async fn serves_only_the_declared_local_surface() {
         ),
         ("/assets/styles/claim.css", "text/css; charset=utf-8"),
         ("/assets/styles/command-run.css", "text/css; charset=utf-8"),
+        (
+            "/assets/styles/command-journal.css",
+            "text/css; charset=utf-8",
+        ),
         ("/assets/app.js", "text/javascript; charset=utf-8"),
         ("/assets/catalog-model.js", "text/javascript; charset=utf-8"),
         (
@@ -268,6 +273,14 @@ async fn serves_only_the_declared_local_surface() {
             "text/javascript; charset=utf-8",
         ),
         ("/assets/command-run.js", "text/javascript; charset=utf-8"),
+        (
+            "/assets/command-journal.js",
+            "text/javascript; charset=utf-8",
+        ),
+        (
+            "/assets/command-journal-client.js",
+            "text/javascript; charset=utf-8",
+        ),
     ] {
         let response = send(app.clone(), Method::GET, path, Some(AUTHORITY)).await;
         assert_eq!(response.status(), StatusCode::OK, "{path}");

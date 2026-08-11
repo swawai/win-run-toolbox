@@ -11,5 +11,7 @@ pub mod help;
 pub mod host_runtime;
 pub mod launch;
 pub mod profile;
+mod run_journal;
 pub mod server;
+mod utf8_output;
 mod web_assets;

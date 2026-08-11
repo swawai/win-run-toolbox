@@ -13,7 +13,7 @@ describe("command activities", () => {
       source: "action",
       address: "proj.build.app",
       runnable: true,
-    })).toEqual(["overview", "help", "run"]);
+    })).toEqual(["overview", "help", "run", "logs"]);
     expect(commandActivities({
       source: "control",
       address: "..entry",
@@ -63,6 +63,7 @@ describe("command activities", () => {
       commandDetail: pane(),
       commandHelpActivity: pane(),
       commandRunActivity: pane(),
+      commandJournalActivity: pane(),
     };
     const view = createCommandActivityView(elements);
     const command = {

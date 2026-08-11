@@ -6,7 +6,7 @@ mod process;
 mod resolve;
 
 pub use environment::{CommandExecutionContext, CommandProcessMode};
-pub(crate) use environment::{ExecutionPhase, ProcessEnvironment};
+pub(crate) use environment::{ExecutionPhase, ProcessEnvironment, command_data_root};
 pub use execute::CommandExecutor;
 pub(crate) use guard::{GuardPlan, GuardScope};
 pub(crate) use invocation::Invocation;

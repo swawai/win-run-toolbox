@@ -224,9 +224,42 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
     );
 
     run.complete(EntryRunOutcome::Exited(7));
-    let exited = response_json(send(app, Method::GET, &location, Some(AUTHORITY)).await).await;
+    let exited =
+        response_json(send(app.clone(), Method::GET, &location, Some(AUTHORITY)).await).await;
     assert_eq!(exited["state"], "exited");
     assert_eq!(exited["exitCode"], 7);
+
+    let history = response_json(
+        send(
+            app.clone(),
+            Method::GET,
+            "/api/v2/command-run-journals?address=.demo",
+            Some(AUTHORITY),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(history["protocol"], "swawkit.command-run-history/v1");
+    assert_eq!(history["runs"][0]["id"], id);
+    assert_eq!(history["runs"][0]["source"], "web");
+    assert_eq!(history["runs"][0]["state"], "exited");
+    assert_eq!(history["runs"][0]["eventCount"], 2);
+
+    let journal = response_json(
+        send(
+            app,
+            Method::GET,
+            &format!("/api/v2/command-run-journals/{id}?address=.demo&after=1"),
+            Some(AUTHORITY),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(journal["protocol"], "swawkit.command-run-journal/v1");
+    assert_eq!(journal["nextCursor"], 2);
+    assert_eq!(journal["events"][0]["sequence"], 2);
+    assert_eq!(journal["events"][0]["phase"], "worker");
+    assert_eq!(journal["events"][0]["text"], "second\n");
     runs.shutdown().expect("shutdown command runs");
 }
 

@@ -1,10 +1,66 @@
+use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+    Arc, Weak,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use super::*;
+use crate::entry_runner::{EntryOutputStream, EntryRunControl};
+use crate::run_journal::{RunJournalSource, StartRunJournal};
+
+static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+
+struct RunFixture {
+    root: PathBuf,
+    run: Option<Arc<CommandRun>>,
+}
+
+impl RunFixture {
+    fn new() -> Self {
+        let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        let root = workspace
+            .join("data/proj_cache/tests/run-registry")
+            .join(format!("{}-{sequence}", std::process::id()));
+        let journal = RunJournal::start(StartRunJournal {
+            module_data_root: root.clone(),
+            address: ".fixture".to_owned(),
+            source: RunJournalSource::Web,
+            argument_count: 0,
+            profile_revision: "sha256-fixture".to_owned(),
+        })
+        .expect("start fixture journal");
+        let id = journal.id().expect("fixture journal id");
+        Self {
+            root,
+            run: Some(Arc::new(CommandRun::new(
+                id,
+                ".fixture".to_owned(),
+                journal,
+            ))),
+        }
+    }
+
+    fn run(&self) -> &Arc<CommandRun> {
+        self.run.as_ref().expect("fixture command run")
+    }
+
+    fn drop_run(&mut self) {
+        drop(self.run.take());
+    }
+}
+
+impl Drop for RunFixture {
+    fn drop(&mut self) {
+        self.drop_run();
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
 
 struct FailingControl;
 
@@ -38,7 +94,8 @@ impl Drop for DropAwareControl {
 
 #[test]
 fn failed_cancellation_restores_a_running_state() {
-    let run = CommandRun::new("run".to_owned(), ".fixture".to_owned());
+    let fixture = RunFixture::new();
+    let run = fixture.run();
     run.attach_control(Arc::new(FailingControl))
         .expect("attach fixture control");
 
@@ -53,7 +110,8 @@ fn failed_cancellation_restores_a_running_state() {
 
 #[test]
 fn missing_control_fails_and_restores_a_running_state() {
-    let run = CommandRun::new("run".to_owned(), ".fixture".to_owned());
+    let fixture = RunFixture::new();
+    let run = fixture.run();
 
     let error = run.cancel().expect_err("missing control must fail");
 
@@ -66,7 +124,8 @@ fn missing_control_fails_and_restores_a_running_state() {
 
 #[test]
 fn bounds_small_output_chunks_by_event_count() {
-    let run = CommandRun::new("run".to_owned(), ".fixture".to_owned());
+    let fixture = RunFixture::new();
+    let run = fixture.run();
 
     for _ in 0..=MAX_OUTPUT_EVENTS {
         run.append(EntryOutputStream::Stdout, "x".to_owned());
@@ -82,7 +141,8 @@ fn bounds_small_output_chunks_by_event_count() {
 #[test]
 fn observer_does_not_keep_a_dropped_run_control_alive() {
     let dropped = Arc::new(AtomicBool::new(false));
-    let run = Arc::new(CommandRun::new("run".to_owned(), ".fixture".to_owned()));
+    let mut fixture = RunFixture::new();
+    let run = Arc::clone(fixture.run());
     run.attach_control(Arc::new(DropAwareControl(Arc::clone(&dropped))))
         .expect("attach drop-aware control");
     let observer = RunObserver {
@@ -91,6 +151,7 @@ fn observer_does_not_keep_a_dropped_run_control_alive() {
     };
 
     drop(run);
+    fixture.drop_run();
 
     assert!(dropped.load(Ordering::Acquire));
     observer.output(EntryOutputStream::Stdout, "ignored".to_owned());

@@ -1,0 +1,164 @@
+.command-journal-activity {
+  padding: 27px 26px;
+}
+
+.command-journal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.command-journal-heading h2,
+.command-journal-heading p {
+  margin: 0;
+}
+
+.command-journal-heading h2 {
+  font-family: var(--font-mono);
+  font-size: clamp(22px, 2.3vw, 28px);
+  overflow-wrap: anywhere;
+}
+
+.command-journal-heading p {
+  margin-top: 8px;
+  color: var(--ui-text-muted);
+  font-size: 12px;
+}
+
+.command-journal-refresh.secondary-button {
+  min-width: max-content;
+  padding: 6px 9px;
+}
+
+.command-journal-feedback,
+.command-journal-empty,
+.command-journal-truncated {
+  margin: 9px 1px 0;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.command-journal-feedback {
+  min-height: 17px;
+}
+
+.command-journal-feedback[data-state="error"],
+.command-journal-output [data-stream="stderr"] {
+  color: var(--ui-status-error);
+}
+
+.command-journal-list {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.command-journal-list button {
+  width: 100%;
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-journal-list button:hover,
+.command-journal-list button[data-selected="true"] {
+  border-color: var(--ui-border-strong);
+  background: var(--ui-surface-hover);
+}
+
+.command-journal-list button > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.command-journal-list strong[data-state="success"] {
+  color: var(--ui-status-ok);
+}
+
+.command-journal-list strong[data-state="warning"] {
+  color: var(--ui-status-warning);
+}
+
+.command-journal-list strong[data-state="error"] {
+  color: var(--ui-status-error);
+}
+
+.command-journal-list time,
+.command-journal-list small,
+.command-journal-meta {
+  color: var(--ui-text-muted);
+  font-size: 10px;
+}
+
+.command-journal-detail {
+  margin-top: 22px;
+}
+
+.command-journal-detail > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.command-journal-state {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.command-journal-state[data-state="success"] {
+  color: var(--ui-status-ok);
+}
+
+.command-journal-state[data-state="warning"] {
+  color: var(--ui-status-warning);
+}
+
+.command-journal-state[data-state="error"] {
+  color: var(--ui-status-error);
+}
+
+.command-journal-output {
+  min-height: 96px;
+  max-height: 310px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  color: var(--ui-text);
+  background: var(--ui-surface-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.command-journal-output > span {
+  display: block;
+}
+
+.command-journal-truncated {
+  color: var(--ui-status-warning);
+}
+
+@media (max-width: 560px) {
+  .command-journal-activity {
+    padding: 23px 18px;
+  }
+}

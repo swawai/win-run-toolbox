@@ -230,6 +230,34 @@
                         </section>
                       </section>
                     </div>
+
+                    <article class="command-journal-activity command-activity-pane"
+                      id="command-journal-activity" tabindex="-1" hidden>
+                      <header class="command-journal-heading">
+                        <div>
+                          <h2>运行日志</h2>
+                          <p><code id="command-journal-address"></code></p>
+                        </div>
+                        <button class="secondary-button command-journal-refresh"
+                          id="command-journal-refresh" type="button">刷新</button>
+                      </header>
+                      <p class="command-journal-feedback" id="command-journal-feedback"
+                        aria-live="polite"></p>
+                      <p class="command-journal-empty" id="command-journal-empty">尚无历史运行。</p>
+                      <ol class="command-journal-list" id="command-journal-list"></ol>
+                      <section class="command-journal-detail" id="command-journal-detail"
+                        aria-label="持久运行日志" hidden>
+                        <header>
+                          <span class="command-journal-meta" id="command-journal-meta"></span>
+                          <span class="command-journal-state" id="command-journal-state"></span>
+                        </header>
+                        <pre class="command-journal-output" id="command-journal-output"
+                          role="log" aria-live="off" tabindex="0"></pre>
+                        <p class="command-journal-truncated" id="command-journal-truncated" hidden>
+                          日志已达到保留或响应上限；这里只显示仍被保留的部分。
+                        </p>
+                      </section>
+                    </article>
                   </div>
                 </div>
               </aside>

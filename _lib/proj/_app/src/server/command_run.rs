@@ -13,11 +13,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     catalog::{CatalogSnapshot, CommandSource},
+    command::{CommandExecutionContext, CommandProcessMode, ResolvedCommand, command_data_root},
+    data_root::DataRootSessionState,
     entry_runner::EntryRunSpec,
-    profile::EntryProfileState,
+    profile::{EntryProfileState, EntryProfileStore},
+    run_journal::{RunJournalSource, StartRunJournal},
 };
 
-use super::{ServerState, api_error, ready_profile_store};
+use super::{ServerState, api_error, data_root_status};
 pub(super) use registry::{CommandRuns, RegistryError};
 
 pub(super) const COMMAND_RUN_PROTOCOL: &str = "swawkit.command-run/v1";
@@ -103,6 +106,7 @@ pub(super) async fn post_command_run(
     let mut argv = Vec::with_capacity(request.arguments.len() + 1);
     argv.push(OsString::from(&address));
     argv.extend(request.arguments.into_iter().map(OsString::from));
+    let argument_count = argv.len().saturating_sub(1);
     let spec = EntryRunSpec {
         id: String::new(),
         entry_file: state.context.entry_file.clone(),
@@ -111,16 +115,26 @@ pub(super) async fn post_command_run(
     };
     let runs = state.command_runs.clone();
     let start_address = address.clone();
-    let started = match tokio::task::spawn_blocking(move || runs.start(start_address, spec)).await {
-        Ok(started) => started,
-        Err(error) => {
-            return api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("command run worker failed: {error}"),
-            )
-            .into_response();
-        }
+    let journal_request = StartRunJournal {
+        module_data_root: prepared.module_data_root,
+        address: address.clone(),
+        source: RunJournalSource::Web,
+        argument_count,
+        profile_revision: prepared.profile_revision,
     };
+    let started =
+        match tokio::task::spawn_blocking(move || runs.start(start_address, spec, journal_request))
+            .await
+        {
+            Ok(started) => started,
+            Err(error) => {
+                return api_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("command run worker failed: {error}"),
+                )
+                .into_response();
+            }
+        };
     match started {
         Ok(document) => {
             let location = HeaderValue::from_str(&format!("/api/v2/command-runs/{}", document.id))
@@ -205,11 +219,13 @@ pub(super) async fn delete_command_run(
     }
 }
 
-struct PreparedRun {
-    working_directory: PathBuf,
+pub(super) struct PreparedRun {
+    pub working_directory: PathBuf,
+    pub module_data_root: PathBuf,
+    pub profile_revision: String,
 }
 
-async fn prepare_run(
+pub(super) async fn prepare_run(
     state: &ServerState,
     address: &str,
 ) -> Result<PreparedRun, (StatusCode, Json<super::ApiError>)> {
@@ -219,8 +235,18 @@ async fn prepare_run(
             "command address cannot be empty",
         ));
     }
-    let profile_store = ready_profile_store(state).await?;
+    let data_root = match data_root_status(state).await? {
+        DataRootSessionState::Ready(resolved) => resolved,
+        DataRootSessionState::ClaimRequired(_) => {
+            return Err(api_error(
+                StatusCode::CONFLICT,
+                "DataRoot ownership claim is required",
+            ));
+        }
+    };
+    let profile_store = EntryProfileStore::new(&state.context.swawkit_home, data_root.path());
     let context = state.context.clone();
+    let data_root_path = data_root.path().to_path_buf();
     let address = address.to_owned();
     tokio::task::spawn_blocking(move || {
         let profile_state = profile_store.read();
@@ -246,11 +272,15 @@ async fn prepare_run(
                     "catalog discovery failed",
                 )
             })?;
-        let command = catalog
+        if !catalog
             .commands
             .iter()
-            .find(|command| command.address == address)
-            .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "command not found"))?;
+            .any(|command| command.address == address)
+        {
+            return Err(api_error(StatusCode::NOT_FOUND, "command not found"));
+        }
+        let command = ResolvedCommand::from_catalog(&catalog, &address)
+            .map_err(|error| api_error(StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))?;
         if !matches!(
             command.source,
             CommandSource::Kernel | CommandSource::Action
@@ -260,17 +290,17 @@ async fn prepare_run(
                 "only Kernel and Action commands can run through the Web command worker",
             ));
         }
-        if !command.runnable {
-            return Err(api_error(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                command
-                    .diagnostic
-                    .as_deref()
-                    .unwrap_or("command is not runnable"),
-            ));
-        }
+        let execution_context = CommandExecutionContext::new(
+            &context,
+            profile,
+            &data_root_path,
+            CommandProcessMode::NoWindow,
+        );
         Ok(PreparedRun {
             working_directory: profile.binding().target_project_root().to_path_buf(),
+            module_data_root: command_data_root(&execution_context, &command)
+                .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?,
+            profile_revision: profile.profile_revision().to_owned(),
         })
     })
     .await
@@ -296,6 +326,10 @@ fn registry_error(error: RegistryError) -> (StatusCode, Json<super::ApiError>) {
         RegistryError::Start(error) => api_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("cannot start the Entry command: {error}"),
+        ),
+        RegistryError::Journal(error) => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("cannot start the command journal: {error}"),
         ),
         RegistryError::Cancel(error) => api_error(
             StatusCode::INTERNAL_SERVER_ERROR,

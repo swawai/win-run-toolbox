@@ -129,9 +129,12 @@ fn run_with_dependencies(
     };
     let execution_context =
         CommandExecutionContext::new(context, &profile, resolved.path(), process_mode);
-    CommandExecutor::new(&execution_context, &snapshot)
-        .execute(argv)
-        .map_err(|error| CliError::new(error.to_string()))
+    let executor = CommandExecutor::new(&execution_context, &snapshot);
+    match process_mode {
+        CommandProcessMode::InheritConsole => executor.execute_journaled(argv),
+        CommandProcessMode::NoWindow => executor.execute(argv),
+    }
+    .map_err(|error| CliError::new(error.to_string()))
 }
 
 fn launch_entry_host(context: &EntryContext) -> Result<i32, CliError> {

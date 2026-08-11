@@ -30,6 +30,7 @@ use crate::{
 };
 
 mod claim;
+mod command_journal;
 mod command_run;
 mod host_control;
 
@@ -190,6 +191,14 @@ fn router_with_runs(
         .route(
             "/api/v2/command-runs/{id}",
             get(command_run::get_command_run).delete(command_run::delete_command_run),
+        )
+        .route(
+            "/api/v2/command-run-journals",
+            get(command_journal::get_command_journals),
+        )
+        .route(
+            "/api/v2/command-run-journals/{id}",
+            get(command_journal::get_command_journal),
         )
         .route(
             "/api/v2/profile/variables/{name}",

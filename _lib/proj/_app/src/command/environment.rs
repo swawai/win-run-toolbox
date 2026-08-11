@@ -180,7 +180,7 @@ impl ProcessEnvironment {
     }
 }
 
-fn command_data_root(
+pub(crate) fn command_data_root(
     context: &CommandExecutionContext,
     command: &ResolvedCommand,
 ) -> CommandResult<PathBuf> {

@@ -58,27 +58,29 @@
 5. **Provider State。** `_state.json` 使用 `swawkit.command-provider-state/v1`，状态为 `unavailable` 或 `ready`。影响开发环境的 Profile 输入变化时，`.dev.setup` 状态同步变为 `unavailable`；重新执行 `.dev.setup` 后，完成的 Export 与 `ready` 状态一起成为新的有效发布。`inputRevision`、`token` 与 `producerContract` 共同标识这次发布并保证消费一致性。
 6. **环境变量是边界，不是状态。** 除系列根目录使用 `SWAWKIT_HOME` 外，Proj 拥有的变量统一使用 `SWAWKIT_PROJ_` 前缀：`SWAWKIT_PROJ_CORE_LAUNCH_*` 传递一次性启动声明，`SWAWKIT_PROJ_CORE_COMMAND_*` 描述单次命令上下文，`SWAWKIT_PROJ_MODULE_*` 用于模块私有适配。Core 在读取 Launcher 声明后、创建线程前清除进程中的 `SWAWKIT_HOME` 与全部 `SWAWKIT_PROJ_*`；Host 的长期事实保存在类型化对象和 DataRoot。每次执行命令时，Core 再从当前 Entry/Profile 生成命令环境，适配器私有变量在消费后清除。
 7. **执行一致性。** 普通 Kernel 和 Action 依次执行全局 Guard、模块 Guard 和 `run.*`；Guard 只检查前提，不安装工具或修复状态。CLI 直接进入这条执行链，Web 则通过同一个 Entry Launcher 创建 Entry Worker，再进入同一条链，因此两者共享解释器、cwd、Profile、DataRoot 与环境语义。
-8. **构建与发布分离。** build 只产出候选文件，显式 publish/update 命令才可替换正式制品。`proj.publish.app` 只消费 `proj.build.app` 的 Ready Provider 与匹配 Manifest，在共享锁内原子切换 Core；旧进程继续运行已映射版本，新调用使用新版本。工具下载、安装、更新和主动清理由显式命令触发，受管工具始终使用已验证的受管版本，而不是系统 PATH 中的同名程序。
+8. **持久运行日志。** CLI 和 Web 运行都在所属模块数据根的 `_runs/{run-id}/` 写入同一套事实：`events.jsonl` 使用 `swawkit.command-run-event/v1` 追加带时间、阶段和 stdout/stderr 的 UTF-8 事件，`_state.json` 使用 `swawkit.command-run-journal/v1` 原子发布来源、起止时间和终态。原始参数不落盘，只记录数量；每次运行最多保留 8 MiB 事件文件，达到上限后明确标记 `truncated`。日志写入是执行契约的一部分，初始化或完成日志失败会使本次运行失败，而不是静默丢失。
+9. **构建与发布分离。** build 只产出候选文件，显式 publish/update 命令才可替换正式制品。`proj.publish.app` 只消费 `proj.build.app` 的 Ready Provider 与匹配 Manifest，在共享锁内原子切换 Core；旧进程继续运行已映射版本，新调用使用新版本。工具下载、安装、更新和主动清理由显式命令触发，受管工具始终使用已验证的受管版本，而不是系统 PATH 中的同名程序。
 
 ## 五、当前做到哪里
 
 1. Native Launcher 和 Rust Core 已接管正常启动、Entry 身份、DataRoot、Profile、命令发现、Guard、CLI、单实例 Entry Host 与 Entry Worker 主链。
-2. Entry Host 采用 Axum、Tray 和系统浏览器；Web 已能浏览命令、编辑 Profile，并启动、增量读取和取消 Kernel/Action 命令。命令页使用可刷新的 `/commands/{source}/...` 深链；Finder 将“命令层级”和“当前命令视图”分成两个维度：只有路径末端命令会在原行下展开其实际能力对应的本地视图，普通命令为子命令、概览、帮助和可选执行，Profile 变量命令为设置、概览和帮助；祖先命令保持折叠，Finder 后续列只表示真实子命令。Host 会原子发布带 Entry 身份、Boot ID、PID 和回环 URL 的瞬时运行描述；二次启动验证健康端点后由新进程打开控制台，Web 同时显示 Host 状态并提供显式退出入口，因此托盘不是唯一恢复路径。Control 仍由受限 Core handler 或专用 API 承担，不作为任意 Entry Worker 命令开放。
+2. Entry Host 采用 Axum、Tray 和系统浏览器；Web 已能浏览命令、编辑 Profile，并启动、增量读取和取消 Kernel/Action 命令，还能按命令查看跨 Host 保留的 CLI/Web 历史日志。命令页使用可刷新的 `/commands/{source}/...` 深链；Finder 将“命令层级”和“当前命令视图”分成两个维度：只有路径末端命令会在原行下展开其实际能力对应的本地视图，普通命令为子命令、概览、帮助、可选执行和日志，Profile 变量命令为设置、概览和帮助；祖先命令保持折叠，Finder 后续列只表示真实子命令。Host 会原子发布带 Entry 身份、Boot ID、PID 和回环 URL 的瞬时运行描述；二次启动验证健康端点后由新进程打开控制台，Web 同时显示 Host 状态并提供显式退出入口，因此托盘不是唯一恢复路径。Control 仍由受限 Core handler 或专用 API 承担，不作为任意 Entry Worker 命令开放。
 3. `_profile.json` 是用户配置的唯一来源；相关环境输入变化会同步使 `.dev.setup` Provider State 失效。`.dev.setup` 的 `env.cmd`、`env.ps1` 位于自身 `export/`，`.dev.bun`、`.dev.cargo`、`.dev.rustc`、`.dev.cl` 等消费者通过统一检查后加载。
 4. 当前执行器支持 `run.exe`、`run.ps1` 和受限的 `run.cmd`。PowerShell 负责工具链、环境发布和命令适配，`.dev.cmd`、`.dev.ps` 提供一次性 Shell 调用。
 5. `proj.build.app` 与 `proj.build.launcher` 已把中间文件、锁和稳定候选分别收进各自 Action 数据根的 `work/`、`locks/` 与 `export/`，并发布制品 Manifest 与 Provider State；失败构建不会授予 Ready 状态。`proj.publish.app` 是第一个自动消费者，会拒绝缺失、过期或被篡改的候选并原子更新正式 Core。Bun、PowerShell、MSVC 和 Rust 的受管环境已经实现；正式测试同时覆盖 Launcher/Core 协议、模块 Export 与 Provider State、Entry Host 单实例、Entry Worker 输出和整棵进程树取消。
 
 ## 六、Web 与执行边界
 
-1. Web 使用固定 Finder 式界面，目录命令模块通过 `_view/web.json` 提供展示提示。命令行只在自身成为路径末端时原位展开 UI 拥有的视图菜单；有真实子命令时默认选择“子命令”，普通叶子命令默认选择“概览”，Profile 变量叶子命令默认选择“设置”，“执行”永不自动触发且只对 Kernel/Action 开放。继续选择子命令后，父命令菜单收起并追加下一列。URL 路径编码可分享、可刷新和可前进后退的命令身份，非默认视图以 `?view=edit|overview|help|run` 表达；默认视图、临时表单与运行状态不进入 URL。视图标签不属于 Catalog 地址，因此不会与英文命令名冲突。Profile 变量的 Finder 摘要、Web 帮助与 CLI 帮助共同读取叶子命令目录的 `_help/zh-CN.txt`，Web 不维护第二份领域文案。Web 提交 Catalog 中的命令地址和参数，解释器、磁盘路径、cwd 和环境变量由 Core 解析。Host 状态与退出使用受 Host 头约束、要求显式控制请求头的专用本地 API；单实例租约只负责互斥，不再兼任无法确认结果的激活通道。
-2. Web run 使用 `swawkit.command-run/v1` 表达运行标识、状态、增量事件和退出结果。每次运行都从当前用户环境基线启动新的 Entry Worker，并过滤已有的 Swaw Kit 环境命名空间；Host 负责请求与生命周期，具体命令仍经过完整 Entry 边界。
+1. Web 使用固定 Finder 式界面，目录命令模块通过 `_view/web.json` 提供展示提示。命令行只在自身成为路径末端时原位展开 UI 拥有的视图菜单；有真实子命令时默认选择“子命令”，普通叶子命令默认选择“概览”，Profile 变量叶子命令默认选择“设置”，“执行”永不自动触发且只对 Kernel/Action 开放。继续选择子命令后，父命令菜单收起并追加下一列。URL 路径编码可分享、可刷新和可前进后退的命令身份，非默认视图以 `?view=edit|overview|help|run|logs` 表达；默认视图、临时表单与运行状态不进入 URL。视图标签不属于 Catalog 地址，因此不会与英文命令名冲突。Profile 变量的 Finder 摘要、Web 帮助与 CLI 帮助共同读取叶子命令目录的 `_help/zh-CN.txt`，Web 不维护第二份领域文案。Web 提交 Catalog 中的命令地址和参数，解释器、磁盘路径、cwd 和环境变量由 Core 解析。Host 状态与退出使用受 Host 头约束、要求显式控制请求头的专用本地 API；单实例租约只负责互斥，不再兼任无法确认结果的激活通道。
+2. Web run 使用 `swawkit.command-run/v1` 表达当前 Host 内的运行标识、状态、增量事件和退出结果。每次运行都从当前用户环境基线启动新的 Entry Worker，并过滤已有的 Swaw Kit 环境命名空间；Host 负责请求与生命周期，具体命令仍经过完整 Entry 边界。
 3. Entry Worker 使用 Windows Job Object 管理整棵子进程树；取消和 Entry Host 退出都会回收后代进程。stdin 关闭，stdout/stderr 以 UTF-8 事件增量返回并有容量上限，当前执行模型面向非交互任务。
-4. `.swaw` Action 是以当前用户权限运行的受信任项目代码；Web 约束调用入口和生命周期，但 Action 本身不是安全沙箱。Host 中的 run registry 只保存当前会话的瞬时输出；需要跨进程同步或长期留存的业务状态，仍应由命令模块写入自己的 DataRoot。
+4. 当前 Host 的 run registry 只负责活跃运行、取消和短期内存窗口；持久事实由模块 `_runs/` 中的 Run Journal 承担。CLI 在执行器边界边回显边记录，Web 则由 Host 在 Worker 外层记录，因此 Worker 启动失败和取消也能形成一致终态。Web 的日志视图通过 `/api/v2/command-run-journals` 读取最近 32 次摘要和游标增量事件；磁盘日志不依赖当前 Host 生命周期。
+5. `.swaw` Action 是以当前用户权限运行的受信任项目代码；Web 约束调用入口和生命周期，但 Action 本身不是安全沙箱。Run Journal 是执行可观测性，不替代模块自身的业务状态、Provider State 或 Export。
 
 ## 七、下一步
 
-1. 先定义命令模块拥有的持久事件日志最小协议（建议 JSON Lines），让 CLI 和 Web Worker 都写同一份模块事实，Web 通过游标增量读取；先不引入 OpenTelemetry SDK，等确有跨进程 Trace 或外部采集需求时再映射到 OTLP。
-2. 以真实命令为驱动扩展 `_view/web.json` 的最小交互协议，逐步覆盖参数类型、确认提示和结果展示；不要把临时输入和输出塞进 URL。
+1. 以真实命令为驱动扩展 `_view/web.json` 的最小交互协议，逐步覆盖参数类型、确认提示和结果展示；不要把临时输入和输出塞进 URL。
+2. Run Journal V1 先通过 8 MiB 单次上限约束失控输出；积累真实使用量后，再定义跨进程安全的按模块保留数量、清理入口和“进程异常退出后未完成”的对账规则，不提前加入常驻日志服务或 OpenTelemetry SDK。确有跨进程 Trace 或外部采集需求时，再从当前事件协议映射到 OTLP。
 3. 单独完成执行入口收敛：删除 `run.ps1` / `run.cmd` 适配器前，先把现有命令迁移到 `run.exe`、`run.ts` 或 `run.py` 并补齐 Bun/Node/Python 的启动契约，避免长期兼容层。
 4. 继续收窄现有 Action 对 `_toolchain` 私有实现的直接依赖；等 Launcher 出现真实发布消费者时，再按 App 已验证的模式增加对应 publish 入口，不预先制造通用资产框架。
 5. 为退出后的 retired Core 增加低成本、可观察的日常清理触发点；当前发布会在每次执行时重试清理，仍被旧 Host 映射的版本明确保留在共享缓存中。

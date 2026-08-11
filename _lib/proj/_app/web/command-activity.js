@@ -27,6 +27,11 @@ const viewPresentation = {
     label: "执行",
     summary: "设置参数并启动命令",
   },
+  logs: {
+    icon: "≡",
+    label: "日志",
+    summary: "查看 CLI 与 Web 历史运行",
+  },
 };
 
 export function commandActivities(command) {
@@ -38,7 +43,7 @@ export function commandActivities(command) {
   }
   const activities = ["overview", "help"];
   if (isCommandRunSupported(command)) {
-    activities.push("run");
+    activities.push("run", "logs");
   }
   return activities;
 }
@@ -67,8 +72,9 @@ export function createCommandActivityView(elements) {
     ["overview", elements.commandDetail],
     ["help", elements.commandHelpActivity],
     ["run", elements.commandRunActivity],
+    ["logs", elements.commandJournalActivity],
   ]);
-  const workspaceViews = new Set(["overview", "help", "run"]);
+  const workspaceViews = new Set(["overview", "help", "run", "logs"]);
   let available = [];
   let selected = null;
   let selectedAddress = null;

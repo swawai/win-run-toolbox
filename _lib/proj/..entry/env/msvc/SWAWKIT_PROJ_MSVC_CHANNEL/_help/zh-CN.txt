@@ -1,0 +1,7 @@
+设置托管 MSVC 的发布通道。
+
+用法:
+  {{INVOCATION}} <value>
+
+当 SWAWKIT_PROJ_MSVC_MODE 为 managed 时，此值必须非空，例如 17。
+修改此值会使 .dev.setup 需要重新协调。

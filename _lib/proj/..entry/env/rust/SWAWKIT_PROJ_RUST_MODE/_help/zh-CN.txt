@@ -1,0 +1,8 @@
+设置 Rust 工具链模式。
+
+用法:
+  {{INVOCATION}} <value>
+
+可用值为 rustup、disabled。rustup 要求 SWAWKIT_PROJ_RUST_TOOLCHAIN 非空，
+并由 .dev.setup 准备工具链；disabled 表示禁用托管 Rust。修改此值会使
+.dev.setup 需要重新协调。

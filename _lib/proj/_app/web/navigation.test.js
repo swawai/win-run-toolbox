@@ -85,6 +85,7 @@ describe("command URL contract", () => {
   test("round-trips non-default views without encoding default UI state", () => {
     expect(parseCommandView("")).toBeNull();
     expect(parseCommandView("?view=help")).toBe("help");
+    expect(parseCommandView("?view=edit")).toBe("edit");
     expect(() => parseCommandView("?view=unknown")).toThrow("未知");
     expect(() => parseCommandView("?view=help&view=run")).toThrow("只能");
     expect(() => parseCommandView("?view=help&draft=1")).toThrow("参数");

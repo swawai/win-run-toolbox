@@ -182,10 +182,13 @@ fn entry_env_directory_modules_match_the_profile_variable_registry() {
         .expect("Proj kernel root");
     let snapshot = CatalogSnapshot::discover_optional_roots(kernel, None, "swawkit")
         .expect("source-tree Catalog");
-    let actual = snapshot
+    let setters = snapshot
         .commands
         .iter()
         .filter(|command| command.handler.as_deref() == Some("entry.profile.set"))
+        .collect::<Vec<_>>();
+    let actual = setters
+        .iter()
         .map(|command| command.address.as_str())
         .collect::<Vec<_>>();
     let expected = crate::profile::EntryProfileRecord::environment_variable_commands()
@@ -194,6 +197,18 @@ fn entry_env_directory_modules_match_the_profile_variable_registry() {
         .collect::<Vec<_>>();
 
     assert_eq!(actual, expected);
+    for command in setters {
+        let help = command.help.as_ref().unwrap_or_else(|| {
+            panic!("Profile setter {} must provide local Help", command.address)
+        });
+        assert!(!help.summary.trim().is_empty());
+        assert!(
+            help.text
+                .contains(&format!("swawkit {} <value>", command.address)),
+            "Profile setter {} must document its CLI value argument",
+            command.address
+        );
+    }
 }
 
 #[test]

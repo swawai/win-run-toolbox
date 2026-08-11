@@ -1,0 +1,7 @@
+设置预留的 Python 版本声明。
+
+用法:
+  {{INVOCATION}} <value>
+
+该值可留空。V0 的 Python 模式仅支持 disabled，因此该字段目前只保存声明，
+不会触发工具链安装。

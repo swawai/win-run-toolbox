@@ -104,18 +104,7 @@ const explorer = createExplorerView({
     });
   },
   onSelectCommand(command, options = {}) {
-    if (entryProfile.render(command)) {
-      commandActivity.selectCommand(null);
-      commandRun.select(null);
-      elements.detailPanel.hidden = false;
-      updateCommandPath(
-        window.history,
-        window.location,
-        command,
-        { mode: options.history ?? "none" },
-      );
-      return;
-    }
+    entryProfile.render(command);
     detail.render(catalog, command);
     commandRun.select(command);
     const selection = commandActivity.selectCommand(command, {

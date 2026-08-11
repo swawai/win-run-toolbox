@@ -7,6 +7,11 @@ const viewPresentation = {
     label: "子命令",
     summary: "继续浏览下一级命令",
   },
+  edit: {
+    icon: "✎",
+    label: "设置",
+    summary: "修改并保存变量值",
+  },
   overview: {
     icon: "i",
     label: "概览",
@@ -25,8 +30,11 @@ const viewPresentation = {
 };
 
 export function commandActivities(command) {
-  if (!command || command.handler === PROFILE_SETTER_HANDLER) {
+  if (!command) {
     return [];
+  }
+  if (command.handler === PROFILE_SETTER_HANDLER) {
+    return ["edit", "overview", "help"];
   }
   const activities = ["overview", "help"];
   if (isCommandRunSupported(command)) {
@@ -55,17 +63,20 @@ export function defaultCommandView(command, options = {}) {
 
 export function createCommandActivityView(elements) {
   const panes = new Map([
+    ["edit", elements.entryProfileDetail],
     ["overview", elements.commandDetail],
     ["help", elements.commandHelpActivity],
     ["run", elements.commandRunActivity],
   ]);
+  const workspaceViews = new Set(["overview", "help", "run"]);
   let available = [];
   let selected = null;
   let selectedAddress = null;
 
   function render() {
     const active = new Set(available.filter((name) => name !== "children"));
-    elements.commandWorkspace.hidden = !active.has(selected);
+    elements.commandWorkspace.hidden = !workspaceViews.has(selected)
+      || !active.has(selected);
     for (const [name, pane] of panes) {
       pane.hidden = name !== selected || !active.has(name);
     }

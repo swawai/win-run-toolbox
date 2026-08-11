@@ -1,6 +1,6 @@
 const COMMAND_ROUTE_ROOT = "/commands";
 const COMMAND_SOURCES = new Set(["action", "kernel", "control"]);
-const COMMAND_VIEWS = new Set(["children", "overview", "help", "run"]);
+const COMMAND_VIEWS = new Set(["children", "edit", "overview", "help", "run"]);
 const NORMAL_SEGMENT = /^[a-z][a-z0-9-]*$/;
 const ENVIRONMENT_SEGMENT = /^SWAWKIT_PROJ_[A-Z0-9_]+$/;
 

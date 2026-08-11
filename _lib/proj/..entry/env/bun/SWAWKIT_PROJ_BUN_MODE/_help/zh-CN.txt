@@ -1,0 +1,8 @@
+设置 Bun 工具链的管理模式。
+
+用法:
+  {{INVOCATION}} <value>
+
+可用值为 managed、disabled。managed 表示由 .dev.setup 安装并发布声明的版本，
+且 SWAWKIT_PROJ_BUN_VERSION 必须非空；disabled 表示不提供托管 Bun。
+修改此值会使 .dev.setup 需要重新协调。

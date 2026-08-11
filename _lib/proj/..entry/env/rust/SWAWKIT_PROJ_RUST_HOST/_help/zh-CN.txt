@@ -1,0 +1,7 @@
+设置 Rust 工具链的目标 Host。
+
+用法:
+  {{INVOCATION}} <value>
+
+V0 固定要求 x86_64-pc-windows-msvc。修改此值会参与完整 Profile 校验，
+并使 .dev.setup 需要重新协调。

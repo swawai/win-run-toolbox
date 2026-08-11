@@ -1,0 +1,7 @@
+设置 GitHub CLI 的外部工具模式。
+
+用法:
+  {{INVOCATION}} <value>
+
+可用值为 system、disabled。system 表示使用系统已提供的 gh；disabled
+表示不声明该外部工具。Proj 不会通过此字段安装 GitHub CLI。

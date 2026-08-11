@@ -1,4 +1,7 @@
-import { isCommandRunSupported } from "./command-run-model.js";
+import {
+  isCommandJournalSupported,
+  isCommandRunSupported,
+} from "./command-run-model.js";
 
 const PROFILE_SETTER_HANDLER = "entry.profile.set";
 const viewPresentation = {
@@ -43,7 +46,10 @@ export function commandActivities(command) {
   }
   const activities = ["overview", "help"];
   if (isCommandRunSupported(command)) {
-    activities.push("run", "logs");
+    activities.push("run");
+  }
+  if (isCommandJournalSupported(command)) {
+    activities.push("logs");
   }
   return activities;
 }

@@ -14,6 +14,7 @@ function elements() {
   return {
     commandJournalAddress: element(),
     commandJournalDetail: element(),
+    commandJournalDetailEmpty: element(),
     commandJournalEmpty: element(),
     commandJournalFeedback: element(),
     commandJournalList: element(),

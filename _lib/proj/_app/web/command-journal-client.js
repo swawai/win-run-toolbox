@@ -177,10 +177,19 @@ async function apiError(response, fallback) {
   }
 }
 
-export async function readCommandJournalHistory(address, fetchJournal = fetch) {
-  string(address, "address");
+function locatorAddress(locator) {
+  string(locator, "command locator");
+  const separator = locator.indexOf("/");
+  if (separator <= 0 || separator === locator.length - 1 || locator.indexOf("/", separator + 1) >= 0) {
+    throw contractError("命令定位值必须使用 <source>/<address> 格式。");
+  }
+  return locator.slice(separator + 1);
+}
+
+export async function readCommandJournalHistory(locator, fetchJournal = fetch) {
+  const address = locatorAddress(locator);
   const response = await fetchJournal(
-    `${JOURNALS_URL}?address=${encodeURIComponent(address)}`,
+    `${JOURNALS_URL}?command=${encodeURIComponent(locator)}`,
     { cache: "no-store", headers: { Accept: "application/json" } },
   );
   if (response.status !== 200) {
@@ -196,12 +205,12 @@ export async function readCommandJournalHistory(address, fetchJournal = fetch) {
   return history;
 }
 
-export async function readCommandJournal(address, id, after = 0, fetchJournal = fetch) {
-  string(address, "address");
+export async function readCommandJournal(locator, id, after = 0, fetchJournal = fetch) {
+  const address = locatorAddress(locator);
   string(id, "run id");
   integer(after, "after");
   const response = await fetchJournal(
-    `${JOURNALS_URL}/${encodeURIComponent(id)}?address=${encodeURIComponent(address)}&after=${after}`,
+    `${JOURNALS_URL}/${encodeURIComponent(id)}?command=${encodeURIComponent(locator)}&after=${after}`,
     { cache: "no-store", headers: { Accept: "application/json" } },
   );
   if (response.status !== 200) {

@@ -36,6 +36,7 @@ const elements = {
   commandJournalActivity: document.querySelector("#command-journal-activity"),
   commandJournalAddress: document.querySelector("#command-journal-address"),
   commandJournalDetail: document.querySelector("#command-journal-detail"),
+  commandJournalDetailEmpty: document.querySelector("#command-journal-detail-empty"),
   commandJournalEmpty: document.querySelector("#command-journal-empty"),
   commandJournalFeedback: document.querySelector("#command-journal-feedback"),
   commandJournalList: document.querySelector("#command-journal-list"),
@@ -124,6 +125,7 @@ const explorer = createExplorerView({
       view: options.view,
     });
     commandJournal.select(command, { active: selection.view === "logs" });
+    elements.detailPanel.dataset.view = selection.view ?? "";
     elements.detailPanel.hidden = selection.view === "children";
     updateCommandPath(
       window.history,

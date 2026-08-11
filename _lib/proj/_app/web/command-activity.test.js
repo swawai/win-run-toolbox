@@ -23,7 +23,7 @@ describe("command activities", () => {
       source: "kernel",
       address: ".group",
       runnable: false,
-    })).toEqual(["overview", "help"]);
+    })).toEqual(["overview", "help", "logs"]);
     expect(commandActivities(null)).toEqual([]);
   });
 
@@ -49,7 +49,7 @@ describe("command activities", () => {
       runnable: false,
     };
     expect(commandViews(command, { hasChildren: true }).map(({ name }) => name))
-      .toEqual(["children", "overview", "help"]);
+      .toEqual(["children", "overview", "help", "logs"]);
     expect(defaultCommandView(command, { hasChildren: true })).toBe("children");
     expect(defaultCommandView(command)).toBe("overview");
     expect(defaultCommandView(null)).toBeNull();

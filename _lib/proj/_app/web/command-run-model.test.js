@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   argumentValues,
+  commandJournalLocator,
   commandRunStatus,
   isCommandRunActive,
+  isCommandJournalSupported,
   isCommandRunSupported,
 } from "./command-run-model.js";
 import { snapshot } from "./command-run-test-support.js";
@@ -31,5 +33,13 @@ describe("command run model", () => {
     expect(isCommandRunSupported({ address: "", runnable: true, source: "kernel" })).toBe(false);
     expect(isCommandRunSupported({ address: ".dev", runnable: true, source: "kernel" })).toBe(true);
     expect(isCommandRunSupported({ address: "build", runnable: true, source: "action" })).toBe(true);
+  });
+
+  test("locates persisted journals independently from current runnability", () => {
+    const diagnostic = { address: ".broken", runnable: false, source: "kernel" };
+    expect(isCommandJournalSupported(diagnostic)).toBe(true);
+    expect(commandJournalLocator(diagnostic)).toBe("kernel/.broken");
+    expect(isCommandRunSupported(diagnostic)).toBe(false);
+    expect(commandJournalLocator({ address: "..entry", source: "control" })).toBeNull();
   });
 });

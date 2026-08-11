@@ -2,7 +2,11 @@ import {
   readCommandJournal,
   readCommandJournalHistory,
 } from "./command-journal-client.js";
-import { commandRunStatus, isCommandRunSupported } from "./command-run-model.js";
+import {
+  commandJournalLocator,
+  commandRunStatus,
+  isCommandJournalSupported,
+} from "./command-run-model.js";
 
 const sourceLabels = { cli: "CLI", web: "Web" };
 
@@ -80,6 +84,7 @@ export function createCommandJournalView(elements, options = {}) {
   function resetOutput() {
     elements.commandJournalOutput.replaceChildren();
     elements.commandJournalDetail.hidden = true;
+    elements.commandJournalDetailEmpty.hidden = false;
     elements.commandJournalTruncated.hidden = true;
     journal = null;
     cursor = 0;
@@ -100,6 +105,7 @@ export function createCommandJournalView(elements, options = {}) {
 
   function renderJournal() {
     elements.commandJournalDetail.hidden = journal === null;
+    elements.commandJournalDetailEmpty.hidden = journal !== null;
     if (!journal) {
       return;
     }
@@ -135,7 +141,7 @@ export function createCommandJournalView(elements, options = {}) {
     feedback("正在读取日志…");
     try {
       const next = await readCommandJournal(
-        command.address,
+        commandJournalLocator(command),
         id,
         reset ? 0 : cursor,
         fetchJournal,
@@ -175,7 +181,7 @@ export function createCommandJournalView(elements, options = {}) {
   }
 
   async function refresh() {
-    if (!active || !isCommandRunSupported(command) || loading) {
+    if (!active || !isCommandJournalSupported(command) || loading) {
       return;
     }
     const expectedVersion = ++version;
@@ -185,7 +191,7 @@ export function createCommandJournalView(elements, options = {}) {
     renderHistory();
     feedback("正在读取历史运行…");
     try {
-      const next = await readCommandJournalHistory(command.address, fetchJournal);
+      const next = await readCommandJournalHistory(commandJournalLocator(command), fetchJournal);
       if (expectedVersion !== version || !active) {
         return;
       }
@@ -215,7 +221,7 @@ export function createCommandJournalView(elements, options = {}) {
   function select(nextCommand, options = {}) {
     const nextActive = options.active === true;
     const entering = !active && nextActive;
-    const changed = command?.address !== nextCommand?.address;
+    const changed = commandJournalLocator(command) !== commandJournalLocator(nextCommand);
     command = nextCommand ?? null;
     active = nextActive;
     elements.commandJournalAddress.textContent = command?.address ?? "";

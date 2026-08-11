@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use crate::{
-    catalog::CommandSource,
+    binding::ProjectBinding,
+    catalog::{CommandNode, CommandSource},
     context::EntryContext,
     launch::{ENTRY_FILE_ENV, LAUNCH_MODE_ENV},
     profile::{EntryProfile, EntryProfileRecord},
@@ -189,10 +190,53 @@ pub(crate) fn command_data_root(
         CommandSource::Kernel => ("kernel", &context.kernel_root),
         CommandSource::Action => ("action", &context.action_root),
     };
-    let relative = command.directory.strip_prefix(source_root).map_err(|_| {
+    module_data_root(
+        &context.data_root,
+        source_name,
+        source_root,
+        &command.directory,
+        &command.address,
+    )
+}
+
+pub(crate) fn catalog_command_data_root(
+    context: &EntryContext,
+    data_root: &Path,
+    binding: Option<&ProjectBinding>,
+    command: &CommandNode,
+) -> CommandResult<PathBuf> {
+    let kernel_root = context.kernel_root();
+    let action_root = binding.map(ProjectBinding::action_root);
+    let (source_name, source_root) = match command.source {
+        CommandSource::Control => ("control", kernel_root.as_path()),
+        CommandSource::Kernel => ("kernel", kernel_root.as_path()),
+        CommandSource::Action => (
+            "action",
+            action_root.as_deref().ok_or_else(|| {
+                CommandError::new("a ready Entry Profile is required to locate Action command data")
+            })?,
+        ),
+    };
+    module_data_root(
+        data_root,
+        source_name,
+        source_root,
+        &command.directory,
+        &command.address,
+    )
+}
+
+fn module_data_root(
+    data_root: &Path,
+    source_name: &str,
+    source_root: &Path,
+    command_directory: &Path,
+    address: &str,
+) -> CommandResult<PathBuf> {
+    let relative = command_directory.strip_prefix(source_root).map_err(|_| {
         CommandError::new(format!(
             "Catalog invariant failed for '{}': command directory is outside its source root",
-            command.address
+            address
         ))
     })?;
     if relative
@@ -201,12 +245,8 @@ pub(crate) fn command_data_root(
     {
         return Err(CommandError::new(format!(
             "Catalog invariant failed for '{}': command directory has an unsafe relative path",
-            command.address
+            address
         )));
     }
-    Ok(context
-        .data_root
-        .join("modules")
-        .join(source_name)
-        .join(relative))
+    Ok(data_root.join("modules").join(source_name).join(relative))
 }

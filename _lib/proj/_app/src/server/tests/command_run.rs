@@ -229,16 +229,18 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
     assert_eq!(exited["state"], "exited");
     assert_eq!(exited["exitCode"], 7);
 
-    let history = response_json(
-        send(
-            app.clone(),
-            Method::GET,
-            "/api/v2/command-run-journals?address=.demo",
-            Some(AUTHORITY),
-        )
-        .await,
+    std::fs::remove_file(fixture.root.join("home/_lib/proj/.demo/run.ps1"))
+        .expect("make the journal fixture command non-runnable");
+
+    let history_response = send(
+        app.clone(),
+        Method::GET,
+        "/api/v2/command-run-journals?command=kernel%2F.demo",
+        Some(AUTHORITY),
     )
     .await;
+    assert_eq!(history_response.status(), StatusCode::OK);
+    let history = response_json(history_response).await;
     assert_eq!(history["protocol"], "swawkit.command-run-history/v1");
     assert_eq!(history["runs"][0]["id"], id);
     assert_eq!(history["runs"][0]["source"], "web");
@@ -249,7 +251,7 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
         send(
             app,
             Method::GET,
-            &format!("/api/v2/command-run-journals/{id}?address=.demo&after=1"),
+            &format!("/api/v2/command-run-journals/{id}?command=kernel%2F.demo&after=1"),
             Some(AUTHORITY),
         )
         .await,

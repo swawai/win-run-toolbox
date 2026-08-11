@@ -89,11 +89,11 @@ describe("command journal protocol client", () => {
       address: ".dev.status",
       runs: [summary()],
     };
-    await readCommandJournalHistory(".dev.status", async (url, options) => {
+    await readCommandJournalHistory("kernel/.dev.status", async (url, options) => {
       requests.push({ url, options });
       return response(200, historyDocument);
     });
-    await readCommandJournal(".dev.status", "run/17", 1, async (url, options) => {
+    await readCommandJournal("kernel/.dev.status", "run/17", 1, async (url, options) => {
       requests.push({ url, options });
       return response(200, journal({
         id: "run/17",
@@ -103,18 +103,18 @@ describe("command journal protocol client", () => {
     });
 
     expect(requests[0].url)
-      .toBe("/api/v2/command-run-journals?address=.dev.status");
+      .toBe("/api/v2/command-run-journals?command=kernel%2F.dev.status");
     expect(requests[1].url)
-      .toBe("/api/v2/command-run-journals/run%2F17?address=.dev.status&after=1");
+      .toBe("/api/v2/command-run-journals/run%2F17?command=kernel%2F.dev.status&after=1");
     expect(requests.every(({ options }) => options.cache === "no-store")).toBeTrue();
   });
 
   test("surfaces API errors and rejects mismatched identities", async () => {
-    await expect(readCommandJournalHistory(".dev.status", async () => (
+    await expect(readCommandJournalHistory("kernel/.dev.status", async () => (
       response(500, { error: "journal unavailable" })
     ))).rejects.toThrow("journal unavailable");
 
-    await expect(readCommandJournal(".dev.status", "run-17", 0, async () => (
+    await expect(readCommandJournal("kernel/.dev.status", "run-17", 0, async () => (
       response(200, journal({ address: ".other" }))
     ))).rejects.toThrow("不一致");
   });

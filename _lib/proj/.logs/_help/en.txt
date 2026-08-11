@@ -1,0 +1,14 @@
+Queries persistent command runs or opens one run's journal directory in File Explorer.
+
+Usage:
+  {{INVOCATION}} <command-address>
+  {{INVOCATION}} <command-address> --latest <n|n..m>
+  {{INVOCATION}} <command-address> --run <run-id> [--after <cursor>]
+  {{INVOCATION}} <command-address> --open <run-id>
+
+Use the normal CLI address, such as `.dev.status` or `proj.build.app`. Use the explicit
+`kernel/.dev.status` or `action/proj.build.app` locator only when sources are ambiguous.
+
+With no operation, the JSON history is newest first and `latest: 1` identifies the newest run.
+`--latest 1..3` reads the latest three runs from one history snapshot. Agents should retain stable
+run IDs and use `--run` with `--after` for incremental reads.

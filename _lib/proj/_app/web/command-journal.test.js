@@ -15,11 +15,13 @@ function elements() {
     commandJournalAddress: element(),
     commandJournalDetail: element(),
     commandJournalDetailEmpty: element(),
+    commandJournalDirectoryFeedback: element(),
     commandJournalEmpty: element(),
     commandJournalFeedback: element(),
     commandJournalList: element(),
     commandJournalMeta: element(),
     commandJournalOutput: element(),
+    commandJournalOpen: element(),
     commandJournalRefresh: element(),
     commandJournalState: element(),
     commandJournalTruncated: element(),
@@ -95,6 +97,7 @@ describe("command journal view", () => {
     await settle();
 
     expect(dom.commandJournalList.children).toHaveLength(1);
+    expect(dom.commandJournalList.children[0].children).toHaveLength(1);
     expect(dom.commandJournalDetail.hidden).toBeFalse();
     expect(dom.commandJournalState.textContent).toBe("执行成功");
     expect(dom.commandJournalOutput.children[0].textContent)
@@ -167,7 +170,7 @@ describe("command journal view", () => {
     view.select(command, { active: true });
     await settle();
     await settle();
-    dom.commandJournalList.children[0].children[1].dispatch("click");
+    dom.commandJournalOpen.dispatch("click");
     await settle();
 
     expect(requests.at(-1)).toEqual({
@@ -180,7 +183,7 @@ describe("command journal view", () => {
         },
       },
     });
-    expect(dom.commandJournalFeedback.dataset.state).toBe("success");
+    expect(dom.commandJournalDirectoryFeedback.dataset.state).toBe("success");
   });
 
   test("reentering logs selects the newest run while an in-view refresh retains selection", async () => {

@@ -237,6 +237,9 @@ fn access_error(error: CommandJournalAccessError) -> (StatusCode, Json<super::Ap
         CommandJournalAccessError::CommandNotFound => {
             api_error(StatusCode::NOT_FOUND, error.to_string())
         }
+        error @ CommandJournalAccessError::AmbiguousCommand(_) => {
+            api_error(StatusCode::BAD_REQUEST, error.to_string())
+        }
         CommandJournalAccessError::CatalogInvariant(message) => {
             api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
         }

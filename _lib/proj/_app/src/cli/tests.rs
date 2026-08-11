@@ -12,6 +12,7 @@ use swawkit_proj::profile::{EntryProfileRecord, EntryProfileStore};
 use super::*;
 
 mod control;
+mod logs;
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
@@ -165,7 +166,7 @@ fn local_help_is_read_only_but_command_owned_help_executes() {
     assert_eq!(
         run_with_approver(
             &fixture.context,
-            &argv(&[".local", "--help"]),
+            &argv(&[".help", ".local"]),
             &mut unexpected,
         )
         .unwrap(),
@@ -175,12 +176,28 @@ fn local_help_is_read_only_but_command_owned_help_executes() {
     assert_eq!(
         run_with_approver(
             &fixture.context,
+            &argv(&[".local", "--help"]),
+            &mut unexpected,
+        )
+        .unwrap(),
+        99
+    );
+    assert_eq!(
+        run_with_approver(
+            &fixture.context,
             &argv(&[".owned", "--help"]),
             &mut unexpected,
         )
         .unwrap(),
         13
     );
+    let unavailable = run_with_approver(
+        &fixture.context,
+        &argv(&[".help", ".owned"]),
+        &mut unexpected,
+    )
+    .unwrap_err();
+    assert!(unavailable.to_string().contains("not enabled"));
     assert!(
         read_entry_record(&fixture.data_root())
             .valid_record()
@@ -315,8 +332,9 @@ fn dedicated_claim_preview_is_read_only_and_yes_applies_it() {
 fn help_shape_keeps_non_help_invocations_for_the_executor() {
     assert_eq!(help_target(&argv(&[".tool"])).unwrap(), None);
     assert_eq!(help_target(&argv(&[".tool", "value"])).unwrap(), None);
+    assert_eq!(help_target(&argv(&[".tool", "--help"])).unwrap(), None);
     assert_eq!(
-        help_target(&argv(&[".tool", "--help"])).unwrap(),
+        help_target(&argv(&[".help", ".tool"])).unwrap(),
         Some(".tool".to_owned())
     );
 }

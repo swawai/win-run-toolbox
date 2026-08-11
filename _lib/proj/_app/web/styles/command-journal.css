@@ -93,10 +93,7 @@
 }
 
 .command-journal-record {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: stretch;
-  gap: 5px;
+  display: block;
 }
 
 .command-journal-select {
@@ -154,12 +151,6 @@
   font-weight: 700;
 }
 
-.command-journal-open.secondary-button {
-  min-width: 58px;
-  padding: 7px 8px;
-  font-size: 10px;
-}
-
 .command-journal-detail {
   margin: 0;
 }
@@ -181,6 +172,29 @@
 .command-journal-detail > header .command-journal-meta {
   display: block;
   margin-top: 8px;
+}
+
+.command-journal-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.command-journal-open.secondary-button {
+  min-width: max-content;
+  padding: 6px 9px;
+}
+
+.command-journal-directory-feedback {
+  min-height: 17px;
+  margin: 0 0 7px;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.command-journal-directory-feedback[data-state="error"] {
+  color: var(--ui-status-error);
 }
 
 .command-journal-state {

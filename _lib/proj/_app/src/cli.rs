@@ -1,5 +1,6 @@
 mod claim;
 mod control;
+mod logs;
 
 use std::error::Error;
 use std::ffi::OsString;
@@ -13,7 +14,7 @@ use swawkit_proj::{
     command::{CommandExecutionContext, CommandExecutor, CommandProcessMode},
     context::EntryContext,
     data_root::{DataRootClaimApprover, ResolveDataRootRequest, resolve_data_root},
-    help::{HelpRenderError, render_help},
+    help::render_help,
     profile::{EntryProfileState, EntryProfileStore},
 };
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
@@ -103,15 +104,14 @@ fn run_with_dependencies(
             .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
         return Ok(0);
     }
-    if let Some(exit_code) = control::dispatch(
-        &snapshot,
-        argv,
-        context,
-        resolved.path(),
-        &profile_state,
-        &profile_store,
-        host_launcher,
-    )? {
+    if let Some(exit_code) =
+        logs::dispatch(&snapshot, argv, context, resolved.path(), &profile_state)?
+    {
+        return Ok(exit_code);
+    }
+    if let Some(exit_code) =
+        control::dispatch(&snapshot, argv, context, &profile_store, host_launcher)?
+    {
         return Ok(exit_code);
     }
     CommandExecutor::preflight(&context.kernel_root(), &snapshot, argv)
@@ -172,17 +172,15 @@ fn protocol_help(
     let Some(target) = help_target(argv)? else {
         return Ok(None);
     };
-    match render_help(snapshot, &target) {
-        Ok(output) => Ok(Some(output)),
-        Err(HelpRenderError::Unavailable(address)) if !address.is_empty() => Ok(None),
-        Err(error) => Err(CliError::new(error.to_string())),
-    }
+    render_help(snapshot, &target)
+        .map(Some)
+        .map_err(|error| CliError::new(error.to_string()))
 }
 
 fn help_target(argv: &[OsString]) -> Result<Option<String>, CliError> {
     match argv {
         [marker] if marker.to_str().is_some_and(is_help_marker) => Ok(Some(String::new())),
-        [target, marker] if marker.to_str().is_some_and(is_help_marker) => {
+        [marker, target] if marker.to_str().is_some_and(is_help_marker) => {
             let target = target
                 .to_str()
                 .ok_or_else(|| CliError::new("help target address is not valid Unicode"))?;

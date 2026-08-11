@@ -258,8 +258,14 @@
                               <h2>日志内容</h2>
                               <span class="command-journal-meta" id="command-journal-meta"></span>
                             </div>
-                            <span class="command-journal-state" id="command-journal-state"></span>
+                            <div class="command-journal-detail-actions">
+                              <span class="command-journal-state" id="command-journal-state"></span>
+                              <button class="secondary-button command-journal-open"
+                                id="command-journal-open" type="button">打开目录</button>
+                            </div>
                           </header>
+                          <p class="command-journal-directory-feedback"
+                            id="command-journal-directory-feedback" aria-live="polite"></p>
                           <pre class="command-journal-output" id="command-journal-output"
                             role="log" aria-live="off" tabindex="0"></pre>
                           <p class="command-journal-truncated" id="command-journal-truncated" hidden>

@@ -68,7 +68,6 @@ export function createCommandJournalView(elements, options = {}) {
       const summary = documentObject.createElement("span");
       const meta = documentObject.createElement("small");
       const presentation = journalStatus(run);
-      const open = documentObject.createElement("button");
       item.className = "command-journal-record";
       button.type = "button";
       button.className = "command-journal-select";
@@ -83,31 +82,36 @@ export function createCommandJournalView(elements, options = {}) {
       summary.className = "command-journal-record-summary";
       summary.append(meta, status);
       button.append(heading, summary);
-      open.type = "button";
-      open.className = "command-journal-open secondary-button";
-      open.disabled = loading;
-      open.textContent = "打开目录";
-      open.setAttribute("aria-label", `打开 ${formatTime(run.startedAtUnixMs)} 的日志目录`);
-      open.addEventListener("click", () => void openDirectory(run.id));
-      item.append(button, open);
+      item.append(button);
       elements.commandJournalList.append(item);
     }
   }
 
-  async function openDirectory(id) {
+  async function openDirectory() {
     const locator = commandJournalLocator(command);
-    if (!active || !locator) {
+    const id = journal?.id;
+    if (!active || !locator || !id) {
       return;
     }
-    feedback("正在打开日志目录…");
+    elements.commandJournalOpen.disabled = true;
+    elements.commandJournalDirectoryFeedback.textContent = "正在打开日志目录…";
+    elements.commandJournalDirectoryFeedback.dataset.state = "";
     try {
       await openCommandJournalDirectory(locator, id, fetchJournal);
-      if (active && commandJournalLocator(command) === locator) {
-        feedback("已在资源管理器中打开日志目录。", "success");
+      if (active && commandJournalLocator(command) === locator && journal?.id === id) {
+        elements.commandJournalDirectoryFeedback.textContent = "已在资源管理器中打开日志目录。";
+        elements.commandJournalDirectoryFeedback.dataset.state = "success";
       }
     } catch (error) {
-      if (active && commandJournalLocator(command) === locator) {
-        feedback(error instanceof Error ? error.message : "打开日志目录失败。", "error");
+      if (active && commandJournalLocator(command) === locator && journal?.id === id) {
+        elements.commandJournalDirectoryFeedback.textContent = error instanceof Error
+          ? error.message
+          : "打开日志目录失败。";
+        elements.commandJournalDirectoryFeedback.dataset.state = "error";
+      }
+    } finally {
+      if (active && commandJournalLocator(command) === locator && journal?.id === id) {
+        elements.commandJournalOpen.disabled = false;
       }
     }
   }
@@ -117,6 +121,9 @@ export function createCommandJournalView(elements, options = {}) {
     elements.commandJournalDetail.hidden = true;
     elements.commandJournalDetailEmpty.hidden = false;
     elements.commandJournalTruncated.hidden = true;
+    elements.commandJournalDirectoryFeedback.textContent = "";
+    elements.commandJournalDirectoryFeedback.dataset.state = "";
+    elements.commandJournalOpen.disabled = true;
     journal = null;
     cursor = 0;
   }
@@ -144,6 +151,7 @@ export function createCommandJournalView(elements, options = {}) {
     elements.commandJournalState.textContent = presentation.label;
     elements.commandJournalState.dataset.state = presentation.tone;
     elements.commandJournalMeta.textContent = `${sourceLabels[journal.source]} · ${formatTime(journal.startedAtUnixMs)}`;
+    elements.commandJournalOpen.disabled = false;
     elements.commandJournalTruncated.hidden = !journal.truncated;
   }
 
@@ -280,6 +288,7 @@ export function createCommandJournalView(elements, options = {}) {
   }
 
   elements.commandJournalRefresh.addEventListener("click", () => void refresh());
+  elements.commandJournalOpen.addEventListener("click", () => void openDirectory());
   renderHistory();
   resetOutput();
   return { refresh, select };

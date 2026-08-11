@@ -12,8 +12,7 @@ const ENTRY_PROTOCOL: [(&str, CommandAdapter); 6] = [
     ("run.ps1", CommandAdapter::PowerShell),
     ("run.cmd", CommandAdapter::Cmd),
 ];
-const CORE_HANDLERS: [&str; 6] = [
-    "command.logs",
+const CORE_HANDLERS: [&str; 5] = [
     "entry.claim",
     "entry.profile",
     "entry.profile.apply",

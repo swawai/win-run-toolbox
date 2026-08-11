@@ -7,12 +7,12 @@
   {{COMMAND}} --help
 
 命令帮助:
-  {{COMMAND}} <command-address> .help
-  {{COMMAND}} <command-address> .h
-  {{COMMAND}} <command-address> -h
-  {{COMMAND}} <command-address> --help
+  {{COMMAND}} .help <command-address>
+  {{COMMAND}} .h <command-address>
+  {{COMMAND}} -h <command-address>
+  {{COMMAND}} --help <command-address>
 
 每个命令模块可在自身目录提供 _help/zh-CN.txt，选择由 Proj 处理上述帮助选择器。
 首个非空行作为父级命令列表中的摘要，完整文件作为该节点的详细帮助。
 
-没有该文件时，Proj 不拦截帮助选择器，而是将它原样传给模块的 run.*。
+`<command-address> --help` 属于目标命令自己的参数，不会被 Proj 拦截。

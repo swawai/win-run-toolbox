@@ -27,6 +27,12 @@ pub struct RunJournalHistoryDocument {
     runs: Vec<RunJournalSummary>,
 }
 
+impl RunJournalHistoryDocument {
+    pub(crate) fn run_id_at(&self, index: usize) -> Option<String> {
+        self.runs.get(index).map(|run| run.id.clone())
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RunJournalSummary {

@@ -52,6 +52,8 @@ fn commit_error(path: &Path, temporary: &Path, error: io::Error) -> io::Error {
 }
 
 fn replace_file(path: &Path, temporary: &Path) -> io::Result<()> {
+    let path = canonical_sibling(path)?;
+    let temporary = canonical_sibling(temporary)?;
     let path = null_terminated(path.as_os_str());
     let temporary = null_terminated(temporary.as_os_str());
     let succeeded = unsafe {
@@ -68,6 +70,22 @@ fn replace_file(path: &Path, temporary: &Path) -> io::Result<()> {
         return Err(io::Error::last_os_error());
     }
     Ok(())
+}
+
+fn canonical_sibling(path: &Path) -> io::Result<PathBuf> {
+    let directory = path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "publication path has no parent",
+        )
+    })?;
+    let name = path.file_name().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "publication path has no file name",
+        )
+    })?;
+    Ok(fs::canonicalize(directory)?.join(name))
 }
 
 fn cleanup(path: &Path) -> io::Result<()> {
@@ -158,6 +176,23 @@ mod tests {
         publish(&target, b"second").expect("replace publication");
         assert_eq!(fs::read(&target).unwrap(), b"second");
         assert!(fixture.recovery_files().is_empty());
+    }
+
+    #[test]
+    fn replacement_supports_windows_extended_length_paths() {
+        let fixture = Fixture::new();
+        let mut directory = fixture.root.clone();
+        for index in 0..4 {
+            directory = directory.join(format!("segment-{index}-{}", "x".repeat(64)));
+        }
+        fs::create_dir_all(&directory).expect("create long publication fixture");
+        let target = directory.join("state.json");
+        assert!(target.as_os_str().encode_wide().count() > 260);
+
+        publish(&target, b"first").expect("create long publication");
+        publish(&target, b"second").expect("replace long publication");
+
+        assert_eq!(fs::read(target).unwrap(), b"second");
     }
 
     #[test]

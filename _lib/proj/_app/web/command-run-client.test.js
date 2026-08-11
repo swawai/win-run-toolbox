@@ -23,6 +23,17 @@ function snapshot(overrides = {}) {
   };
 }
 
+function outputEvent(sequence, stream, text) {
+  return {
+    sequence,
+    timestampUnixMs: 1000 + sequence,
+    phase: "worker",
+    kind: "output",
+    stream,
+    text,
+  };
+}
+
 function response(status, document = null, location = null) {
   return {
     status,
@@ -44,10 +55,31 @@ describe("command run protocol client", () => {
       exitCode: 7,
       nextCursor: 2,
       events: [
-        { sequence: 1, stream: "stdout", text: "out\n" },
-        { sequence: 2, stream: "stderr", text: "err\n" },
+        outputEvent(1, "stdout", "out\n"),
+        outputEvent(2, "stderr", "err\n"),
       ],
       truncated: true,
+    });
+
+    expect(normalizeCommandRunSnapshot(document)).toEqual(document);
+  });
+
+  test("normalizes structured progress beside ordinary output", () => {
+    const progress = {
+      sequence: 2,
+      timestampUnixMs: 1002,
+      phase: "worker",
+      kind: "progress",
+      id: "download:fixture.zip",
+      state: "completed",
+      current: 42,
+      total: 42,
+      unit: "bytes",
+      message: "Downloaded fixture.zip",
+    };
+    const document = snapshot({
+      nextCursor: 2,
+      events: [outputEvent(1, "stdout", "prepare\n"), progress],
     });
 
     expect(normalizeCommandRunSnapshot(document)).toEqual(document);
@@ -63,10 +95,14 @@ describe("command run protocol client", () => {
     expect(() => normalizeCommandRunSnapshot(snapshot({
       nextCursor: 2,
       events: [
-        { sequence: 2, stream: "stdout", text: "two" },
-        { sequence: 1, stream: "stdout", text: "one" },
+        outputEvent(2, "stdout", "two"),
+        outputEvent(1, "stdout", "one"),
       ],
     }))).toThrow("严格递增");
+    expect(() => normalizeCommandRunSnapshot(snapshot({
+      nextCursor: 1,
+      events: [{ ...outputEvent(1, "stdout", "one"), kind: "progress" }],
+    }))).toThrow("进度标识");
   });
 
   test("enforces state-specific exit and error fields", () => {

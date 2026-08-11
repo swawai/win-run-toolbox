@@ -17,7 +17,7 @@ use crate::{
     data_root::DataRootSessionState,
     entry_runner::EntryRunSpec,
     profile::{EntryProfileState, EntryProfileStore},
-    run_journal::{RunJournalSource, StartRunJournal},
+    run_journal::{RunJournalEvent, RunJournalSource, StartRunJournal},
 };
 
 use super::{ServerState, api_error, data_root_status};
@@ -46,32 +46,8 @@ pub(super) struct CommandRunDocument {
     pub exit_code: Option<i32>,
     pub error: Option<String>,
     pub next_cursor: u64,
-    pub events: Vec<CommandRunEvent>,
+    pub events: Vec<RunJournalEvent>,
     pub truncated: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct CommandRunEvent {
-    pub sequence: u64,
-    pub stream: CommandRunStream,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub(super) enum CommandRunStream {
-    Stdout,
-    Stderr,
-}
-
-impl From<crate::entry_runner::EntryOutputStream> for CommandRunStream {
-    fn from(stream: crate::entry_runner::EntryOutputStream) -> Self {
-        match stream {
-            crate::entry_runner::EntryOutputStream::Stdout => Self::Stdout,
-            crate::entry_runner::EntryOutputStream::Stderr => Self::Stderr,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]

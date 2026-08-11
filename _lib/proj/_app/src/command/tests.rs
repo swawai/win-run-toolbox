@@ -153,6 +153,10 @@ fn process_environment_is_declarative_and_phase_specific() {
         run.value("SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL"),
         Some(Some(OsStr::new("1")))
     );
+    assert_eq!(
+        run.value("SWAWKIT_PROJ_CORE_COMMAND_EVENT_PROTOCOL"),
+        Some(Some(OsStr::new("swawkit.command-event-frame/v1")))
+    );
     assert_eq!(run.value(ENTRY_FILE_ENV), Some(None));
     assert_eq!(run.value(LAUNCH_MODE_ENV), Some(None));
     assert_eq!(
@@ -322,7 +326,7 @@ fn journaled_execution_persists_guard_and_target_output_in_the_module_data_root(
     let fixture = Fixture::new();
     fixture.command(
         ".journal",
-        "[Console]::Out.WriteLine('target out'); [Console]::Error.WriteLine('target err'); exit 4",
+        r#"[Console]::Out.WriteLine('target out'); [Console]::Error.WriteLine(([char]0x1e) + 'swawkit-event-v1 {"schema":"swawkit.command-event/v1","kind":"progress","id":"download:fixture.zip","state":"completed","current":42,"total":42,"unit":"bytes","message":"Downloaded fixture.zip"}'); [Console]::Error.WriteLine('target err'); exit 4"#,
     );
     fixture.guard(
         &fixture.kernel_root,
@@ -353,8 +357,11 @@ fn journaled_execution_persists_guard_and_target_output_in_the_module_data_root(
     let events = fs::read_to_string(run_root.join("events.jsonl")).unwrap();
     assert!(events.contains("\"phase\":\"guard-global\""));
     assert!(events.contains("\"phase\":\"run\""));
+    assert!(events.contains("\"kind\":\"progress\""));
+    assert!(events.contains("\"id\":\"download:fixture.zip\""));
     assert!(events.contains("guard out"));
     assert!(events.contains("target err"));
+    assert!(!events.contains("swawkit-event-v1"));
     assert!(!events.contains("argument-not-persisted"));
 }
 

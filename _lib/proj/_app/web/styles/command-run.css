@@ -197,6 +197,46 @@
   color: var(--ui-status-error);
 }
 
+.command-run-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  margin: 7px 0;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  background: var(--ui-surface);
+  white-space: normal;
+}
+
+.command-run-progress-label {
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.command-run-progress-detail {
+  color: var(--ui-text-subtle);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.command-run-progress-meter {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 7px;
+  accent-color: var(--ui-selection-bg);
+}
+
+.command-run-progress[data-state="completed"] .command-run-progress-detail {
+  color: var(--ui-status-ok);
+}
+
+.command-run-progress[data-state="failed"] .command-run-progress-detail {
+  color: var(--ui-status-error);
+}
+
 .command-run-truncated {
   margin: 7px 1px 0;
   color: var(--ui-status-warning);

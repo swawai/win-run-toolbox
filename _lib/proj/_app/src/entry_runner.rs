@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
+use crate::command_event::{CapturedCommandEvent, CommandEventFrameDecoder, CommandProgress};
 use crate::launch::{
     WORKER_JOB_NAME_ENV, WORKER_PROTOCOL_ENV, WORKER_PROTOCOL_VERSION, WORKER_READY_EVENT_NAME_ENV,
 };
@@ -43,6 +44,7 @@ pub(crate) enum EntryRunOutcome {
 
 pub(crate) trait EntryRunObserver: Send + Sync {
     fn output(&self, stream: EntryOutputStream, text: String);
+    fn progress(&self, progress: CommandProgress);
     fn completed(&self, outcome: EntryRunOutcome);
 }
 
@@ -236,16 +238,31 @@ fn read_output(
     // instead of being guessed with a machine-specific legacy code page.
     let mut buffer = [0_u8; OUTPUT_READ_BUFFER_SIZE];
     let mut decoder = Utf8LossyDecoder::default();
+    let mut frame_decoder = CommandEventFrameDecoder::default();
     loop {
         let count = reader.read(&mut buffer)?;
         if count == 0 {
             if let Some(text) = decoder.decode(&[], true) {
-                observer.output(stream, text);
+                dispatch_output(&observer, stream, frame_decoder.push(&text));
             }
+            dispatch_output(&observer, stream, frame_decoder.finish());
             return Ok(());
         }
         if let Some(text) = decoder.decode(&buffer[..count], false) {
-            observer.output(stream, text);
+            dispatch_output(&observer, stream, frame_decoder.push(&text));
+        }
+    }
+}
+
+fn dispatch_output(
+    observer: &Arc<dyn EntryRunObserver>,
+    stream: EntryOutputStream,
+    events: Vec<CapturedCommandEvent>,
+) {
+    for event in events {
+        match event {
+            CapturedCommandEvent::Output(text) => observer.output(stream, text),
+            CapturedCommandEvent::Progress(progress) => observer.progress(progress),
         }
     }
 }

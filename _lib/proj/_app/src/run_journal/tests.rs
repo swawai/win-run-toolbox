@@ -51,20 +51,22 @@ fn publishes_append_only_events_and_an_atomic_terminal_state() {
     let journal = fixture.start(RunJournalSource::Cli);
     let id = journal.id().unwrap();
 
-    journal
+    let first = journal
         .output(
             RunJournalPhase::GuardGlobal,
             RunJournalStream::Stdout,
             "guard\n".to_owned(),
         )
-        .unwrap();
-    journal
+        .unwrap()
+        .expect("non-empty journal event");
+    let second = journal
         .output(
             RunJournalPhase::Run,
             RunJournalStream::Stderr,
             "target\n".to_owned(),
         )
-        .unwrap();
+        .unwrap()
+        .expect("non-empty journal event");
     journal.finish_exited(7).unwrap();
 
     let run_root = fixture.root.join(JOURNAL_DIRECTORY_NAME).join(&id);
@@ -84,7 +86,10 @@ fn publishes_append_only_events_and_an_atomic_terminal_state() {
     assert_eq!(events.len(), 2);
     assert_eq!(events[0]["schema"], JOURNAL_EVENT_SCHEMA);
     assert_eq!(events[0]["runId"], id);
+    assert_eq!(events[0]["sequence"], first.sequence);
     assert_eq!(events[0]["phase"], "guard-global");
+    assert_eq!(events[0]["kind"], "output");
+    assert_eq!(events[1]["sequence"], second.sequence);
     assert_eq!(events[1]["stream"], "stderr");
 }
 
@@ -123,6 +128,7 @@ fn reads_history_and_incremental_run_documents() {
     assert_eq!(document["nextCursor"], 2);
     assert_eq!(document["events"].as_array().unwrap().len(), 1);
     assert_eq!(document["events"][0]["sequence"], 2);
+    assert_eq!(document["events"][0]["kind"], "output");
     assert_eq!(document["events"][0]["text"], "two");
 }
 

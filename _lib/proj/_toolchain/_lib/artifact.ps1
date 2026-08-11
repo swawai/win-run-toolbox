@@ -111,10 +111,20 @@ function Invoke-ProjDevDownload {
         "$([Guid]::NewGuid().ToString('N')).tmp"
     )
     $Failures = [Collections.Generic.List[string]]::new()
+    $ArchiveName = [IO.Path]::GetFileName($Destination)
+    $SourceKey = Get-ProjDevSha256Text -Value $Source
+    $ProgressId = "download:$($SourceKey.Substring(0, 16))"
 
     try {
-        Write-Host "[DL] $([IO.Path]::GetFileName($Destination))" `
-            -ForegroundColor DarkGray
+        if (Test-ProjDevCommandEventProtocol) {
+            Write-ProjDevProgressEvent `
+                -Id $ProgressId `
+                -State 'running' `
+                -Unit 'bytes' `
+                -Message "Downloading $ArchiveName"
+        } else {
+            Write-Host "[DL] $ArchiveName" -ForegroundColor DarkGray
+        }
         if ([IO.File]::Exists($Source)) {
             [IO.File]::Copy(
                 (Get-ProjDevFullPath -Path $Source),
@@ -207,7 +217,20 @@ function Invoke-ProjDevDownload {
             throw 'The downloaded file is empty.'
         }
         [IO.File]::Move($TemporaryPath, $Destination)
+        $DownloadedBytes = (Get-Item -LiteralPath $Destination).Length
+        Write-ProjDevProgressEvent `
+            -Id $ProgressId `
+            -State 'completed' `
+            -Unit 'bytes' `
+            -Message "Downloaded $ArchiveName" `
+            -Current $DownloadedBytes `
+            -Total $DownloadedBytes
     } catch {
+        Write-ProjDevProgressEvent `
+            -Id $ProgressId `
+            -State 'failed' `
+            -Unit 'bytes' `
+            -Message "Download failed: $ArchiveName"
         throw "Download failed for '$Source': $($_.Exception.Message)"
     } finally {
         Remove-ProjDevDownloadTemporaryFile `

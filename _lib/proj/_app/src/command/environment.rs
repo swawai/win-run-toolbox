@@ -6,6 +6,7 @@ use std::process::Command;
 use crate::{
     binding::ProjectBinding,
     catalog::{CommandNode, CommandSource},
+    command_event::{COMMAND_EVENT_FRAME_PROTOCOL, COMMAND_EVENT_PROTOCOL_ENV},
     context::EntryContext,
     launch::{ENTRY_FILE_ENV, LAUNCH_MODE_ENV},
     profile::{EntryProfile, EntryProfileRecord},
@@ -89,6 +90,7 @@ impl ProcessEnvironment {
             environment.remove(name);
         }
         environment.set("SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL", "1");
+        environment.set(COMMAND_EVENT_PROTOCOL_ENV, COMMAND_EVENT_FRAME_PROTOCOL);
         environment.set(
             "SWAWKIT_PROJ_CORE_COMMAND_PHASE",
             match phase {

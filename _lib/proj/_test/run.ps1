@@ -27,6 +27,7 @@ $CandidateArguments = @{
 & (Join-Path $PSScriptRoot 'bootstrap-contract.ps1')
 & (Join-Path $PSScriptRoot 'shell.ps1') @CandidateArguments
 & (Join-Path $PSScriptRoot 'install-recovery.ps1')
+& (Join-Path $PSScriptRoot 'command-event.ps1')
 & (Join-Path $PSScriptRoot 'bun.ps1')
 & (Join-Path $PSScriptRoot 'pwsh.ps1')
 & (Join-Path $PSScriptRoot 'msvc.ps1')

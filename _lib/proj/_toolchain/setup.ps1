@@ -3,6 +3,7 @@ Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot '_lib\runtime.ps1')
 
 foreach ($File in @(
+    'event.ps1',
     'artifact.ps1',
     'recovery.ps1',
     'install.ps1',

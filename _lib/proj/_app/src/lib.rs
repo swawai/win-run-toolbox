@@ -3,6 +3,7 @@ pub mod binding;
 pub mod catalog;
 pub mod catalog_reader;
 pub mod command;
+mod command_event;
 pub mod command_journal;
 pub mod context;
 pub mod data_root;

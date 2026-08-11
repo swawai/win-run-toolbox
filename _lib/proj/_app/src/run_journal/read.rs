@@ -7,9 +7,9 @@ use serde::Serialize;
 
 use super::{
     JOURNAL_DIRECTORY_NAME, JOURNAL_EVENT_SCHEMA, JOURNAL_EVENTS_FILE_NAME,
-    JOURNAL_STATE_FILE_NAME, JOURNAL_STATE_SCHEMA, RunJournalPhase, RunJournalSource,
-    RunJournalStatus, RunJournalStream, StoredRunEvent, StoredRunState, assert_plain_directory,
-    assert_plain_file, valid_run_id,
+    JOURNAL_STATE_FILE_NAME, JOURNAL_STATE_SCHEMA, RunJournalEvent, RunJournalSource,
+    RunJournalStatus, StoredRunEvent, StoredRunState, assert_plain_directory, assert_plain_file,
+    valid_run_id,
 };
 
 const HISTORY_PROTOCOL: &str = "swawkit.command-run-history/v1";
@@ -65,16 +65,6 @@ pub struct RunJournalDocument {
     next_cursor: u64,
     events: Vec<RunJournalEvent>,
     truncated: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RunJournalEvent {
-    sequence: u64,
-    timestamp_unix_ms: u64,
-    phase: RunJournalPhase,
-    stream: RunJournalStream,
-    text: String,
 }
 
 pub(crate) fn read_run_history(
@@ -271,34 +261,46 @@ fn read_events(
             ));
         }
         line.pop();
-        let event: StoredRunEvent = serde_json::from_slice(&line).map_err(invalid)?;
+        let event = parse_stored_event(&line)?;
         if event.schema != JOURNAL_EVENT_SCHEMA
             || event.run_id != expected_id
-            || event.sequence != previous_sequence + 1
+            || event.event.sequence != previous_sequence + 1
         {
             return Err(invalid(
                 "run journal events are not a contiguous run stream",
             ));
         }
-        previous_sequence = event.sequence;
-        if event.sequence <= after {
+        previous_sequence = event.event.sequence;
+        if event.event.sequence <= after {
             continue;
         }
-        response_bytes += event.text.len();
-        events.push_back(RunJournalEvent {
-            sequence: event.sequence,
-            timestamp_unix_ms: event.timestamp_unix_ms,
-            phase: event.phase,
-            stream: event.stream,
-            text: event.text,
-        });
+        response_bytes += event.event.retained_bytes();
+        events.push_back(event.event);
         while response_bytes > MAX_RESPONSE_TEXT_BYTES || events.len() > MAX_RESPONSE_EVENTS {
             let removed = events.pop_front().expect("response contains an event");
-            response_bytes -= removed.text.len();
+            response_bytes -= removed.retained_bytes();
             truncated = true;
         }
     }
     Ok((events.into_iter().collect(), previous_sequence, truncated))
+}
+
+fn parse_stored_event(line: &[u8]) -> io::Result<StoredRunEvent> {
+    let mut value: serde_json::Value = serde_json::from_slice(line).map_err(invalid)?;
+    let Some(object) = value.as_object_mut() else {
+        return Err(invalid("run journal event must be an object"));
+    };
+    // v1 journals written before event kinds were introduced are still valid
+    // output events. Keep this compatibility at the storage boundary instead
+    // of spreading a second event shape through the runtime and Web clients.
+    if !object.contains_key("kind") && object.contains_key("stream") && object.contains_key("text")
+    {
+        object.insert(
+            "kind".to_owned(),
+            serde_json::Value::String("output".to_owned()),
+        );
+    }
+    serde_json::from_value(value).map_err(invalid)
 }
 
 impl From<StoredRunState> for RunJournalSummary {

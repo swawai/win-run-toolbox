@@ -2,13 +2,12 @@ use std::collections::VecDeque;
 use std::io;
 use std::sync::{Arc, Mutex, Weak};
 
+use crate::command_event::CommandProgress;
 use crate::entry_runner::{EntryOutputStream, EntryRunControl, EntryRunObserver, EntryRunOutcome};
-use crate::run_journal::{RunJournal, RunJournalPhase, RunJournalStream};
+use crate::run_journal::{RunJournal, RunJournalEvent, RunJournalPhase, RunJournalStream};
 
 use super::{RegistryError, RegistryInner};
-use crate::server::command_run::{
-    COMMAND_RUN_PROTOCOL, CommandRunDocument, CommandRunEvent, CommandRunState, CommandRunStream,
-};
+use crate::server::command_run::{COMMAND_RUN_PROTOCOL, CommandRunDocument, CommandRunState};
 
 const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 pub(super) const MAX_OUTPUT_EVENTS: usize = 4096;
@@ -101,37 +100,56 @@ impl CommandRun {
         if text.is_empty() {
             return;
         }
+        self.append_journal_event(|journal| {
+            journal.output(
+                RunJournalPhase::Worker,
+                match stream {
+                    EntryOutputStream::Stdout => RunJournalStream::Stdout,
+                    EntryOutputStream::Stderr => RunJournalStream::Stderr,
+                },
+                text,
+            )
+        });
+    }
+
+    pub(super) fn append_progress(&self, progress: CommandProgress) {
+        self.append_journal_event(|journal| {
+            journal
+                .progress(RunJournalPhase::Worker, progress)
+                .map(Some)
+        });
+    }
+
+    fn append_journal_event(
+        &self,
+        append: impl FnOnce(&RunJournal) -> io::Result<Option<RunJournalEvent>>,
+    ) {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
         if state.status.is_terminal() {
             return;
         }
-        if state.journal_error.is_none()
-            && let Err(error) = self.journal.output(
-                RunJournalPhase::Worker,
-                match stream {
-                    EntryOutputStream::Stdout => RunJournalStream::Stdout,
-                    EntryOutputStream::Stderr => RunJournalStream::Stderr,
-                },
-                text.clone(),
-            )
-        {
-            state.journal_error = Some(error.to_string());
-        }
-        state.next_cursor += 1;
-        state.output_bytes += text.len();
-        let sequence = state.next_cursor;
-        state.events.push_back(StoredEvent {
-            sequence,
-            stream: stream.into(),
-            text,
-        });
+        let event = if state.journal_error.is_none() {
+            match append(&self.journal) {
+                Ok(Some(event)) => event,
+                Ok(None) => return,
+                Err(error) => {
+                    state.journal_error = Some(error.to_string());
+                    return;
+                }
+            }
+        } else {
+            return;
+        };
+        state.next_cursor = event.sequence;
+        state.output_bytes += event.retained_bytes();
+        state.events.push_back(event);
         while state.output_bytes > MAX_OUTPUT_BYTES || state.events.len() > MAX_OUTPUT_EVENTS {
             let Some(removed) = state.events.pop_front() else {
                 break;
             };
-            state.output_bytes -= removed.text.len();
+            state.output_bytes -= removed.retained_bytes();
             state.truncated = true;
         }
     }
@@ -196,7 +214,6 @@ impl CommandRun {
                 .iter()
                 .filter(|event| event.sequence > after)
                 .cloned()
-                .map(Into::into)
                 .collect(),
             truncated: state.truncated,
         })
@@ -216,7 +233,7 @@ struct RunState {
     exit_code: Option<i32>,
     error: Option<String>,
     next_cursor: u64,
-    events: VecDeque<StoredEvent>,
+    events: VecDeque<RunJournalEvent>,
     output_bytes: usize,
     truncated: bool,
     journal_error: Option<String>,
@@ -233,23 +250,6 @@ fn journal_failed(state: &mut RunState, error: io::Error) {
     state.error = Some(format!("command journal failed: {prior}"));
 }
 
-#[derive(Clone)]
-struct StoredEvent {
-    sequence: u64,
-    stream: CommandRunStream,
-    text: String,
-}
-
-impl From<StoredEvent> for CommandRunEvent {
-    fn from(event: StoredEvent) -> Self {
-        Self {
-            sequence: event.sequence,
-            stream: event.stream,
-            text: event.text,
-        }
-    }
-}
-
 pub(super) struct RunObserver {
     pub(super) run: Weak<CommandRun>,
     pub(super) registry: Weak<RegistryInner>,
@@ -259,6 +259,12 @@ impl EntryRunObserver for RunObserver {
     fn output(&self, stream: EntryOutputStream, text: String) {
         if let Some(run) = self.run.upgrade() {
             run.append(stream, text);
+        }
+    }
+
+    fn progress(&self, progress: CommandProgress) {
+        if let Some(run) = self.run.upgrade() {
+            run.append_progress(progress);
         }
     }
 

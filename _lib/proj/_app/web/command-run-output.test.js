@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import { createCommandRunOutput } from "./command-run-output.js";
-import { documentObject, elements } from "./command-run-test-support.js";
+import {
+  documentObject,
+  elements,
+  progressEvent,
+} from "./command-run-test-support.js";
 
 describe("command run output", () => {
   test("bounds retained output by event count and labels both streams", () => {
@@ -43,5 +47,24 @@ describe("command run output", () => {
     expect(ui.commandRunOutput.children.map((child) => child.textContent))
       .toEqual(["好"]);
     expect(ui.commandRunTruncated.hidden).toBe(false);
+  });
+
+  test("updates one progress item in place", () => {
+    const ui = elements();
+    const output = createCommandRunOutput(ui, { document: documentObject() });
+
+    output.append([progressEvent(1)], 0);
+    output.append([progressEvent(2, "completed", {
+      current: 42,
+      total: 42,
+      message: "Downloaded fixture.zip",
+    })], 1);
+
+    expect(ui.commandRunOutput.children).toHaveLength(1);
+    const progress = ui.commandRunOutput.children[0];
+    expect(progress.dataset.state).toBe("completed");
+    expect(progress.children[0].textContent).toBe("Downloaded fixture.zip");
+    expect(progress.children[2].textContent).toContain("42/42 bytes");
+    expect(progress.children[1].attributes.get("value")).toBe("42");
   });
 });

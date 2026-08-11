@@ -1,9 +1,10 @@
+import { normalizeCommandEvents } from "./command-event-client.js";
+
 const JOURNALS_URL = "/api/v2/command-run-journals";
 const HISTORY_PROTOCOL = "swawkit.command-run-history/v1";
 const JOURNAL_PROTOCOL = "swawkit.command-run-journal/v1";
 const SOURCES = new Set(["cli", "web"]);
 const STATES = new Set(["running", "exited", "canceled", "failed"]);
-const PHASES = new Set(["guard-global", "guard-command", "run", "worker"]);
 
 export class CommandJournalError extends Error {
   constructor(message, status = 0) {
@@ -116,36 +117,9 @@ export function normalizeCommandJournal(value) {
   if (!SOURCES.has(journal.source)) {
     throw contractError("source 不是 cli 或 web。");
   }
-  if (!Array.isArray(journal.events)) {
-    throw contractError("events 必须是数组。");
-  }
-  let previous = 0;
-  const events = journal.events.map((value, index) => {
-    const event = object(value, `events[${index}]`);
-    const sequence = integer(event.sequence, `events[${index}].sequence`);
-    if (sequence <= previous) {
-      throw contractError("events 必须按 sequence 严格递增。");
-    }
-    previous = sequence;
-    if (!PHASES.has(event.phase)) {
-      throw contractError(`events[${index}].phase 不受支持。`);
-    }
-    if (event.stream !== "stdout" && event.stream !== "stderr") {
-      throw contractError(`events[${index}].stream 必须是 stdout 或 stderr。`);
-    }
-    if (typeof event.text !== "string") {
-      throw contractError(`events[${index}].text 必须是字符串。`);
-    }
-    return {
-      sequence,
-      timestampUnixMs: integer(event.timestampUnixMs, `events[${index}].timestampUnixMs`),
-      phase: event.phase,
-      stream: event.stream,
-      text: event.text,
-    };
-  });
+  const { events, lastSequence } = normalizeCommandEvents(journal.events, contractError);
   const nextCursor = integer(journal.nextCursor, "nextCursor");
-  if (previous > nextCursor) {
+  if (lastSequence > nextCursor) {
     throw contractError("nextCursor 不能早于最后一个事件。");
   }
   if (typeof journal.truncated !== "boolean") {

@@ -20,6 +20,7 @@ const COMMAND_JOURNAL_CSS: &str = include_str!("../web/styles/command-journal.cs
 const APP_JS: &str = include_str!("../web/app.js");
 const CATALOG_MODEL_JS: &str = include_str!("../web/catalog-model.js");
 const COMMAND_ACTIVITY_JS: &str = include_str!("../web/command-activity.js");
+const COMMAND_EVENT_CLIENT_JS: &str = include_str!("../web/command-event-client.js");
 const NAVIGATION_JS: &str = include_str!("../web/navigation.js");
 const EXPLORER_JS: &str = include_str!("../web/explorer.js");
 const EXPLORER_MODEL_JS: &str = include_str!("../web/explorer-model.js");
@@ -53,6 +54,9 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "app.js" => Some(("text/javascript; charset=utf-8", APP_JS)),
         "catalog-model.js" => Some(("text/javascript; charset=utf-8", CATALOG_MODEL_JS)),
         "command-activity.js" => Some(("text/javascript; charset=utf-8", COMMAND_ACTIVITY_JS)),
+        "command-event-client.js" => {
+            Some(("text/javascript; charset=utf-8", COMMAND_EVENT_CLIENT_JS))
+        }
         "navigation.js" => Some(("text/javascript; charset=utf-8", NAVIGATION_JS)),
         "explorer.js" => Some(("text/javascript; charset=utf-8", EXPLORER_JS)),
         "explorer-model.js" => Some(("text/javascript; charset=utf-8", EXPLORER_MODEL_JS)),

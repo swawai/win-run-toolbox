@@ -188,13 +188,16 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
     )
     .await;
     assert_eq!(all["nextCursor"], 2);
-    assert_eq!(
-        all["events"],
-        json!([
-            {"sequence": 1, "stream": "stdout", "text": "first\n"},
-            {"sequence": 2, "stream": "stderr", "text": "second\n"}
-        ])
-    );
+    assert_eq!(all["events"].as_array().expect("run events").len(), 2);
+    assert_eq!(all["events"][0]["sequence"], 1);
+    assert_eq!(all["events"][0]["phase"], "worker");
+    assert_eq!(all["events"][0]["kind"], "output");
+    assert_eq!(all["events"][0]["stream"], "stdout");
+    assert_eq!(all["events"][0]["text"], "first\n");
+    assert!(all["events"][0]["timestampUnixMs"].as_u64().is_some());
+    assert_eq!(all["events"][1]["sequence"], 2);
+    assert_eq!(all["events"][1]["stream"], "stderr");
+    assert_eq!(all["events"][1]["text"], "second\n");
 
     let incremental = response_json(
         send(
@@ -207,10 +210,7 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
     )
     .await;
     assert_eq!(incremental["nextCursor"], 2);
-    assert_eq!(
-        incremental["events"],
-        json!([{"sequence": 2, "stream": "stderr", "text": "second\n"}])
-    );
+    assert_eq!(incremental["events"], json!([all["events"][1].clone()]));
     assert_eq!(
         send(
             app.clone(),
@@ -261,7 +261,9 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
     assert_eq!(journal["nextCursor"], 2);
     assert_eq!(journal["events"][0]["sequence"], 2);
     assert_eq!(journal["events"][0]["phase"], "worker");
+    assert_eq!(journal["events"][0]["kind"], "output");
     assert_eq!(journal["events"][0]["text"], "second\n");
+    assert_eq!(journal["events"][0], all["events"][1]);
     let open_location =
         "/api/v2/command-run-journals/missing-run/open-directory?command=kernel/.demo";
     assert_eq!(

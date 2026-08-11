@@ -75,6 +75,7 @@ function journal() {
       sequence: 1,
       timestampUnixMs: 1100,
       phase: "run",
+      kind: "output",
       stream: "stdout",
       text: "ready\n",
     }],
@@ -107,6 +108,40 @@ describe("command journal view", () => {
     const localStamp = `${two(eventTime.getHours())}:${two(eventTime.getMinutes())}:${two(eventTime.getSeconds())}.${String(eventTime.getMilliseconds()).padStart(3, "0")}`;
     expect(dom.commandJournalOutput.children[0].textContent)
       .toStartWith(`[${localStamp}]`);
+  });
+
+  test("renders progress state and amount in persisted logs", async () => {
+    const dom = elements();
+    const progressJournal = {
+      ...journal(),
+      nextCursor: 2,
+      events: [journal().events[0], {
+        sequence: 2,
+        timestampUnixMs: 1150,
+        phase: "run",
+        kind: "progress",
+        id: "download:fixture.zip",
+        state: "completed",
+        current: 42,
+        total: 42,
+        unit: "bytes",
+        message: "Downloaded fixture.zip",
+      }],
+    };
+    const view = createCommandJournalView(dom, {
+      document: documentObject(),
+      fetchJournal: async (url) => url.includes("/run-1?")
+        ? response(200, progressJournal)
+        : response(200, history([summary()])),
+    });
+
+    view.select(command, { active: true });
+    await settle();
+    await settle();
+
+    expect(dom.commandJournalOutput.children[1].textContent)
+      .toContain("[progress:completed] Downloaded fixture.zip · 42/42 bytes");
+    expect(dom.commandJournalOutput.children[1].dataset.state).toBe("completed");
   });
 
   test("leaving during a slow load does not block reopening the same command", async () => {

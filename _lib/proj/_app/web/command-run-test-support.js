@@ -66,6 +66,10 @@ export class FakeElement {
     this.attributes.set(name, String(value));
   }
 
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
   focus() {
     this.focused = true;
   }
@@ -145,6 +149,33 @@ export function snapshot(overrides = {}) {
     nextCursor: 0,
     events: [],
     truncated: false,
+    ...overrides,
+  };
+}
+
+export function outputEvent(sequence, stream, text) {
+  return {
+    sequence,
+    timestampUnixMs: 1000 + sequence,
+    phase: "worker",
+    kind: "output",
+    stream,
+    text,
+  };
+}
+
+export function progressEvent(sequence, state = "running", overrides = {}) {
+  return {
+    sequence,
+    timestampUnixMs: 1000 + sequence,
+    phase: "worker",
+    kind: "progress",
+    id: "download:fixture.zip",
+    state,
+    current: null,
+    total: null,
+    unit: "bytes",
+    message: "Downloading fixture.zip",
     ...overrides,
   };
 }

@@ -250,6 +250,10 @@ async fn serves_only_the_declared_local_surface() {
             "/assets/command-activity.js",
             "text/javascript; charset=utf-8",
         ),
+        (
+            "/assets/command-event-client.js",
+            "text/javascript; charset=utf-8",
+        ),
         ("/assets/navigation.js", "text/javascript; charset=utf-8"),
         ("/assets/explorer.js", "text/javascript; charset=utf-8"),
         (

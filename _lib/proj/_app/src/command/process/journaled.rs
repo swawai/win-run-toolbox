@@ -5,7 +5,13 @@ use std::process::{Child, Stdio};
 use std::thread::{self, JoinHandle};
 
 use crate::catalog::CommandAdapter;
-use crate::run_journal::{RunJournal, RunJournalPhase, RunJournalStream};
+use crate::command_event::{
+    CapturedCommandEvent, CommandEventFrameDecoder, CommandProgress, CommandProgressState,
+    CommandProgressUnit,
+};
+use crate::run_journal::{
+    RunJournal, RunJournalEvent, RunJournalEventData, RunJournalPhase, RunJournalStream,
+};
 use crate::utf8_output::Utf8LossyDecoder;
 
 use super::prepare_command;
@@ -121,6 +127,7 @@ fn read_output(
 ) -> io::Result<()> {
     let mut console = ConsoleWriter::new(stream);
     let mut decoder = Utf8LossyDecoder::default();
+    let mut frame_decoder = CommandEventFrameDecoder::default();
     let mut first_error = None;
     let mut journal_available = true;
     let mut buffer = [0_u8; OUTPUT_READ_BUFFER_SIZE];
@@ -133,28 +140,128 @@ fn read_output(
             }
         };
         if count == 0 {
-            if journal_available
-                && let Some(text) = decoder.decode(&[], true)
-                && let Err(error) = journal.output(phase, stream, text)
-            {
-                remember_first(&mut first_error, error);
+            if let Some(text) = decoder.decode(&[], true) {
+                decode_events(
+                    &mut console,
+                    &journal,
+                    phase,
+                    stream,
+                    text,
+                    &mut frame_decoder,
+                    &mut journal_available,
+                    &mut first_error,
+                );
+            }
+            for event in frame_decoder.finish() {
+                render_event(
+                    &mut console,
+                    &journal,
+                    phase,
+                    stream,
+                    event,
+                    &mut journal_available,
+                    &mut first_error,
+                );
             }
             break;
         }
-        if let Err(error) = console.write(&buffer[..count]) {
-            remember_first(&mut first_error, error);
-        }
-        if journal_available
-            && let Some(text) = decoder.decode(&buffer[..count], false)
-            && let Err(error) = journal.output(phase, stream, text)
-        {
-            journal_available = false;
-            remember_first(&mut first_error, error);
+        if let Some(text) = decoder.decode(&buffer[..count], false) {
+            decode_events(
+                &mut console,
+                &journal,
+                phase,
+                stream,
+                text,
+                &mut frame_decoder,
+                &mut journal_available,
+                &mut first_error,
+            );
         }
     }
     match first_error {
         Some(error) => Err(error),
         None => Ok(()),
+    }
+}
+
+fn decode_events(
+    console: &mut ConsoleWriter,
+    journal: &RunJournal,
+    phase: RunJournalPhase,
+    stream: RunJournalStream,
+    text: String,
+    decoder: &mut CommandEventFrameDecoder,
+    journal_available: &mut bool,
+    first_error: &mut Option<io::Error>,
+) {
+    for event in decoder.push(&text) {
+        render_event(
+            console,
+            journal,
+            phase,
+            stream,
+            event,
+            journal_available,
+            first_error,
+        );
+    }
+}
+
+fn render_event(
+    console: &mut ConsoleWriter,
+    journal: &RunJournal,
+    phase: RunJournalPhase,
+    stream: RunJournalStream,
+    captured: CapturedCommandEvent,
+    journal_available: &mut bool,
+    first_error: &mut Option<io::Error>,
+) {
+    match captured {
+        CapturedCommandEvent::Output(text) => {
+            if *journal_available {
+                match journal.output(phase, stream, text.clone()) {
+                    Ok(Some(event)) => {
+                        render_console(console, &event, first_error);
+                        return;
+                    }
+                    Ok(None) => return,
+                    Err(error) => {
+                        *journal_available = false;
+                        remember_first(first_error, error);
+                    }
+                }
+            }
+            if let Err(error) = console.write_text(&text) {
+                remember_first(first_error, error);
+            }
+        }
+        CapturedCommandEvent::Progress(progress) => {
+            if *journal_available {
+                match journal.progress(phase, progress.clone()) {
+                    Ok(event) => {
+                        render_console(console, &event, first_error);
+                        return;
+                    }
+                    Err(error) => {
+                        *journal_available = false;
+                        remember_first(first_error, error);
+                    }
+                }
+            }
+            if let Err(error) = console.write_progress(&progress) {
+                remember_first(first_error, error);
+            }
+        }
+    }
+}
+
+fn render_console(
+    console: &mut ConsoleWriter,
+    event: &RunJournalEvent,
+    first_error: &mut Option<io::Error>,
+) {
+    if let Err(error) = console.render(event) {
+        remember_first(first_error, error);
     }
 }
 
@@ -178,7 +285,34 @@ impl ConsoleWriter {
         }
     }
 
-    fn write(&mut self, bytes: &[u8]) -> io::Result<()> {
+    fn render(&mut self, event: &RunJournalEvent) -> io::Result<()> {
+        match &event.data {
+            RunJournalEventData::Output { text, .. } => self.write_text(text),
+            RunJournalEventData::Progress { progress } => self.write_progress(progress),
+        }
+    }
+
+    fn write_progress(&mut self, progress: &CommandProgress) -> io::Result<()> {
+        let status = match progress.state {
+            CommandProgressState::Running => "PROGRESS",
+            CommandProgressState::Completed => "OK",
+            CommandProgressState::Failed => "ERROR",
+        };
+        let unit = match progress.unit {
+            CommandProgressUnit::Bytes => "bytes",
+            CommandProgressUnit::Items => "items",
+            CommandProgressUnit::Percent => "%",
+        };
+        let amount = match (progress.current, progress.total) {
+            (Some(current), Some(total)) => format!(" ({current}/{total} {unit})"),
+            (Some(current), None) => format!(" ({current} {unit})"),
+            _ => String::new(),
+        };
+        self.write_text(&format!("[{status}] {}{amount}\n", progress.message))
+    }
+
+    fn write_text(&mut self, text: &str) -> io::Result<()> {
+        let bytes = text.as_bytes();
         match self {
             Self::Stdout(writer) => writer.write_all(bytes).and_then(|()| writer.flush()),
             Self::Stderr(writer) => writer.write_all(bytes).and_then(|()| writer.flush()),

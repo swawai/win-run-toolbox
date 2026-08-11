@@ -78,7 +78,7 @@ export function createCommandJournalView(elements, options = {}) {
       status.dataset.state = presentation.tone;
       time.textContent = formatTime(run.startedAtUnixMs);
       heading.append(time);
-      meta.textContent = `${sourceLabels[run.source]} · ${run.eventCount} 条输出事件`;
+      meta.textContent = `${sourceLabels[run.source]} · ${run.eventCount} 条事件`;
       summary.className = "command-journal-record-summary";
       summary.append(meta, status);
       button.append(heading, summary);
@@ -132,8 +132,19 @@ export function createCommandJournalView(elements, options = {}) {
     for (const event of events) {
       const line = documentObject.createElement("span");
       const stamp = formatEventTime(event.timestampUnixMs);
-      line.dataset.stream = event.stream;
-      line.textContent = `[${stamp}] [${event.phase}] ${event.text}`;
+      line.dataset.kind = event.kind;
+      if (event.kind === "output") {
+        line.dataset.stream = event.stream;
+        line.textContent = `[${stamp}] [${event.phase}] ${event.text}`;
+      } else {
+        line.dataset.state = event.state;
+        const amount = event.current === null
+          ? ""
+          : event.total === null
+            ? ` · ${event.current} ${event.unit}`
+            : ` · ${event.current}/${event.total} ${event.unit}`;
+        line.textContent = `[${stamp}] [${event.phase}] [progress:${event.state}] ${event.message}${amount}`;
+      }
       elements.commandJournalOutput.append(line);
     }
     if (events.length > 0) {

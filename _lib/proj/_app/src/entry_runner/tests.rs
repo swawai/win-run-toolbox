@@ -24,6 +24,7 @@ const NORMAL_MARKER: &str = "web-native-worker.marker";
 const CANCEL_PID_MARKER: &str = "web-native-worker-descendant.pid";
 const STDOUT_SENTINEL: &str = "SWAWKIT_WEB_NATIVE_STDOUT_SENTINEL";
 const STDERR_SENTINEL: &str = "SWAWKIT_WEB_NATIVE_STDERR_SENTINEL";
+const PROGRESS_FRAME: &str = "\u{001e}swawkit-event-v1 {\"schema\":\"swawkit.command-event/v1\",\"kind\":\"progress\",\"id\":\"download:fixture.zip\",\"state\":\"completed\",\"current\":42,\"total\":42,\"unit\":\"bytes\",\"message\":\"Downloaded fixture.zip\"}";
 
 #[test]
 fn decoder_preserves_utf8_split_across_reads() {
@@ -65,6 +66,7 @@ fn webnativeworkerfixture() {
 
     fs::write(NORMAL_MARKER, "worker cwd reached\n").expect("write native worker marker");
     println!("{STDOUT_SENTINEL}");
+    eprintln!("{PROGRESS_FRAME}");
     eprintln!("{STDERR_SENTINEL}");
 }
 

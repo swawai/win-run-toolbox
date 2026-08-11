@@ -1,3 +1,4 @@
+mod event;
 mod read;
 
 use std::fs::{self, File, OpenOptions};
@@ -13,6 +14,7 @@ use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 
 use crate::atomic_file;
 
+pub(crate) use event::{RunJournalEvent, RunJournalEventData, RunJournalPhase, RunJournalStream};
 pub use read::{RunJournalDocument, RunJournalHistoryDocument};
 pub(crate) use read::{read_run, read_run_directory, read_run_history};
 
@@ -31,22 +33,6 @@ static NEXT_RUN: AtomicU64 = AtomicU64::new(0);
 pub(crate) enum RunJournalSource {
     Cli,
     Web,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum RunJournalPhase {
-    GuardGlobal,
-    GuardCommand,
-    Run,
-    Worker,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum RunJournalStream {
-    Stdout,
-    Stderr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +130,7 @@ impl RunJournal {
                 event_count: 0,
                 truncated: false,
             },
+            next_sequence: 0,
             stored_event_bytes: 0,
             write_error: None,
         };
@@ -170,14 +157,26 @@ impl RunJournal {
         phase: RunJournalPhase,
         stream: RunJournalStream,
         text: String,
-    ) -> io::Result<()> {
+    ) -> io::Result<Option<RunJournalEvent>> {
         if text.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
         self.inner
             .lock()
             .map_err(|_| io::Error::other("run journal is unavailable"))?
-            .output(phase, stream, text)
+            .append(phase, RunJournalEventData::Output { stream, text })
+            .map(Some)
+    }
+
+    pub(crate) fn progress(
+        &self,
+        phase: RunJournalPhase,
+        progress: crate::command_event::CommandProgress,
+    ) -> io::Result<RunJournalEvent> {
+        self.inner
+            .lock()
+            .map_err(|_| io::Error::other("run journal is unavailable"))?
+            .append(phase, RunJournalEventData::Progress { progress })
     }
 
     pub(crate) fn finish_exited(&self, exit_code: i32) -> io::Result<()> {
@@ -218,43 +217,48 @@ struct Writer {
     state_path: PathBuf,
     events: File,
     state: StoredRunState,
+    next_sequence: u64,
     stored_event_bytes: usize,
     write_error: Option<String>,
 }
 
 impl Writer {
-    fn output(
+    fn append(
         &mut self,
         phase: RunJournalPhase,
-        stream: RunJournalStream,
-        text: String,
-    ) -> io::Result<()> {
+        data: RunJournalEventData,
+    ) -> io::Result<RunJournalEvent> {
         if self.state.status.is_terminal() {
             return Err(io::Error::other("run journal is already complete"));
         }
         if let Some(error) = &self.write_error {
             return Err(io::Error::other(error.clone()));
         }
-        let sequence = self.state.event_count + 1;
-        let event = StoredRunEvent {
-            schema: JOURNAL_EVENT_SCHEMA.to_owned(),
-            run_id: self.state.id.clone(),
+        let sequence = self.next_sequence + 1;
+        self.next_sequence = sequence;
+        let event = RunJournalEvent {
             sequence,
             timestamp_unix_ms: unix_time_ms()?,
             phase,
-            stream,
-            text,
+            data,
         };
-        let mut content = serde_json::to_vec(&event).map_err(io::Error::other)?;
+        let stored = StoredRunEvent {
+            schema: JOURNAL_EVENT_SCHEMA.to_owned(),
+            run_id: self.state.id.clone(),
+            event: event.clone(),
+        };
+        let mut content = serde_json::to_vec(&stored).map_err(io::Error::other)?;
         content.push(b'\n');
-        if self.stored_event_bytes.saturating_add(content.len()) > MAX_EVENTS_FILE_BYTES {
+        if self.state.truncated
+            || self.stored_event_bytes.saturating_add(content.len()) > MAX_EVENTS_FILE_BYTES
+        {
             if !self.state.truncated {
                 self.state.truncated = true;
                 if let Err(error) = self.publish_state() {
                     return Err(self.remember_error(error));
                 }
             }
-            return Ok(());
+            return Ok(event);
         }
         if let Err(error) = self
             .events
@@ -265,7 +269,7 @@ impl Writer {
         }
         self.stored_event_bytes += content.len();
         self.state.event_count = sequence;
-        Ok(())
+        Ok(event)
     }
 
     fn finish(
@@ -330,15 +334,12 @@ pub(super) struct StoredRunState {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct StoredRunEvent {
     pub schema: String,
     pub run_id: String,
-    pub sequence: u64,
-    pub timestamp_unix_ms: u64,
-    pub phase: RunJournalPhase,
-    pub stream: RunJournalStream,
-    pub text: String,
+    #[serde(flatten)]
+    pub event: RunJournalEvent,
 }
 
 pub(super) fn assert_plain_directory(path: &Path) -> io::Result<()> {

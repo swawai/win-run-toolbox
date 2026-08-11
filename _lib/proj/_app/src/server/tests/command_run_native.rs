@@ -63,6 +63,16 @@ async fn executes_and_cancels_native_workers_through_the_http_router() {
     let (stdout, stderr) = output_text(&normal);
     assert!(stdout.contains(STDOUT_SENTINEL), "stdout was: {stdout:?}");
     assert!(stderr.contains(STDERR_SENTINEL), "stderr was: {stderr:?}");
+    let progress = normal["events"]
+        .as_array()
+        .expect("native run events")
+        .iter()
+        .find(|event| event["kind"] == "progress")
+        .expect("native worker progress event");
+    assert_eq!(progress["id"], "download:fixture.zip");
+    assert_eq!(progress["state"], "completed");
+    assert_eq!(progress["current"], 42);
+    assert_eq!(progress["total"], 42);
 
     let (cancel_location, cancel_created) = start_native_run(&app, CANCEL_ACTION).await;
     assert_eq!(cancel_created["state"], "running");
@@ -173,6 +183,9 @@ fn output_text(document: &Value) -> (String, String) {
     let mut stdout = String::new();
     let mut stderr = String::new();
     for event in document["events"].as_array().expect("native output events") {
+        if event["kind"] != "output" {
+            continue;
+        }
         let text = event["text"].as_str().expect("native output event text");
         match event["stream"].as_str() {
             Some("stdout") => stdout.push_str(text),

@@ -1,3 +1,5 @@
+import { normalizeCommandEvents } from "./command-event-client.js";
+
 const COMMAND_RUNS_URL = "/api/v2/command-runs";
 const COMMAND_RUN_PROTOCOL = "swawkit.command-run/v1";
 const COMMAND_RUN_STATES = new Set([
@@ -69,27 +71,8 @@ export function normalizeCommandRunSnapshot(value) {
   if (!Number.isSafeInteger(snapshot.nextCursor) || snapshot.nextCursor < 0) {
     throw contractError("nextCursor 必须是非负整数。");
   }
-  if (!Array.isArray(snapshot.events)) {
-    throw contractError("events 必须是数组。");
-  }
-
-  let previousSequence = 0;
-  const events = snapshot.events.map((value, index) => {
-    const event = requireObject(value, `events[${index}]`);
-    if (!Number.isSafeInteger(event.sequence) || event.sequence <= previousSequence) {
-      throw contractError("events 必须按正整数 sequence 严格递增。");
-    }
-    previousSequence = event.sequence;
-    if (event.stream !== "stdout" && event.stream !== "stderr") {
-      throw contractError(`events[${index}].stream 必须是 stdout 或 stderr。`);
-    }
-    return {
-      sequence: event.sequence,
-      stream: event.stream,
-      text: requireString(event.text, `events[${index}].text`, { allowEmpty: true }),
-    };
-  });
-  if (previousSequence > snapshot.nextCursor) {
+  const { events, lastSequence } = normalizeCommandEvents(snapshot.events, contractError);
+  if (lastSequence > snapshot.nextCursor) {
     throw contractError("nextCursor 不能早于最后一个事件。");
   }
   if (typeof snapshot.truncated !== "boolean") {

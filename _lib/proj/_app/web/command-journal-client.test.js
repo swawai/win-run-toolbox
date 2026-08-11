@@ -42,6 +42,7 @@ function journal(overrides = {}) {
       sequence: 1,
       timestampUnixMs: 1100,
       phase: "run",
+      kind: "output",
       stream: "stdout",
       text: "ready\n",
     }],
@@ -63,6 +64,27 @@ describe("command journal protocol client", () => {
     };
     expect(normalizeCommandJournalHistory(history)).toEqual(history);
     expect(normalizeCommandJournal(journal())).toEqual(journal());
+  });
+
+  test("normalizes persisted progress events", () => {
+    const progress = {
+      sequence: 2,
+      timestampUnixMs: 1150,
+      phase: "run",
+      kind: "progress",
+      id: "download:fixture.zip",
+      state: "running",
+      current: null,
+      total: null,
+      unit: "bytes",
+      message: "Downloading fixture.zip",
+    };
+    const document = journal({
+      nextCursor: 2,
+      events: [journal().events[0], progress],
+    });
+
+    expect(normalizeCommandJournal(document)).toEqual(document);
   });
 
   test("rejects inconsistent terminal fields and event order", () => {

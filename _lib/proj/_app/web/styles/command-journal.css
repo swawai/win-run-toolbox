@@ -235,6 +235,18 @@
   display: block;
 }
 
+.command-journal-output [data-kind="progress"] {
+  color: var(--ui-text-muted);
+}
+
+.command-journal-output [data-kind="progress"][data-state="completed"] {
+  color: var(--ui-status-ok);
+}
+
+.command-journal-output [data-kind="progress"][data-state="failed"] {
+  color: var(--ui-status-error);
+}
+
 .command-journal-truncated {
   color: var(--ui-status-warning);
 }

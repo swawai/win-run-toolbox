@@ -8,6 +8,7 @@ import {
   deferred,
   documentObject,
   elements,
+  outputEvent,
   response,
   scheduler,
   settle,
@@ -31,14 +32,14 @@ describe("command run view", () => {
         if (options.method === "POST") {
           return response(201, snapshot({
             nextCursor: 1,
-            events: [{ sequence: 1, stream: "stdout", text: "started\n" }],
+            events: [outputEvent(1, "stdout", "started\n")],
           }), "/api/v2/command-runs/run-1");
         }
         return response(200, snapshot({
           state: "exited",
           exitCode: 0,
           nextCursor: 2,
-          events: [{ sequence: 2, stream: "stderr", text: "warning\n" }],
+          events: [outputEvent(2, "stderr", "warning\n")],
         }));
       },
     });
@@ -316,7 +317,7 @@ describe("command run view", () => {
 
     oldPoll.resolve(response(200, snapshot({
       nextCursor: 1,
-      events: [{ sequence: 1, stream: "stdout", text: "late\n" }],
+      events: [outputEvent(1, "stdout", "late\n")],
     })));
     await settle();
 

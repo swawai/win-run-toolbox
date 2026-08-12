@@ -67,9 +67,6 @@ $DataRoot = Join-Path $ControlHome "data\proj.$EntryName"
 $PinnedDataRoot = Join-Path $ControlHome "data\proj.$PinnedEntryName"
 $ReparseDataRoot = Join-Path $ControlHome "data\proj.$EntryName-reparse"
 $ModulesJunction = ''
-$SystemPowerShell = Join-Path $env:SystemRoot (
-    'System32\WindowsPowerShell\v1.0\powershell.exe'
-)
 $ResolvedToolchainPath = [IO.Path]::GetFullPath($ToolchainPath)
 if (-not [IO.File]::Exists($ResolvedToolchainPath)) {
     throw "Toolchain test candidate is missing: $ResolvedToolchainPath"
@@ -195,10 +192,11 @@ try {
         [IO.File]::WriteAllBytes($BunxPath, $OriginalBunx)
     }
 
-    $SetupResult = Invoke-ProjBunEntryFixture `
-        -PowerShell $SystemPowerShell `
-        -EntryPath (Join-Path $ProjRoot '.dev\setup\run.ps1') `
-        -Arguments @()
+    $env:SWAWKIT_PROJ_CORE_COMMAND_ADDRESS = '.dev.setup'
+    $SetupResult = Invoke-ProjToolchainCommandFixture `
+        -Executable $ResolvedToolchainPath `
+        -Handler 'dev.setup'
+    $env:SWAWKIT_PROJ_CORE_COMMAND_ADDRESS = '.dev.status'
     Assert-ProjBunTest `
         -Condition (
             $SetupResult.ExitCode -eq 0 -and

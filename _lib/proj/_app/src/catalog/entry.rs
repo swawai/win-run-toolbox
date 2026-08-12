@@ -20,7 +20,7 @@ const CORE_HANDLERS: [&str; 5] = [
     "entry.profile.set",
     "host.start",
 ];
-const TOOLCHAIN_HANDLERS: [&str; 1] = ["dev.status"];
+const TOOLCHAIN_HANDLERS: [&str; 2] = ["dev.setup", "dev.status"];
 
 #[derive(Debug)]
 pub(crate) struct ResolvedEntry {

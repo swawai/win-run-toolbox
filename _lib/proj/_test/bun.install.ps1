@@ -12,6 +12,8 @@ $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 
 $EnvironmentNames = @(
     'SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL',
+    'SWAWKIT_PROJ_CORE_COMMAND_PHASE',
+    'SWAWKIT_PROJ_CORE_COMMAND_ADDRESS',
     'SWAWKIT_HOME',
     'SWAWKIT_PROJ_TARGET_PROJECT_ROOT',
     'SWAWKIT_PROJ_ACTION_ROOT',
@@ -290,6 +292,8 @@ try {
     [void][IO.Directory]::CreateDirectory($ActionRoot)
     Set-ProjBunProcessEnvironment -Values @{
         SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL = '1'
+        SWAWKIT_PROJ_CORE_COMMAND_PHASE = 'run'
+        SWAWKIT_PROJ_CORE_COMMAND_ADDRESS = '.dev.setup'
         SWAWKIT_HOME = $ControlHome
         SWAWKIT_PROJ_TARGET_PROJECT_ROOT = $ProjectRoot
         SWAWKIT_PROJ_ACTION_ROOT = $ActionRoot
@@ -319,11 +323,9 @@ try {
         $LegacyStatePath,
         '{"schema":"swawkit.proj-dev.environment-state.v2"}'
     )
-    $SetupEntry = Join-Path $ProjRoot '.dev\setup\run.ps1'
-    $SetupResult = Invoke-ProjBunEntryFixture `
-        -PowerShell $SystemPowerShell `
-        -EntryPath $SetupEntry `
-        -Arguments @()
+    $SetupResult = Invoke-ProjToolchainCommandFixture `
+        -Executable $ResolvedToolchainPath `
+        -Handler 'dev.setup'
     Assert-ProjBunTest `
         -Condition ($SetupResult.ExitCode -eq 0 -and
             [IO.File]::Exists((Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\env.cmd')) -and
@@ -336,9 +338,9 @@ try {
         -Message "real disabled .dev.setup entry failed: $($SetupResult.Output)"
     $SetupEnvHash = Get-ProjDevFileSha256 `
         -Path (Join-Path $SetupDataRoot 'modules\kernel\.dev\setup\export\env.ps1')
-    $RejectedSetup = Invoke-ProjBunEntryFixture `
-        -PowerShell $SystemPowerShell `
-        -EntryPath $SetupEntry `
+    $RejectedSetup = Invoke-ProjToolchainCommandFixture `
+        -Executable $ResolvedToolchainPath `
+        -Handler 'dev.setup' `
         -Arguments @('unexpected')
     Assert-ProjBunTest `
         -Condition ($RejectedSetup.ExitCode -eq 1 -and
@@ -361,10 +363,9 @@ try {
     $env:SWAWKIT_PROJ_PYTHON_VERSION = '3.13'
     $env:SWAWKIT_PROJ_UV_MODE = 'managed'
     $env:SWAWKIT_PROJ_UV_VERSION = '0.10.2'
-    $PendingSetup = Invoke-ProjBunEntryFixture `
-        -PowerShell $SystemPowerShell `
-        -EntryPath $SetupEntry `
-        -Arguments @()
+    $PendingSetup = Invoke-ProjToolchainCommandFixture `
+        -Executable $ResolvedToolchainPath `
+        -Handler 'dev.setup'
     Assert-ProjBunTest `
         -Condition ($PendingSetup.ExitCode -eq 1 -and
             $PendingSetup.Output.Contains(

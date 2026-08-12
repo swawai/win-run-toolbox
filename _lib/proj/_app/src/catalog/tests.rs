@@ -64,7 +64,10 @@ fn discovers_control_kernel_and_action_hierarchies() {
         r#"{"schema":"swawkit.core-command/v1","handler":"entry.claim"}"#,
     );
     fixture.file("home/_lib/proj/.dev/run.ps1", "");
-    fixture.file("home/_lib/proj/.dev/setup/run.cmd", "");
+    fixture.file(
+        "home/_lib/proj/.dev/setup/run.toolchain.json",
+        r#"{"schema":"swawkit.toolchain-command/v1","handler":"dev.setup"}"#,
+    );
     fixture.file("home/_lib/proj/.help/run.ps1", "");
     fixture.file("home/_lib/proj/.h/run.ps1", "");
     fixture.file("home/_lib/proj/-con/run.ps1", "");
@@ -152,8 +155,9 @@ fn discovers_control_kernel_and_action_hierarchies() {
 
     let setup = node(&snapshot, CommandSource::Kernel, ".dev.setup");
     assert_eq!(setup.parent.as_deref(), Some(".dev"));
-    assert_eq!(setup.entry.as_deref(), Some("run.cmd"));
-    assert_eq!(setup.adapter.as_deref(), Some("cmd"));
+    assert_eq!(setup.entry.as_deref(), Some("run.toolchain.json"));
+    assert_eq!(setup.adapter.as_deref(), Some("toolchain"));
+    assert_eq!(setup.handler.as_deref(), Some("dev.setup"));
 
     let info = node(&snapshot, CommandSource::Kernel, ".info");
     let help = info.help.as_ref().expect("info help");

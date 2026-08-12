@@ -157,6 +157,40 @@ try {
             $DevelopmentStatus.Text
         )
 
+    foreach ($Setting in @(
+        @('bun', 'SWAWKIT_PROJ_BUN_MODE'),
+        @('pwsh', 'SWAWKIT_PROJ_PWSH_MODE'),
+        @('msvc', 'SWAWKIT_PROJ_MSVC_MODE'),
+        @('rust', 'SWAWKIT_PROJ_RUST_MODE')
+    )) {
+        $Disabled = Invoke-ProjEntrySmoke `
+            -EntryPath $EntryPath `
+            -Arguments @(
+                "..entry.env.$($Setting[0]).$($Setting[1])",
+                'disabled'
+            )
+        Assert-ProjEntrySmoke `
+            -Condition ($Disabled.ExitCode -eq 0) `
+            -Message "failed to disable $($Setting[0]): $($Disabled.Text)"
+    }
+    $DevelopmentSetup = Invoke-ProjEntrySmoke `
+        -EntryPath $EntryPath `
+        -Arguments @('.dev.setup')
+    $SetupRoot = Join-Path $DataRoot 'modules\kernel\.dev\setup'
+    Assert-ProjEntrySmoke `
+        -Condition (
+            $DevelopmentSetup.ExitCode -eq 0 -and
+            $DevelopmentSetup.Text.Contains(
+                '[OK] The base development environment is ready.'
+            ) -and
+            [IO.File]::Exists((Join-Path $SetupRoot 'export\env.cmd')) -and
+            [IO.File]::Exists((Join-Path $SetupRoot 'export\env.ps1'))
+        ) `
+        -Message (
+            '.dev.setup did not execute through Catalog, Core, and the ' +
+            "candidate Toolchain: $($DevelopmentSetup.Text)"
+        )
+
     $InvocationDirectory = (Get-Location).ProviderPath
     $Info = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `

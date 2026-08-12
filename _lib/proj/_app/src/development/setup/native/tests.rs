@@ -321,10 +321,35 @@ fn invalid_rust_declaration_leaves_the_provider_unavailable() {
 }
 
 #[test]
+fn rust_requires_msvc_before_any_source_is_touched() {
+    let fixture = Fixture::new();
+    let declarations = declarations(&[
+        ("SWAWKIT_PROJ_RUST_MODE", "rustup"),
+        ("SWAWKIT_PROJ_RUST_TOOLCHAIN", "stable"),
+        ("SWAWKIT_PROJ_RUST_PROFILE", "minimal"),
+        ("SWAWKIT_PROJ_RUST_HOST", "x86_64-pc-windows-msvc"),
+    ]);
+
+    let error = run_native(&fixture.context(), &declarations, &mut |_, _, _| {
+        panic!("invalid cross-domain declarations must remain offline")
+    })
+    .unwrap_err();
+
+    assert!(
+        error.contains("requires the managed MSVC module"),
+        "{error}"
+    );
+    assert!(read_ready(&fixture.data_root, &fixture.input_revision).is_err());
+}
+
+#[test]
 fn ready_rust_joins_the_shared_environment_and_provider_transaction() {
     let fixture = Fixture::new();
     let root = fixture.publish_rust();
+    fixture.publish_msvc();
     let declarations = declarations(&[
+        ("SWAWKIT_PROJ_MSVC_MODE", "managed"),
+        ("SWAWKIT_PROJ_MSVC_CHANNEL", "17"),
         ("SWAWKIT_PROJ_RUST_MODE", "rustup"),
         ("SWAWKIT_PROJ_RUST_TOOLCHAIN", "stable"),
         ("SWAWKIT_PROJ_RUST_PROFILE", "minimal"),

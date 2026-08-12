@@ -31,6 +31,8 @@ $CandidateArguments = @{
 & (Join-Path $PSScriptRoot 'app-core.ps1')
 & (Join-Path $PSScriptRoot 'toolchain.ps1') `
     -ToolchainPath $CandidateArguments.ToolchainPath
+& (Join-Path $PSScriptRoot 'toolchain.setup.ps1') `
+    -ToolchainPath $CandidateArguments.ToolchainPath
 & (Join-Path $PSScriptRoot 'web.ps1')
 & (Join-Path $PSScriptRoot 'bootstrap-contract.ps1')
 & (Join-Path $PSScriptRoot 'shell.ps1') @CandidateArguments

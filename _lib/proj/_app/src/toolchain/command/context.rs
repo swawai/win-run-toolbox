@@ -13,11 +13,17 @@ pub(super) struct CommandContext {
     pub(super) environment_input_revision: String,
 }
 
+pub(super) struct SetupCommandContext {
+    pub(super) cache_data_root: PathBuf,
+    pub(super) profile_revision: String,
+}
+
 impl CommandContext {
     pub(super) fn from_environment(handler: &str) -> Result<Self, String> {
         require_exact("SWAWKIT_PROJ_CORE_COMMAND_PROTOCOL", "1")?;
         require_exact("SWAWKIT_PROJ_CORE_COMMAND_PHASE", "run")?;
         let expected_address = match handler {
+            "dev.setup" => ".dev.setup",
             "dev.status" => ".dev.status",
             _ => return Err(format!("unsupported Toolchain command handler '{handler}'")),
         };
@@ -52,6 +58,21 @@ impl CommandContext {
 
     pub(super) fn environment(&self, name: &str) -> String {
         env::var(name).unwrap_or_default().trim().to_owned()
+    }
+}
+
+impl SetupCommandContext {
+    pub(super) fn from_environment() -> Result<Self, String> {
+        let swawkit_home = absolute_path(required("SWAWKIT_HOME")?, "Swaw Kit Home")?;
+        regular_directory(&swawkit_home, "Swaw Kit Home")?;
+        let profile_revision = required("SWAWKIT_PROJ_CORE_COMMAND_PROFILE_REVISION")?;
+        if !is_revision(&profile_revision) {
+            return Err("invalid command Profile revision".to_owned());
+        }
+        Ok(Self {
+            cache_data_root: swawkit_home.join("data").join("proj_cache"),
+            profile_revision,
+        })
     }
 }
 

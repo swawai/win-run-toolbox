@@ -249,6 +249,45 @@ function Invoke-ProjBunEntryFixture {
     }
 }
 
+function Invoke-ProjToolchainCommandFixture {
+    param(
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [Parameter(Mandatory = $true)][string]$Handler,
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Arguments = @()
+    )
+
+    $Info = [Diagnostics.ProcessStartInfo]::new()
+    $Info.FileName = $Executable
+    $Info.Arguments = [string]::Join(
+        ' ',
+        [string[]](@('command-v1', $Handler) + $Arguments)
+    )
+    $Info.UseShellExecute = $false
+    $Info.CreateNoWindow = $true
+    $Info.RedirectStandardOutput = $true
+    $Info.RedirectStandardError = $true
+    $Process = [Diagnostics.Process]::Start($Info)
+    try {
+        $StandardOutputTask = $Process.StandardOutput.ReadToEndAsync()
+        $StandardErrorTask = $Process.StandardError.ReadToEndAsync()
+        if (-not $Process.WaitForExit(30000)) {
+            $Process.Kill()
+            $Process.WaitForExit()
+            throw "Toolchain handler '$Handler' timed out"
+        }
+        $StandardOutput = $StandardOutputTask.GetAwaiter().GetResult()
+        $StandardError = $StandardErrorTask.GetAwaiter().GetResult()
+        return [pscustomobject][ordered]@{
+            ExitCode = [int]$Process.ExitCode
+            Output = ($StandardOutput + $StandardError).TrimEnd()
+        }
+    } finally {
+        $Process.Dispose()
+    }
+}
+
 
 function Assert-ProjBunEnvironmentScriptsUsable {
     param(

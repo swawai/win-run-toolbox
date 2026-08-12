@@ -222,6 +222,12 @@ pub fn run_native(
     let rust_definition = declarations
         .rust_definition()
         .map_err(|error| error.to_string())?;
+    if rust_definition.is_some() && msvc_definition.is_none() {
+        return Err(
+            "Rust V0 with the x86_64-pc-windows-msvc host requires the managed MSVC module."
+                .to_owned(),
+        );
+    }
     let mut plan = EnvironmentPlan::default();
     let mut archive_tools = Vec::new();
     for (tool, request) in archive_requests {
@@ -310,7 +316,8 @@ fn setup_msvc(
     let Some(definition) = definition else {
         return Ok(None);
     };
-    let mut msvc_progress = |_: &str, current, total| progress("msvc", current, total);
+    let mut msvc_progress =
+        |artifact: &str, current, total| progress(&format!("msvc:{artifact}"), current, total);
     let result = ensure_msvc_installed(
         MsvcInstallContext::new(&context.data_root, &context.cache_data_root)
             .map_err(|error| error.to_string())?,

@@ -32,6 +32,19 @@ foreach ($Name in @('bun', 'cargo', 'cl', 'rustc', 'cmd', 'ps')) {
         -Message ".dev.$Name does not have a PowerShell entry"
 }
 
+$SetupRoot = Join-Path $ProjRoot '.dev\setup'
+$SetupManifest = Join-Path $SetupRoot 'run.toolchain.json'
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ([IO.File]::Exists($SetupManifest) -and
+        -not [IO.File]::Exists((Join-Path $SetupRoot 'run.ps1'))) `
+    -Message '.dev.setup did not converge to one native Toolchain entry'
+$SetupContract = Get-Content -LiteralPath $SetupManifest -Raw |
+    ConvertFrom-Json
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ($SetupContract.schema -ceq 'swawkit.toolchain-command/v1' -and
+        $SetupContract.handler -ceq 'dev.setup') `
+    -Message '.dev.setup Toolchain manifest is invalid'
+
 $DependencyContracts = @(
     @{
         Name = '.dev.bun toolchain root'

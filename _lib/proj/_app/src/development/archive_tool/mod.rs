@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use super::{ArchiveToolContract, is_semantic_version};
+use super::ArchiveToolContract;
 
 mod filesystem;
+pub mod github;
 pub mod install;
+mod selection;
 mod trust;
 mod types;
 
@@ -15,8 +17,7 @@ pub use types::{
 };
 
 use filesystem::{
-    MAX_METADATA_BYTES, MAX_SELECTION_BYTES, child_file, directory_chain, is_lower_hex,
-    optional_directory_chain, optional_regular_file, read_json, regular_directory,
+    MAX_METADATA_BYTES, child_file, directory_chain, is_lower_hex, read_json, regular_directory,
     verify_regular_file, verify_regular_file_length,
 };
 
@@ -119,53 +120,6 @@ impl<'a> ArchiveToolStore<'a> {
             verification: ResolvedVerification::Published(selection.source_verification),
             project_sha256: request.project_sha256.clone(),
         }))
-    }
-
-    pub fn read_selection(&self) -> Result<Option<Selection>, ArchiveToolError> {
-        let components = [
-            "modules",
-            "kernel",
-            ".dev",
-            "setup",
-            "export",
-            self.tool.name,
-        ];
-        let Some(root) = optional_directory_chain(
-            self.data_root,
-            &components,
-            "tool version selection directory",
-        )
-        .map_err(|error| error.with_kind(ArchiveToolErrorKind::SelectionUnreadable))?
-        else {
-            return Ok(None);
-        };
-        let path = root.join(".swawkit-dev-selection.json");
-        if !optional_regular_file(&path, "tool version selection")
-            .map_err(|error| error.with_kind(ArchiveToolErrorKind::SelectionUnreadable))?
-        {
-            return Ok(None);
-        }
-        let selection: Selection = read_json(&path, "tool version selection", MAX_SELECTION_BYTES)
-            .map_err(|error| error.with_kind(ArchiveToolErrorKind::SelectionUnreadable))?;
-        if selection.schema != self.tool.selection_schema
-            || selection.selector != "latest"
-            || !is_semantic_version(&selection.version)
-            || !is_lower_hex(&selection.source_sha256, 64)
-            || !matches!(
-                selection.source_verification,
-                SourceVerification::Github | SourceVerification::Unverified
-            )
-        {
-            return Err(ArchiveToolError::new(
-                ArchiveToolErrorKind::SelectionInvalid,
-                format!(
-                    "the {} version selection is invalid: {}",
-                    self.tool.display_name,
-                    path.display()
-                ),
-            ));
-        }
-        Ok(Some(selection))
     }
 
     /// Reads the published metadata and verifies required membership and file lengths.

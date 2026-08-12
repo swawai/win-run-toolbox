@@ -2,6 +2,43 @@ use sha2::{Digest, Sha256};
 
 pub mod archive_tool;
 
+#[derive(Clone, Copy)]
+struct GithubReleaseContract {
+    repository: &'static str,
+    api_version: &'static str,
+    tag_prefix: &'static str,
+    asset_name: fn(&str) -> String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct GithubReleaseCoordinates {
+    pub(crate) tag: String,
+    pub(crate) asset: String,
+    pub(crate) download_url: String,
+    pub(crate) source_identity: String,
+}
+
+impl GithubReleaseContract {
+    fn coordinates(&self, version: &str) -> GithubReleaseCoordinates {
+        let tag = format!("{}{version}", self.tag_prefix);
+        let asset = (self.asset_name)(version);
+        GithubReleaseCoordinates {
+            download_url: format!(
+                "https://github.com/{}/releases/download/{tag}/{asset}",
+                self.repository
+            ),
+            source_identity: format!("github:{}@{tag}#{asset}", self.repository),
+            tag,
+            asset,
+        }
+    }
+
+    fn version_from_tag<'a>(&self, tag: &'a str) -> Option<&'a str> {
+        tag.strip_prefix(self.tag_prefix)
+            .filter(|value| !value.is_empty())
+    }
+}
+
 pub struct ArchiveToolContract {
     pub name: &'static str,
     pub display_name: &'static str,
@@ -13,8 +50,7 @@ pub struct ArchiveToolContract {
     pub executable: &'static str,
     pub required_paths: &'static [&'static str],
     pub archive_subdir: &'static str,
-    archive_name: fn(&str) -> String,
-    source_identity: fn(&str) -> String,
+    github_release: GithubReleaseContract,
     exact_version: fn(&str) -> bool,
 }
 
@@ -24,11 +60,27 @@ impl ArchiveToolContract {
     }
 
     pub fn source_identity(&self, version: &str) -> String {
-        (self.source_identity)(version)
+        self.github_release.coordinates(version).source_identity
     }
 
     pub fn archive_name(&self, version: &str) -> String {
-        (self.archive_name)(version)
+        self.github_release.coordinates(version).asset
+    }
+
+    pub(crate) fn release_coordinates(&self, version: &str) -> GithubReleaseCoordinates {
+        self.github_release.coordinates(version)
+    }
+
+    pub(crate) fn release_repository(&self) -> &'static str {
+        self.github_release.repository
+    }
+
+    pub(crate) fn release_api_version(&self) -> &'static str {
+        self.github_release.api_version
+    }
+
+    pub(crate) fn release_version_from_tag<'a>(&self, tag: &'a str) -> Option<&'a str> {
+        self.github_release.version_from_tag(tag)
     }
 
     pub fn definition_signature(&self, version: &str, project_sha256: &str) -> String {
@@ -60,8 +112,14 @@ pub const BUN: ArchiveToolContract = ArchiveToolContract {
     executable: "bun.exe",
     required_paths: &["bun.exe", "bunx.cmd"],
     archive_subdir: "bun-windows-x64",
-    archive_name: bun_archive_name,
-    source_identity: bun_source_identity,
+    github_release: GithubReleaseContract {
+        repository: "oven-sh/bun",
+        api_version: "2026-03-10",
+        tag_prefix: "bun-v",
+        asset_name: bun_archive_name,
+    },
+    // Exact declarations preserve Bun's safe non-semver channels. GitHub
+    // `latest` is deliberately narrowed to an immutable semantic version.
     exact_version: is_safe_segment,
 };
 
@@ -76,8 +134,12 @@ pub const PWSH: ArchiveToolContract = ArchiveToolContract {
     executable: "pwsh.exe",
     required_paths: &["pwsh.exe"],
     archive_subdir: "",
-    archive_name: pwsh_archive_name,
-    source_identity: pwsh_source_identity,
+    github_release: GithubReleaseContract {
+        repository: "PowerShell/PowerShell",
+        api_version: "2026-03-10",
+        tag_prefix: "v",
+        asset_name: pwsh_archive_name,
+    },
     exact_version: is_semantic_version,
 };
 
@@ -107,16 +169,8 @@ pub fn is_semantic_version(value: &str) -> bool {
             .all(|field| !field.is_empty() && field.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
-fn bun_source_identity(version: &str) -> String {
-    format!("github:oven-sh/bun@bun-v{version}#bun-windows-x64.zip")
-}
-
 fn bun_archive_name(_version: &str) -> String {
     "bun-windows-x64.zip".to_owned()
-}
-
-fn pwsh_source_identity(version: &str) -> String {
-    format!("github:PowerShell/PowerShell@v{version}#PowerShell-{version}-win-x64.zip")
 }
 
 fn pwsh_archive_name(version: &str) -> String {
@@ -133,6 +187,25 @@ mod tests {
         assert_eq!(BUN.required_paths, ["bun.exe", "bunx.cmd"]);
         assert!(BUN.accepts_exact_version("1.2.3-canary.1"));
         assert!(!BUN.accepts_exact_version("../1.2.3"));
+        assert_eq!(
+            BUN.release_coordinates("1.2.3").download_url,
+            "https://github.com/oven-sh/bun/releases/download/bun-v1.2.3/bun-windows-x64.zip"
+        );
+        assert_eq!(
+            BUN.source_identity("1.2.3"),
+            "github:oven-sh/bun@bun-v1.2.3#bun-windows-x64.zip"
+        );
         assert_eq!(BUN.definition_signature("1.2.3", "").len(), 64);
+    }
+
+    #[test]
+    fn powershell_coordinates_share_one_release_contract() {
+        let coordinates = PWSH.release_coordinates("7.6.4");
+        assert_eq!(coordinates.tag, "v7.6.4");
+        assert_eq!(coordinates.asset, "PowerShell-7.6.4-win-x64.zip");
+        assert_eq!(
+            PWSH.github_release.version_from_tag(&coordinates.tag),
+            Some("7.6.4")
+        );
     }
 }

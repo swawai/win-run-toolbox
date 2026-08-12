@@ -15,15 +15,15 @@ use crate::development::{BUN, PWSH};
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
-struct Fixture {
+pub(super) struct Fixture {
     root: PathBuf,
-    data_root: PathBuf,
-    cache_root: PathBuf,
-    archive: PathBuf,
+    pub(super) data_root: PathBuf,
+    pub(super) cache_root: PathBuf,
+    pub(super) archive: PathBuf,
 }
 
 impl Fixture {
-    fn new(tool: &ArchiveToolContract, version: &str, executable: &[u8]) -> Self {
+    pub(super) fn new(tool: &ArchiveToolContract, version: &str, executable: &[u8]) -> Self {
         let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
             "swawkit-archive-install-{}-{sequence}",
@@ -55,11 +55,11 @@ impl Fixture {
         }
     }
 
-    fn digest(&self) -> String {
+    pub(super) fn digest(&self) -> String {
         format!("{:x}", Sha256::digest(fs::read(&self.archive).unwrap()))
     }
 
-    fn publish_latest_selection(
+    pub(super) fn publish_latest_selection(
         &self,
         tool: &ArchiveToolContract,
         version: &str,
@@ -105,7 +105,7 @@ impl Drop for Fixture {
     }
 }
 
-struct FixtureRecipe;
+pub(super) struct FixtureRecipe;
 
 impl Recipe for FixtureRecipe {
     fn prepare(
@@ -141,7 +141,7 @@ impl Recipe for FixtureRecipe {
     }
 }
 
-struct FailingRecipe;
+pub(super) struct FailingRecipe;
 
 impl Recipe for FailingRecipe {
     fn prepare(
@@ -217,6 +217,7 @@ fn bun_installation_is_published_and_reused_without_resolving_a_source() {
     let digest = fixture.digest();
     let resolved = fixture.resolved(&BUN, "1.2.15", &digest);
     let source = ArchiveSource::new(
+        &resolved,
         fixture.archive.to_string_lossy(),
         Some(&digest),
         SourceVerification::Project,
@@ -262,14 +263,15 @@ fn unverified_power_shell_records_the_actual_archive_digest() {
     let fixture = Fixture::new(&PWSH, "7.6.4", b"fixture");
     let actual = fixture.digest();
     let resolved = fixture.resolved(&PWSH, "7.6.4", "");
-    let request =
-        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &PWSH, resolved).unwrap();
     let source = ArchiveSource::new(
+        &resolved,
         fixture.archive.to_string_lossy(),
         None,
         SourceVerification::Unverified,
     )
     .unwrap();
+    let request =
+        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &PWSH, resolved).unwrap();
 
     let installed =
         ensure_installed_with(request, |_| Ok(source), &FixtureRecipe, &mut |_, _| {}).unwrap();
@@ -286,14 +288,15 @@ fn a_source_that_conflicts_with_the_resolution_is_rejected() {
     let fixture = Fixture::new(&BUN, "1.2.15", b"fixture");
     let digest = fixture.digest();
     let resolved = fixture.resolved(&BUN, "1.2.15", &digest);
-    let request =
-        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &BUN, resolved).unwrap();
     let source = ArchiveSource::new(
+        &resolved,
         fixture.archive.to_string_lossy(),
         Some(&digest),
         SourceVerification::Github,
     )
     .unwrap();
+    let request =
+        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &BUN, resolved).unwrap();
 
     let error = match ensure_installed_with(request, |_| Ok(source), &FixtureRecipe, &mut |_, _| {})
     {
@@ -305,12 +308,36 @@ fn a_source_that_conflicts_with_the_resolution_is_rejected() {
 }
 
 #[test]
+fn a_release_source_cannot_be_replayed_for_another_definition() {
+    let fixture = Fixture::new(&BUN, "1.2.15", b"fixture");
+    let original = fixture.resolved(&BUN, "1.2.15", "");
+    let replayed = fixture.resolved(&BUN, "1.2.16", "");
+    let source = ArchiveSource::new(
+        &original,
+        fixture.archive.to_string_lossy(),
+        None,
+        SourceVerification::Unverified,
+    )
+    .unwrap();
+    let request =
+        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &BUN, replayed).unwrap();
+
+    let error = ensure_installed_with(request, |_| Ok(source), &FixtureRecipe, &mut |_, _| {})
+        .err()
+        .expect("a source capability belongs to one exact definition");
+
+    assert_eq!(error.kind(), ArchiveToolErrorKind::InvalidInstallRequest);
+    assert!(!install_parent(&fixture, &BUN).join("1.2.16").exists());
+}
+
+#[test]
 fn latest_unverified_digest_reinstalls_missing_content_without_becoming_trusted() {
     let fixture = Fixture::new(&BUN, "1.2.15", b"fixture");
     let digest = fixture.digest();
     fixture.publish_latest_selection(&BUN, "1.2.15", &digest, SourceVerification::Unverified);
     let resolved = fixture.resolved(&BUN, "latest", "");
     let source = ArchiveSource::new(
+        &resolved,
         fixture.archive.to_string_lossy(),
         Some(&digest),
         SourceVerification::Unverified,
@@ -355,8 +382,13 @@ fn a_digest_verified_legacy_power_shell_cache_is_imported_offline() {
     )
     .unwrap();
     let source_path = fixture.archive.to_string_lossy().into_owned();
-    let source =
-        ArchiveSource::new(&source_path, Some(&digest), SourceVerification::Project).unwrap();
+    let source = ArchiveSource::new(
+        &resolved,
+        &source_path,
+        Some(&digest),
+        SourceVerification::Project,
+    )
+    .unwrap();
     fs::remove_file(&fixture.archive).unwrap();
     let request =
         InstallRequest::new(&fixture.data_root, &fixture.cache_root, &BUN, resolved).unwrap();
@@ -404,6 +436,7 @@ fn unverified_sources_do_not_reuse_legacy_or_different_url_caches() {
     )
     .unwrap();
     let source = ArchiveSource::new(
+        &resolved,
         source_b.to_string_lossy(),
         None,
         SourceVerification::Unverified,
@@ -421,14 +454,15 @@ fn unverified_sources_do_not_reuse_legacy_or_different_url_caches() {
 
     let source_c = fixture.root.join("source-c.zip");
     write_archive(&source_c, &BUN, b"source-c");
-    let request =
-        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &BUN, resolved).unwrap();
     let source = ArchiveSource::new(
+        &resolved,
         source_c.to_string_lossy(),
         None,
         SourceVerification::Unverified,
     )
     .unwrap();
+    let request =
+        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &BUN, resolved).unwrap();
     let second =
         ensure_installed_with(request, |_| Ok(source), &AnyPayloadRecipe, &mut |_, _| {}).unwrap();
     assert_eq!(
@@ -480,14 +514,15 @@ fn a_failed_stage_leaves_no_work_or_partial_directory() {
     let fixture = Fixture::new(&PWSH, "7.6.4", b"fixture");
     let digest = fixture.digest();
     let resolved = fixture.resolved(&PWSH, "7.6.4", &digest);
-    let request =
-        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &PWSH, resolved).unwrap();
     let source = ArchiveSource::new(
+        &resolved,
         fixture.archive.to_string_lossy(),
         Some(&digest),
         SourceVerification::Project,
     )
     .unwrap();
+    let request =
+        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &PWSH, resolved).unwrap();
 
     let error = match ensure_installed_with(request, |_| Ok(source), &FailingRecipe, &mut |_, _| {})
     {
@@ -532,14 +567,15 @@ fn an_ordinary_file_target_is_removed_and_reinstalled() {
     fs::create_dir_all(&parent).unwrap();
     let target = parent.join(resolved.version());
     fs::write(&target, b"interrupted non-directory target").unwrap();
-    let request =
-        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &PWSH, resolved).unwrap();
     let source = ArchiveSource::new(
+        &resolved,
         fixture.archive.to_string_lossy(),
         Some(&digest),
         SourceVerification::Project,
     )
     .unwrap();
+    let request =
+        InstallRequest::new(&fixture.data_root, &fixture.cache_root, &PWSH, resolved).unwrap();
 
     let installed =
         ensure_installed_with(request, |_| Ok(source), &FixtureRecipe, &mut |_, _| {}).unwrap();
@@ -558,6 +594,7 @@ fn an_ordinary_file_backup_is_ignored_while_a_valid_backup_is_restored() {
     let digest = fixture.digest();
     let resolved = fixture.resolved(&PWSH, "7.6.4", &digest);
     let source = ArchiveSource::new(
+        &resolved,
         fixture.archive.to_string_lossy(),
         Some(&digest),
         SourceVerification::Project,

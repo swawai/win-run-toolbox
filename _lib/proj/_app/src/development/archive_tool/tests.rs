@@ -132,6 +132,24 @@ fn latest_missing_is_none_but_invalid_or_extended_selection_is_an_error() {
 }
 
 #[test]
+fn selection_storage_rejects_a_reparse_tool_directory() {
+    let fixture = Fixture::new();
+    let export = fixture.data_root.join("modules/kernel/.dev/setup/export");
+    let external = fixture.root.join("external-bun");
+    fs::create_dir_all(&export).unwrap();
+    fs::create_dir(&external).unwrap();
+    let link = export.join(BUN.name);
+    if let Err(error) = std::os::windows::fs::symlink_dir(&external, &link) {
+        eprintln!("skipping reparse selection test: {error}");
+        return;
+    }
+
+    let error = fixture.store().read_selection().unwrap_err();
+
+    assert_eq!(error.kind(), ArchiveToolErrorKind::UnsafeStorage);
+}
+
+#[test]
 fn installation_length_and_hash_are_separate_shared_checks() {
     let fixture = Fixture::new();
     let request = ArchiveToolRequest::new(&BUN, "1.2.3", "").unwrap();

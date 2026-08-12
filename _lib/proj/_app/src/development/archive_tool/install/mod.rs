@@ -74,13 +74,16 @@ impl<'a> InstallRequest<'a> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArchiveSource {
+    tool_name: String,
+    version: String,
     url: String,
     expected_sha256: Option<String>,
     verification: SourceVerification,
 }
 
 impl ArchiveSource {
-    pub fn new(
+    fn new(
+        resolved: &ResolvedDefinition,
         url: impl Into<String>,
         expected_sha256: Option<&str>,
         verification: SourceVerification,
@@ -113,10 +116,21 @@ impl ArchiveSource {
             ));
         }
         Ok(Self {
+            tool_name: resolved.tool_name().to_owned(),
+            version: resolved.version().to_owned(),
             url,
             expected_sha256,
             verification,
         })
+    }
+
+    pub(super) fn from_release(
+        resolved: &ResolvedDefinition,
+        url: impl Into<String>,
+        expected_sha256: Option<&str>,
+        verification: SourceVerification,
+    ) -> Result<Self, ArchiveToolError> {
+        Self::new(resolved, url, expected_sha256, verification)
     }
 
     pub fn url(&self) -> &str {
@@ -367,16 +381,18 @@ fn validate_source(
     resolved: &ResolvedDefinition,
     source: &ArchiveSource,
 ) -> Result<(), ArchiveToolError> {
-    let matches_resolution = match resolved.verification() {
-        ResolvedVerification::Published(expected) => {
-            source.verification == expected
-                && resolved.source_sha256() == source.expected_sha256.as_deref()
-        }
-        ResolvedVerification::Unresolved => matches!(
-            source.verification,
-            SourceVerification::Github | SourceVerification::Unverified
-        ),
-    };
+    let matches_resolution = source.tool_name == resolved.tool_name()
+        && source.version == resolved.version()
+        && match resolved.verification() {
+            ResolvedVerification::Published(expected) => {
+                source.verification == expected
+                    && resolved.source_sha256() == source.expected_sha256.as_deref()
+            }
+            ResolvedVerification::Unresolved => matches!(
+                source.verification,
+                SourceVerification::Github | SourceVerification::Unverified
+            ),
+        };
     if !matches_resolution
         || (!resolved.project_sha256().is_empty()
             && (source.verification != SourceVerification::Project
@@ -398,6 +414,7 @@ fn finish(
     warnings: Vec<String>,
 ) -> Result<InstallResult, ArchiveToolError> {
     let trust = store.trust(resolved, Some(&installation))?;
+    store.publish_latest_selection(resolved, &installation)?;
     Ok(InstallResult {
         outcome,
         installation,
@@ -413,5 +430,7 @@ fn is_lower_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+#[cfg(test)]
+mod selection_tests;
 #[cfg(test)]
 mod tests;

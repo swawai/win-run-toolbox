@@ -4,6 +4,7 @@ use std::fmt;
 use crate::development::ArchiveToolContract;
 use crate::development::archive_tool::ArchiveToolRequest;
 use crate::development::msvc::MsvcDefinition;
+use crate::development::rust::RustDefinition;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputNormalization {
@@ -221,6 +222,37 @@ impl DeclarationSnapshot {
             .map(Some)
             .map_err(|error| DeclarationError(error.to_string()))
     }
+
+    pub fn rust_definition(&self) -> Result<Option<RustDefinition>, DeclarationError> {
+        let mode = self.values.get("SWAWKIT_PROJ_RUST_MODE").ok_or_else(|| {
+            DeclarationError("Rust is absent from the setup declaration registry".to_owned())
+        })?;
+        if mode == "disabled" {
+            return Ok(None);
+        }
+        if mode != "rustup" {
+            return Err(DeclarationError(format!(
+                "unsupported SWAWKIT_PROJ_RUST_MODE value '{mode}'; expected 'rustup' or 'disabled'"
+            )));
+        }
+        RustDefinition::new(
+            self.values
+                .get("SWAWKIT_PROJ_RUST_TOOLCHAIN")
+                .ok_or_else(|| {
+                    DeclarationError("enabled Rust must declare a toolchain".to_owned())
+                })?,
+            self.values
+                .get("SWAWKIT_PROJ_RUST_PROFILE")
+                .ok_or_else(|| {
+                    DeclarationError("enabled Rust must declare a profile".to_owned())
+                })?,
+            self.values
+                .get("SWAWKIT_PROJ_RUST_HOST")
+                .ok_or_else(|| DeclarationError("enabled Rust must declare a host".to_owned()))?,
+        )
+        .map(Some)
+        .map_err(|error| DeclarationError(error.to_string()))
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -362,5 +394,21 @@ mod tests {
         let snapshot = snapshot(|name| values.get(name).map(|value| (*value).to_owned()));
 
         assert_eq!(snapshot.msvc_definition().unwrap().unwrap().channel(), "17");
+    }
+
+    #[test]
+    fn rust_declarations_share_the_domain_definition() {
+        let values = BTreeMap::from([
+            ("SWAWKIT_PROJ_RUST_MODE", "rustup"),
+            ("SWAWKIT_PROJ_RUST_TOOLCHAIN", "stable"),
+            ("SWAWKIT_PROJ_RUST_PROFILE", "minimal"),
+            ("SWAWKIT_PROJ_RUST_HOST", "x86_64-pc-windows-msvc"),
+        ]);
+        let snapshot = snapshot(|name| values.get(name).map(|value| (*value).to_owned()));
+
+        let definition = snapshot.rust_definition().unwrap().unwrap();
+
+        assert_eq!(definition.toolchain(), "stable");
+        assert_eq!(definition.toolchain_name(), "stable-x86_64-pc-windows-msvc");
     }
 }

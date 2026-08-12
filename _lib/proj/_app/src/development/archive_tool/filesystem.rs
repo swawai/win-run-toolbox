@@ -257,7 +257,7 @@ fn validate_segment(component: &str, subject: &str) -> Result<(), ArchiveToolErr
     Ok(())
 }
 
-pub(super) fn regular_directory(path: &Path, subject: &str) -> Result<(), ArchiveToolError> {
+pub(crate) fn regular_directory(path: &Path, subject: &str) -> Result<(), ArchiveToolError> {
     let metadata =
         fs::symlink_metadata(path).map_err(|error| storage(subject, path, "inspect", error))?;
     if !metadata.is_dir() || is_reparse(&metadata) {
@@ -306,7 +306,7 @@ fn storage(subject: &str, path: &Path, action: &str, error: std::io::Error) -> A
     )
 }
 
-pub(super) fn is_reparse(metadata: &fs::Metadata) -> bool {
+pub(crate) fn is_reparse(metadata: &fs::Metadata) -> bool {
     metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 

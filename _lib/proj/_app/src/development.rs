@@ -2,6 +2,7 @@ use sha2::{Digest, Sha256};
 
 pub mod archive_tool;
 pub mod msvc;
+pub mod rust;
 pub mod setup;
 
 #[derive(Clone, Copy)]

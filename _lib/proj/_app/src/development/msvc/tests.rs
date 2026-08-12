@@ -96,11 +96,43 @@ fn definition_and_metadata_match_the_power_shell_contract() {
         fixture.definition.definition_signature(),
         "4597e8b291e1b50b7bec65f02b99df7dac9ef2e495d1931c6e0ea9f34b31d5a8"
     );
-    fixture.publish();
+    let root = fixture.publish();
     let store = MsvcStore::new(&fixture.data_root, &fixture.definition);
     let installation = store.read_installation().unwrap();
+    assert_eq!(installation.root(), root);
     assert_eq!(installation.tool_version(), "14.44.35228");
     assert_eq!(installation.sdk_version(), "10.0.26100.0");
+}
+
+#[test]
+fn environment_layout_matches_the_power_shell_contract() {
+    let fixture = Fixture::new();
+    fixture.publish();
+    let installation = MsvcStore::new(&fixture.data_root, &fixture.definition)
+        .read_installation()
+        .unwrap();
+    let mut plan = crate::development::setup::environment::EnvironmentPlan::default();
+
+    installation.add_environment(&mut plan).unwrap();
+    let scripts = plan.render();
+
+    assert!(scripts.cmd().contains("set \"VSCMD_ARG_HOST_ARCH=x64\""));
+    assert!(
+        scripts
+            .cmd()
+            .contains("set \"WindowsSDKVersion=10.0.26100.0\\\"")
+    );
+    assert!(
+        scripts
+            .cmd()
+            .contains("VC\\Tools\\MSVC\\14.44.35228\\include")
+    );
+    assert!(
+        scripts
+            .cmd()
+            .contains("Windows Kits\\10\\Lib\\10.0.26100.0\\um\\x64")
+    );
+    assert!(scripts.cmd().contains("bin\\Hostx64\\x64;"));
 }
 
 #[test]

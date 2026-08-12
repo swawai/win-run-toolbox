@@ -33,15 +33,64 @@ pub(super) fn extract(path: &Path, destination: &Path) -> Result<(), ArchiveTool
 }
 
 pub(super) fn extract_file(file: &File, destination: &Path) -> Result<(), ArchiveToolError> {
-    validate_empty_directory(destination, "ZIP destination")?;
+    extract_selected(file, destination, true, |name| Ok(Some(name.to_owned()))).map(|_| ())
+}
+
+pub(super) fn extract_contents_file(
+    file: &File,
+    destination: &Path,
+) -> Result<(), ArchiveToolError> {
+    let extracted = extract_selected(file, destination, false, |name| {
+        if !name
+            .get(.."Contents/".len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("Contents/"))
+        {
+            return Ok(None);
+        }
+        decode_vsix_path(&name["Contents/".len()..]).map(Some)
+    })?;
+    if extracted == 0 {
+        return Err(archive_error("VSIX has no Contents payload"));
+    }
+    Ok(())
+}
+
+fn extract_selected(
+    file: &File,
+    destination: &Path,
+    require_empty: bool,
+    mut select: impl FnMut(&str) -> Result<Option<String>, ArchiveToolError>,
+) -> Result<usize, ArchiveToolError> {
+    validate_directory(destination, "ZIP destination", require_empty)?;
     let file = clone_from_start(file, "ZIP archive")?;
     let mut archive = ZipArchive::new(file)
         .map_err(|cause| archive_error(format!("invalid ZIP archive: {cause}")))?;
-    let entries = inspect(&mut archive)?;
-    let mut extracted_total = 0u64;
-    for (index, relative) in entries.iter().enumerate() {
-        let mut entry = archive
+    if archive.len() > MAX_ENTRIES {
+        return Err(archive_error(format!(
+            "ZIP archive contains more than {MAX_ENTRIES} entries"
+        )));
+    }
+    let mut names = HashSet::new();
+    let mut entries = Vec::new();
+    let mut declared_total = 0u64;
+    for index in 0..archive.len() {
+        let entry = archive
             .by_index(index)
+            .map_err(|cause| archive_error(format!("cannot inspect ZIP entry {index}: {cause}")))?;
+        let Some(selected) = select(entry.name())? else {
+            continue;
+        };
+        if selected.is_empty() {
+            continue;
+        }
+        let (relative, key) = windows_entry_path(&selected)?;
+        inspect_entry(&entry, &relative, &key, &mut names, &mut declared_total)?;
+        entries.push((index, relative));
+    }
+    let mut extracted_total = 0u64;
+    for (index, relative) in &entries {
+        let mut entry = archive
+            .by_index(*index)
             .map_err(|cause| archive_error(format!("cannot read ZIP entry {index}: {cause}")))?;
         let target = destination.join(relative);
         if entry.is_dir() {
@@ -74,7 +123,31 @@ pub(super) fn extract_file(file: &File, destination: &Path) -> Result<(), Archiv
             .flush()
             .map_err(|cause| storage_error(format!("cannot flush ZIP file: {cause}")))?;
     }
-    Ok(())
+    Ok(entries.len())
+}
+
+fn decode_vsix_path(value: &str) -> Result<String, ArchiveToolError> {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit()
+            {
+                return Err(archive_error(format!(
+                    "VSIX entry has invalid percent encoding: {value}"
+                )));
+            }
+            index += 3;
+        } else {
+            index += 1;
+        }
+    }
+    percent_encoding::percent_decode_str(value)
+        .decode_utf8()
+        .map(|decoded| decoded.into_owned())
+        .map_err(|_| archive_error(format!("VSIX entry path is not valid UTF-8: {value}")))
 }
 
 fn inspect<R: Read + std::io::Seek>(
@@ -93,34 +166,45 @@ fn inspect<R: Read + std::io::Seek>(
             .by_index(index)
             .map_err(|cause| archive_error(format!("cannot inspect ZIP entry {index}: {cause}")))?;
         let (relative, key) = windows_entry_path(entry.name())?;
-        if entry
-            .unix_mode()
-            .is_some_and(|mode| mode & 0o170000 == 0o120000)
-        {
-            return Err(archive_error(format!(
-                "ZIP entry cannot be a symbolic link: {}",
-                entry.name()
-            )));
-        }
-        if entry.size() > MAX_FILE_BYTES {
-            return Err(archive_error(format!(
-                "ZIP entry exceeds the 4 GB safety limit: {}",
-                entry.name()
-            )));
-        }
-        total = total
-            .checked_add(entry.size())
-            .filter(|value| *value <= MAX_TOTAL_BYTES)
-            .ok_or_else(|| archive_error("ZIP archive exceeds the 12 GB safety limit"))?;
-        if !names.insert(key) {
-            return Err(archive_error(format!(
-                "ZIP archive contains a duplicate Windows path: {}",
-                relative.display()
-            )));
-        }
+        inspect_entry(&entry, &relative, &key, &mut names, &mut total)?;
         entries.push(relative);
     }
     Ok(entries)
+}
+
+fn inspect_entry<R: Read>(
+    entry: &zip::read::ZipFile<'_, R>,
+    relative: &Path,
+    key: &str,
+    names: &mut HashSet<String>,
+    total: &mut u64,
+) -> Result<(), ArchiveToolError> {
+    if entry
+        .unix_mode()
+        .is_some_and(|mode| mode & 0o170000 == 0o120000)
+    {
+        return Err(archive_error(format!(
+            "ZIP entry cannot be a symbolic link: {}",
+            entry.name()
+        )));
+    }
+    if entry.size() > MAX_FILE_BYTES {
+        return Err(archive_error(format!(
+            "ZIP entry exceeds the 4 GB safety limit: {}",
+            entry.name()
+        )));
+    }
+    *total = total
+        .checked_add(entry.size())
+        .filter(|value| *value <= MAX_TOTAL_BYTES)
+        .ok_or_else(|| archive_error("ZIP archive exceeds the 12 GB safety limit"))?;
+    if !names.insert(key.to_owned()) {
+        return Err(archive_error(format!(
+            "ZIP archive contains a duplicate Windows path: {}",
+            relative.display()
+        )));
+    }
+    Ok(())
 }
 
 fn copy_entry_bounded(
@@ -240,7 +324,17 @@ fn is_windows_device_name(stem: &str) -> bool {
         .is_some_and(|suffix| {
             matches!(
                 suffix,
-                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                "1" | "2"
+                    | "3"
+                    | "4"
+                    | "5"
+                    | "6"
+                    | "7"
+                    | "8"
+                    | "9"
+                    | "\u{00b9}"
+                    | "\u{00b2}"
+                    | "\u{00b3}"
             )
         })
 }
@@ -285,7 +379,11 @@ fn clone_from_start(file: &File, subject: &str) -> Result<File, ArchiveToolError
     Ok(clone)
 }
 
-fn validate_empty_directory(path: &Path, subject: &str) -> Result<(), ArchiveToolError> {
+fn validate_directory(
+    path: &Path,
+    subject: &str,
+    require_empty: bool,
+) -> Result<(), ArchiveToolError> {
     let metadata = fs::symlink_metadata(path).map_err(|cause| {
         storage_error(format!(
             "cannot inspect {subject} '{}': {cause}",
@@ -298,10 +396,11 @@ fn validate_empty_directory(path: &Path, subject: &str) -> Result<(), ArchiveToo
             format!("{subject} is not a regular directory: {}", path.display()),
         ));
     }
-    if fs::read_dir(path)
-        .map_err(|cause| storage_error(format!("cannot inspect ZIP destination: {cause}")))?
-        .next()
-        .is_some()
+    if require_empty
+        && fs::read_dir(path)
+            .map_err(|cause| storage_error(format!("cannot inspect ZIP destination: {cause}")))?
+            .next()
+            .is_some()
     {
         return Err(storage_error(format!(
             "ZIP destination must be empty: {}",

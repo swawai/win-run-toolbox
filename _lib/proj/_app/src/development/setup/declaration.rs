@@ -3,6 +3,7 @@ use std::fmt;
 
 use crate::development::ArchiveToolContract;
 use crate::development::archive_tool::ArchiveToolRequest;
+use crate::development::msvc::MsvcDefinition;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputNormalization {
@@ -198,6 +199,28 @@ impl DeclarationSnapshot {
             .map(Some)
             .map_err(|error| DeclarationError(error.to_string()))
     }
+
+    pub fn msvc_definition(&self) -> Result<Option<MsvcDefinition>, DeclarationError> {
+        let mode = self
+            .values
+            .get("SWAWKIT_PROJ_MSVC_MODE")
+            .ok_or_else(|| DeclarationError("MSVC is absent from the setup registry".to_owned()))?;
+        if mode == "disabled" {
+            return Ok(None);
+        }
+        if mode != "managed" {
+            return Err(DeclarationError(format!(
+                "unsupported SWAWKIT_PROJ_MSVC_MODE value '{mode}'; expected 'managed' or 'disabled'"
+            )));
+        }
+        let channel = self
+            .values
+            .get("SWAWKIT_PROJ_MSVC_CHANNEL")
+            .ok_or_else(|| DeclarationError("enabled MSVC must declare its channel".to_owned()))?;
+        MsvcDefinition::new(channel)
+            .map(Some)
+            .map_err(|error| DeclarationError(error.to_string()))
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -328,5 +351,16 @@ mod tests {
                 .requested(),
             "1.2.15"
         );
+    }
+
+    #[test]
+    fn msvc_declarations_are_typed() {
+        let values = BTreeMap::from([
+            ("SWAWKIT_PROJ_MSVC_MODE", "managed"),
+            ("SWAWKIT_PROJ_MSVC_CHANNEL", "17"),
+        ]);
+        let snapshot = snapshot(|name| values.get(name).map(|value| (*value).to_owned()));
+
+        assert_eq!(snapshot.msvc_definition().unwrap().unwrap().channel(), "17");
     }
 }

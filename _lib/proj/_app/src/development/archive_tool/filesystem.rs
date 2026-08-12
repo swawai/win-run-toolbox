@@ -212,7 +212,7 @@ pub(crate) fn verify_regular_file_length(
     Ok(())
 }
 
-pub(super) fn regular_file_digest(
+pub(crate) fn regular_file_digest(
     path: &Path,
     subject: &str,
     max_bytes: u64,

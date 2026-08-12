@@ -6,35 +6,34 @@ use super::removal::{
     remove_path_with_retry, remove_residues, require_regular_directory, storage,
     target_parent_and_leaf, unsafe_path,
 };
-use super::validated_candidate;
-use crate::development::archive_tool::{
-    ArchiveToolError, ArchiveToolErrorKind, ArchiveToolStore, Installation, ResolvedDefinition,
-};
+use crate::development::archive_tool::{ArchiveToolError, ArchiveToolErrorKind};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in super::super) enum RecoveryOutcome {
-    Ready(Installation),
-    Recovered(Installation),
+pub(in super::super) enum RecoveryOutcome<T> {
+    Ready(T),
+    Recovered(T),
     Missing,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in super::super) struct RecoveryReport {
-    pub(in super::super) outcome: RecoveryOutcome,
+pub(in super::super) struct RecoveryReport<T> {
+    pub(in super::super) outcome: RecoveryOutcome<T>,
     pub(in super::super) warnings: Vec<String>,
 }
 
-pub(in super::super) fn recover(
-    store: &ArchiveToolStore<'_>,
-    resolved: &ResolvedDefinition,
+pub(in super::super) fn recover<T, F>(
     target: &Path,
-) -> Result<RecoveryReport, ArchiveToolError> {
+    validate: &mut F,
+) -> Result<RecoveryReport<T>, ArchiveToolError>
+where
+    F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
+{
     let (parent, _) = target_parent_and_leaf(target)?;
     require_regular_directory(parent, "installation parent")?;
     reject_reparse_or_missing(target, "installation target")?;
 
     let mut paths = scan_recovery_paths(target)?;
-    if let Some(installation) = validated_candidate(store, resolved, target)? {
+    if let Some(installation) = validate(target)? {
         let warnings = remove_residues(&paths.all());
         return Ok(RecoveryReport {
             outcome: RecoveryOutcome::Ready(installation),
@@ -44,7 +43,7 @@ pub(in super::super) fn recover(
 
     let mut valid_backups = Vec::new();
     for path in &paths.backups {
-        if validated_candidate(store, resolved, path)?.is_some() {
+        if validate(path)?.is_some() {
             valid_backups.push(path.clone());
         }
     }
@@ -55,7 +54,7 @@ pub(in super::super) fn recover(
 
     if let Some(selected) = select_backup(&valid_backups)? {
         move_path_with_retry(&selected, target, "restore the last valid installation")?;
-        let installation = validated_candidate(store, resolved, target)?.ok_or_else(|| {
+        let installation = validate(target)?.ok_or_else(|| {
             ArchiveToolError::new(
                 ArchiveToolErrorKind::InstalledFileInvalid,
                 format!(

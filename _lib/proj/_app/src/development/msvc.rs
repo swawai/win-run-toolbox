@@ -5,6 +5,16 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+mod install;
+mod payload_cache;
+mod source;
+mod stage;
+
+pub use install::{MsvcInstallContext, MsvcInstallOutcome, MsvcInstallResult, ensure_installed};
+pub use payload_cache::{MsvcPayloadCache, VerifiedMsvcPayload};
+pub use source::{MsvcPayload, MsvcRecipe, MsvcResolver, resolve_recipe};
+pub use stage::MsvcStager;
+
 use super::archive_tool::filesystem::{
     MAX_METADATA_BYTES, child_file, directory_chain, is_lower_hex, read_json, verify_regular_file,
     verify_regular_file_length,
@@ -38,6 +48,8 @@ const SDK_MSI_NAMES: [&str; 8] = [
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MsvcErrorKind {
     InvalidChannel,
+    InvalidSource,
+    DownloadFailed,
     MetadataUnreadable,
     MetadataStale,
     DuplicateFileRecords,
@@ -47,6 +59,9 @@ enum MsvcErrorKind {
     MissingStorage,
     UnsafeStorage,
     Storage,
+    InstallationFailed,
+    RecoveryFailed,
+    LockUnavailable,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,6 +95,12 @@ impl std::error::Error for MsvcError {}
 impl From<ArchiveToolError> for MsvcError {
     fn from(source: ArchiveToolError) -> Self {
         let kind = match source.kind() {
+            ArchiveToolErrorKind::DownloadFailed => MsvcErrorKind::DownloadFailed,
+            ArchiveToolErrorKind::ArchiveInvalid | ArchiveToolErrorKind::InstallationFailed => {
+                MsvcErrorKind::InstallationFailed
+            }
+            ArchiveToolErrorKind::RecoveryFailed => MsvcErrorKind::RecoveryFailed,
+            ArchiveToolErrorKind::LockUnavailable => MsvcErrorKind::LockUnavailable,
             ArchiveToolErrorKind::InvalidDocument => MsvcErrorKind::MetadataUnreadable,
             ArchiveToolErrorKind::MissingStorage => MsvcErrorKind::MissingStorage,
             ArchiveToolErrorKind::UnsafeStorage => MsvcErrorKind::UnsafeStorage,
@@ -87,6 +108,12 @@ impl From<ArchiveToolError> for MsvcError {
             _ => MsvcErrorKind::Storage,
         };
         Self::new(kind, source.to_string())
+    }
+}
+
+impl From<std::io::Error> for MsvcError {
+    fn from(cause: std::io::Error) -> Self {
+        error(MsvcErrorKind::Storage, cause.to_string())
     }
 }
 
@@ -148,6 +175,10 @@ impl<'a> MsvcStore<'a> {
 
     pub fn read_installation(&self) -> Result<MsvcInstallation, MsvcError> {
         let root = self.install_root()?;
+        self.read_installation_at(&root)
+    }
+
+    pub(crate) fn read_installation_at(&self, root: &Path) -> Result<MsvcInstallation, MsvcError> {
         let metadata: MsvcMetadata = read_json(
             &root.join(".swawkit-dev-msvc.json"),
             "MSVC installation metadata",
@@ -159,7 +190,10 @@ impl<'a> MsvcStore<'a> {
             let path = child_file(&root, &record.path, "MSVC installed file")?;
             verify_regular_file(&path, "MSVC installed file", record.length, &record.sha256)?;
         }
-        Ok(MsvcInstallation { metadata })
+        Ok(MsvcInstallation {
+            root: root.to_path_buf(),
+            metadata,
+        })
     }
 
     fn install_root(&self) -> Result<PathBuf, MsvcError> {
@@ -252,10 +286,15 @@ impl<'a> MsvcStore<'a> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MsvcInstallation {
+    root: PathBuf,
     metadata: MsvcMetadata,
 }
 
 impl MsvcInstallation {
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     pub fn tool_version(&self) -> &str {
         &self.metadata.tool_version
     }
@@ -263,9 +302,88 @@ impl MsvcInstallation {
     pub fn sdk_version(&self) -> &str {
         &self.metadata.sdk_version
     }
+
+    pub fn add_environment(
+        &self,
+        plan: &mut crate::development::setup::environment::EnvironmentPlan,
+    ) -> Result<(), String> {
+        let vc_root = self.root.join("VC");
+        let tool_root = vc_root.join(r"Tools\MSVC").join(self.tool_version());
+        let sdk_root = self.root.join(r"Windows Kits\10");
+        let tool_bin = tool_root.join(r"bin\Hostx64\x64");
+        let sdk_bin = sdk_root.join("bin").join(self.sdk_version()).join("x64");
+        for (name, value) in [
+            ("VSCMD_ARG_HOST_ARCH", "x64".to_owned()),
+            ("VSCMD_ARG_TGT_ARCH", "x64".to_owned()),
+            ("VCToolsVersion", self.tool_version().to_owned()),
+            ("WindowsSDKVersion", format!("{}\\", self.sdk_version())),
+            ("VCToolsInstallDir", trailing_slash(&tool_root)),
+            ("VCINSTALLDIR", trailing_slash(&vc_root)),
+            ("WindowsSdkDir", trailing_slash(&sdk_root)),
+            ("WindowsSdkBinPath", trailing_slash(&sdk_root.join("bin"))),
+            ("WindowsSdkVerBinPath", trailing_slash(&sdk_bin)),
+            ("UniversalCRTSdkDir", trailing_slash(&sdk_root)),
+            ("UCRTVersion", self.sdk_version().to_owned()),
+            (
+                "INCLUDE",
+                join_paths([
+                    tool_root.join("include"),
+                    sdk_root
+                        .join("Include")
+                        .join(self.sdk_version())
+                        .join("ucrt"),
+                    sdk_root
+                        .join("Include")
+                        .join(self.sdk_version())
+                        .join("shared"),
+                    sdk_root.join("Include").join(self.sdk_version()).join("um"),
+                    sdk_root
+                        .join("Include")
+                        .join(self.sdk_version())
+                        .join("winrt"),
+                    sdk_root
+                        .join("Include")
+                        .join(self.sdk_version())
+                        .join("cppwinrt"),
+                ]),
+            ),
+            (
+                "LIB",
+                join_paths([
+                    tool_root.join(r"lib\x64"),
+                    sdk_root
+                        .join("Lib")
+                        .join(self.sdk_version())
+                        .join(r"ucrt\x64"),
+                    sdk_root
+                        .join("Lib")
+                        .join(self.sdk_version())
+                        .join(r"um\x64"),
+                ]),
+            ),
+        ] {
+            plan.set(name, Some(value))?;
+        }
+        plan.prepend_path(tool_bin)?;
+        plan.prepend_path(&sdk_bin)?;
+        plan.prepend_path(sdk_bin.join("ucrt"))?;
+        Ok(())
+    }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+fn trailing_slash(path: &Path) -> String {
+    format!("{}\\", path.to_string_lossy().trim_end_matches(['\\', '/']))
+}
+
+fn join_paths<const N: usize>(paths: [PathBuf; N]) -> String {
+    paths
+        .iter()
+        .map(|path| path.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct MsvcMetadata {
     schema: String,
@@ -284,7 +402,7 @@ struct MsvcMetadata {
     files: Vec<InstalledFile>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct InstalledFile {
     path: String,

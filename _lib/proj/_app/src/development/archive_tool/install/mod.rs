@@ -235,7 +235,8 @@ where
     let target = installs.join(request.resolved.version());
     let store = ArchiveToolStore::new(request.data_root, request.tool);
     let mut warnings = Vec::new();
-    let recovery = transaction::recover(&store, &request.resolved, &target)?;
+    let mut validate = |root: &Path| archive_candidate(&store, &request.resolved, root);
+    let recovery = transaction::recover(&target, &mut validate)?;
     warnings.extend(recovery.warnings);
     match recovery.outcome {
         RecoveryOutcome::Ready(installation) => {
@@ -292,7 +293,7 @@ where
                 drop(verified);
                 drop(lease);
                 let (installation, publish_warnings) =
-                    transaction::publish(&store, &request.resolved, &staged, &target)?;
+                    transaction::publish(&staged, &target, &mut validate)?;
                 warnings.extend(publish_warnings);
                 return finish(
                     &store,
@@ -351,6 +352,75 @@ fn cleanup_error(
     transaction::with_cleanup_warnings(error, &cleanup)
 }
 
+fn archive_candidate(
+    store: &ArchiveToolStore<'_>,
+    resolved: &ResolvedDefinition,
+    root: &Path,
+) -> Result<Option<Installation>, ArchiveToolError> {
+    use std::fs;
+    use std::os::windows::fs::MetadataExt;
+    use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+    let metadata = match fs::symlink_metadata(root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(ArchiveToolError::new(
+                ArchiveToolErrorKind::Storage,
+                format!(
+                    "cannot inspect installation candidate '{}': {error}",
+                    root.display()
+                ),
+            ));
+        }
+    };
+    if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(ArchiveToolError::new(
+            ArchiveToolErrorKind::UnsafeStorage,
+            format!(
+                "installation candidate cannot be a reparse point: {}",
+                root.display()
+            ),
+        ));
+    }
+    if metadata.is_file() {
+        return Ok(None);
+    }
+    if !metadata.is_dir() {
+        return Err(ArchiveToolError::new(
+            ArchiveToolErrorKind::UnsafeStorage,
+            format!(
+                "installation candidate must be a regular file or directory: {}",
+                root.display()
+            ),
+        ));
+    }
+    let installation = match store.read_installation_at(resolved, root) {
+        Ok(installation) => installation,
+        Err(error) if invalid_archive_candidate(error.kind()) => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    match store.verify_hashes(&installation) {
+        Ok(()) => Ok(Some(installation)),
+        Err(error) if invalid_archive_candidate(error.kind()) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn invalid_archive_candidate(kind: ArchiveToolErrorKind) -> bool {
+    matches!(
+        kind,
+        ArchiveToolErrorKind::InstallationUnavailable
+            | ArchiveToolErrorKind::MissingStorage
+            | ArchiveToolErrorKind::MetadataUnreadable
+            | ArchiveToolErrorKind::MetadataStale
+            | ArchiveToolErrorKind::DuplicateFileRecords
+            | ArchiveToolErrorKind::MissingFileRecord
+            | ArchiveToolErrorKind::InvalidFileRecord
+            | ArchiveToolErrorKind::InstalledFileInvalid
+    )
+}
+
 fn installation_lock_path(locks: &Path, tool: &ArchiveToolContract) -> std::path::PathBuf {
     locks.join(format!(
         "archive-install-{}.lock",
@@ -365,6 +435,80 @@ pub fn transfer_archive(
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<u64, ArchiveToolError> {
     transfer::transfer(source, destination, progress)
+}
+
+pub(crate) fn remove_controlled_data(path: &Path) -> Result<(), ArchiveToolError> {
+    transaction::remove_controlled(path)
+}
+
+pub(crate) fn cleanup_installation_data(paths: &[std::path::PathBuf]) -> Vec<String> {
+    transaction::remove_residues(paths)
+}
+
+pub(crate) fn extract_vsix_contents(
+    archive: &std::fs::File,
+    destination: &Path,
+) -> Result<(), ArchiveToolError> {
+    archive::extract_contents_file(archive, destination)
+}
+
+pub(crate) struct InstallationTransaction<T, F>
+where
+    F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
+{
+    _lock: ExclusiveFileLock,
+    target: std::path::PathBuf,
+    validate: F,
+}
+
+impl<T, F> InstallationTransaction<T, F>
+where
+    F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
+{
+    pub(crate) fn open(
+        data_root: &Path,
+        tool_name: &str,
+        target: std::path::PathBuf,
+        validate: F,
+    ) -> Result<Self, ArchiveToolError> {
+        let locks = ensure_directory_chain(
+            data_root,
+            &["modules", "kernel", ".dev", "setup", "locks"],
+            "installation lock",
+        )?;
+        let identity = format!("{:x}", Sha256::digest(tool_name.as_bytes()));
+        let lock = ExclusiveFileLock::acquire(
+            &locks.join(format!("install-{identity}.lock")),
+            3_000,
+            Duration::from_millis(200),
+        )?;
+        Ok(Self {
+            _lock: lock,
+            target,
+            validate,
+        })
+    }
+
+    pub(crate) fn recover(&mut self) -> Result<(Option<T>, bool, Vec<String>), ArchiveToolError> {
+        let report = transaction::recover(&self.target, &mut self.validate)?;
+        match report.outcome {
+            RecoveryOutcome::Ready(value) => Ok((Some(value), false, report.warnings)),
+            RecoveryOutcome::Recovered(value) => Ok((Some(value), true, report.warnings)),
+            RecoveryOutcome::Missing => Ok((None, false, report.warnings)),
+        }
+    }
+
+    pub(crate) fn work_path(&self) -> Result<std::path::PathBuf, ArchiveToolError> {
+        transaction::work_path(&self.target, WorkKind::Work)
+    }
+
+    pub(crate) fn staged_path(&self) -> Result<std::path::PathBuf, ArchiveToolError> {
+        transaction::work_path(&self.target, WorkKind::Partial)
+    }
+
+    pub(crate) fn publish(&mut self, staged: &Path) -> Result<(T, Vec<String>), ArchiveToolError> {
+        transaction::publish(staged, &self.target, &mut self.validate)
+    }
 }
 
 #[doc(hidden)]

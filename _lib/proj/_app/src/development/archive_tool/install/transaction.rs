@@ -1,12 +1,8 @@
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::super::{
-    ArchiveToolError, ArchiveToolErrorKind, ArchiveToolStore, Installation, ResolvedDefinition,
-};
+use super::super::{ArchiveToolError, ArchiveToolErrorKind};
 
 #[path = "lock.rs"]
 mod lock;
@@ -20,9 +16,8 @@ pub(super) use recovery::{RecoveryOutcome, recover};
 pub(super) use removal::{remove_controlled, remove_residues, with_cleanup_warnings};
 
 use removal::{
-    is_reparse, move_path_with_retry, path_exists, reject_reparse_or_missing,
-    remove_path_with_retry, require_regular_directory, storage, target_parent_and_leaf,
-    unsafe_path,
+    move_path_with_retry, path_exists, reject_reparse_or_missing, remove_path_with_retry,
+    require_regular_directory, target_parent_and_leaf,
 };
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(0);
@@ -56,14 +51,16 @@ pub(super) fn work_path(target: &Path, kind: WorkKind) -> Result<PathBuf, Archiv
 ///
 /// A failed rollback never destroys its remaining evidence. The error reports
 /// the exact target and backup paths so the next recovery pass can finish it.
-pub(super) fn publish(
-    store: &ArchiveToolStore<'_>,
-    resolved: &ResolvedDefinition,
+pub(super) fn publish<T, F>(
     staged: &Path,
     target: &Path,
-) -> Result<(Installation, Vec<String>), ArchiveToolError> {
+    validate: &mut F,
+) -> Result<(T, Vec<String>), ArchiveToolError>
+where
+    F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
+{
     require_siblings(staged, target)?;
-    match publish_inner(store, resolved, staged, target) {
+    match publish_inner(staged, target, validate) {
         Ok(result) => Ok(result),
         Err(error) => {
             let warnings = remove_residues(&[staged.to_path_buf()]);
@@ -72,14 +69,16 @@ pub(super) fn publish(
     }
 }
 
-fn publish_inner(
-    store: &ArchiveToolStore<'_>,
-    resolved: &ResolvedDefinition,
+fn publish_inner<T, F>(
     staged: &Path,
     target: &Path,
-) -> Result<(Installation, Vec<String>), ArchiveToolError> {
+    validate: &mut F,
+) -> Result<(T, Vec<String>), ArchiveToolError>
+where
+    F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
+{
     reject_reparse_or_missing(staged, "staged installation")?;
-    if validated_candidate(store, resolved, staged)?.is_none() {
+    if validate(staged)?.is_none() {
         return Err(ArchiveToolError::new(
             ArchiveToolErrorKind::InstalledFileInvalid,
             format!(
@@ -100,7 +99,7 @@ fn publish_inner(
     let publication = (|| {
         move_path_with_retry(staged, target, "publish the staged installation")?;
         published = true;
-        validated_candidate(store, resolved, target)?.ok_or_else(|| {
+        validate(target)?.ok_or_else(|| {
             ArchiveToolError::new(
                 ArchiveToolErrorKind::InstalledFileInvalid,
                 format!(
@@ -177,57 +176,6 @@ fn rollback_detail(
         ),
         (false, false) => "No recoverable installation path could be confirmed.".to_owned(),
     }
-}
-
-fn validated_candidate(
-    store: &ArchiveToolStore<'_>,
-    resolved: &ResolvedDefinition,
-    root: &Path,
-) -> Result<Option<Installation>, ArchiveToolError> {
-    let metadata = match fs::symlink_metadata(root) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(storage("inspect installation candidate", root, error)),
-    };
-    if is_reparse(&metadata) {
-        return Err(unsafe_path("installation candidate", root));
-    }
-    if metadata.is_file() {
-        return Ok(None);
-    }
-    if !metadata.is_dir() {
-        return Err(ArchiveToolError::new(
-            ArchiveToolErrorKind::UnsafeStorage,
-            format!(
-                "installation candidate must be a regular file or directory: {}",
-                root.display()
-            ),
-        ));
-    }
-    let installation = match store.read_installation_at(resolved, root) {
-        Ok(installation) => installation,
-        Err(error) if is_invalid_candidate(error.kind()) => return Ok(None),
-        Err(error) => return Err(error),
-    };
-    match store.verify_hashes(&installation) {
-        Ok(()) => Ok(Some(installation)),
-        Err(error) if is_invalid_candidate(error.kind()) => Ok(None),
-        Err(error) => Err(error),
-    }
-}
-
-fn is_invalid_candidate(kind: ArchiveToolErrorKind) -> bool {
-    matches!(
-        kind,
-        ArchiveToolErrorKind::InstallationUnavailable
-            | ArchiveToolErrorKind::MissingStorage
-            | ArchiveToolErrorKind::MetadataUnreadable
-            | ArchiveToolErrorKind::MetadataStale
-            | ArchiveToolErrorKind::DuplicateFileRecords
-            | ArchiveToolErrorKind::MissingFileRecord
-            | ArchiveToolErrorKind::InvalidFileRecord
-            | ArchiveToolErrorKind::InstalledFileInvalid
-    )
 }
 
 fn backup_path(target: &Path) -> Result<PathBuf, ArchiveToolError> {

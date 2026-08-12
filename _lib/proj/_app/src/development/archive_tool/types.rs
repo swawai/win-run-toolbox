@@ -43,7 +43,7 @@ pub struct ArchiveToolError {
 }
 
 impl ArchiveToolError {
-    pub(super) fn new(kind: ArchiveToolErrorKind, message: impl Into<String>) -> Self {
+    pub(crate) fn new(kind: ArchiveToolErrorKind, message: impl Into<String>) -> Self {
         Self {
             kind,
             message: message.into(),

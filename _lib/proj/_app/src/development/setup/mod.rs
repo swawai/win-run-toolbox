@@ -3,7 +3,7 @@ pub mod declaration;
 pub mod environment;
 pub mod provider;
 
-mod storage;
+pub(crate) mod storage;
 
 pub const PRODUCER_CONTRACT: &str = "swawkit.proj.dev-setup/v2";
 pub const PUBLICATION_TOKEN_VARIABLE: &str =

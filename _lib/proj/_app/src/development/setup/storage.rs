@@ -10,12 +10,12 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ,
 };
 
-pub(super) struct ExclusiveFileLock {
+pub(crate) struct ExclusiveFileLock {
     _file: File,
 }
 
 impl ExclusiveFileLock {
-    pub(super) fn acquire(path: &Path, timeout: Duration) -> io::Result<Self> {
+    pub(crate) fn acquire(path: &Path, timeout: Duration) -> io::Result<Self> {
         let parent = path.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "lock path has no parent")
         })?;
@@ -52,7 +52,7 @@ impl ExclusiveFileLock {
     }
 }
 
-pub(super) fn ensure_directory_chain(
+pub(crate) fn ensure_directory_chain(
     root: &Path,
     components: &[&str],
     subject: &str,
@@ -117,7 +117,7 @@ pub(super) fn regular_directory(path: &Path, subject: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub(super) fn regular_file_or_missing(path: &Path, subject: &str) -> io::Result<bool> {
+pub(crate) fn regular_file_or_missing(path: &Path, subject: &str) -> io::Result<bool> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error),
@@ -126,7 +126,7 @@ pub(super) fn regular_file_or_missing(path: &Path, subject: &str) -> io::Result<
     }
 }
 
-pub(super) fn read_replaceable_bounded(
+pub(crate) fn read_replaceable_bounded(
     path: &Path,
     subject: &str,
     maximum: u64,

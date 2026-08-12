@@ -2365,6 +2365,7 @@ name = "swawkit-proj"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "percent-encoding",
  "serde",
  "serde_json",
  "sha2",
@@ -2372,6 +2373,7 @@ dependencies = [
  "tower",
  "tray-icon",
  "ureq",
+ "url",
  "webbrowser",
  "windows-sys 0.61.2",
  "winit",

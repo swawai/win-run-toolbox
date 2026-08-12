@@ -8,6 +8,10 @@ use crate::development::archive_tool::install::{
 use crate::development::archive_tool::{
     ArchiveToolError, ArchiveToolRequest, ArchiveToolStore, ResolvedDefinition, Trust,
 };
+use crate::development::msvc::{
+    MsvcDefinition, MsvcInstallContext, MsvcInstallOutcome,
+    ensure_installed as ensure_msvc_installed,
+};
 use crate::development::{ArchiveToolContract, BUN, PWSH};
 
 use super::PUBLICATION_TOKEN_VARIABLE;
@@ -16,14 +20,14 @@ use super::environment::EnvironmentPlan;
 use super::provider::SetupProvider;
 use super::storage::{ExclusiveFileLock, ensure_directory_chain};
 
-pub struct ArchiveSetupContext {
+pub struct NativeSetupContext {
     data_root: PathBuf,
     cache_data_root: PathBuf,
     profile_revision: String,
     input_revision: String,
 }
 
-impl ArchiveSetupContext {
+impl NativeSetupContext {
     pub fn new(
         data_root: impl Into<PathBuf>,
         cache_data_root: impl Into<PathBuf>,
@@ -33,7 +37,7 @@ impl ArchiveSetupContext {
         let data_root = data_root.into();
         let cache_data_root = cache_data_root.into();
         if !data_root.is_absolute() || !cache_data_root.is_absolute() {
-            return Err("native archive setup roots must be absolute".to_owned());
+            return Err("native development setup roots must be absolute".to_owned());
         }
         Ok(Self {
             data_root,
@@ -86,14 +90,55 @@ impl ArchiveToolSetupResult {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ArchiveSetupResult {
-    tools: Vec<ArchiveToolSetupResult>,
+pub struct MsvcSetupResult {
+    channel: String,
+    tool_version: String,
+    sdk_version: String,
+    root: PathBuf,
+    outcome: MsvcInstallOutcome,
+    warnings: Vec<String>,
+}
+
+impl MsvcSetupResult {
+    pub fn channel(&self) -> &str {
+        &self.channel
+    }
+
+    pub fn tool_version(&self) -> &str {
+        &self.tool_version
+    }
+
+    pub fn sdk_version(&self) -> &str {
+        &self.sdk_version
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn outcome(&self) -> MsvcInstallOutcome {
+        self.outcome
+    }
+
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeSetupResult {
+    archive_tools: Vec<ArchiveToolSetupResult>,
+    msvc: Option<MsvcSetupResult>,
     environment_changed: bool,
 }
 
-impl ArchiveSetupResult {
-    pub fn tools(&self) -> &[ArchiveToolSetupResult] {
-        &self.tools
+impl NativeSetupResult {
+    pub fn archive_tools(&self) -> &[ArchiveToolSetupResult] {
+        &self.archive_tools
+    }
+
+    pub fn msvc(&self) -> Option<&MsvcSetupResult> {
+        self.msvc.as_ref()
     }
 
     pub fn environment_changed(&self) -> bool {
@@ -101,11 +146,11 @@ impl ArchiveSetupResult {
     }
 }
 
-pub fn run_archive_only(
-    context: &ArchiveSetupContext,
+pub fn run_native(
+    context: &NativeSetupContext,
     declarations: &DeclarationSnapshot,
     progress: &mut dyn FnMut(&str, u64, Option<u64>),
-) -> Result<ArchiveSetupResult, String> {
+) -> Result<NativeSetupResult, String> {
     let locks = ensure_directory_chain(
         &context.data_root,
         &["modules", "kernel", ".dev", "setup", "locks"],
@@ -125,46 +170,56 @@ pub fn run_archive_only(
     declarations
         .require_supported()
         .map_err(|error| error.to_string())?;
-    require_archive_only(declarations)?;
+    require_native_domains(declarations)?;
+    let archive_requests = [&BUN, &PWSH]
+        .into_iter()
+        .filter_map(|tool| {
+            declarations
+                .archive_request(tool)
+                .map(|request| request.map(|request| (tool, request)))
+                .transpose()
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let msvc_definition = declarations
+        .msvc_definition()
+        .map_err(|error| error.to_string())?;
     let mut plan = EnvironmentPlan::default();
-    let mut tools = Vec::new();
-    for tool in [&BUN, &PWSH] {
-        if let Some(request) = declarations
-            .archive_request(tool)
-            .map_err(|error| error.to_string())?
-        {
-            let installed = setup_tool(context, tool, request, progress)?;
-            plan.prepend_path(installed.root.clone())?;
-            tools.push(installed);
-        }
+    let mut archive_tools = Vec::new();
+    for (tool, request) in archive_requests {
+        let installed = setup_archive_tool(context, tool, request, progress)?;
+        plan.prepend_path(installed.root.clone())?;
+        archive_tools.push(installed);
     }
+    let msvc = setup_msvc(context, msvc_definition.as_ref(), &mut plan, progress)?;
     plan.set(PUBLICATION_TOKEN_VARIABLE, Some(publication.token()))?;
     let environment_changed = plan.render().publish(&context.data_root)?;
     provider.complete(&publication)?;
-    Ok(ArchiveSetupResult {
-        tools,
+    Ok(NativeSetupResult {
+        archive_tools,
+        msvc,
         environment_changed,
     })
 }
 
-fn require_archive_only(declarations: &DeclarationSnapshot) -> Result<(), String> {
+fn require_native_domains(declarations: &DeclarationSnapshot) -> Result<(), String> {
     let unsupported = declarations
         .enabled_modules()
         .into_iter()
-        .filter(|name| !matches!(*name, "bun" | "pwsh"))
+        .filter(|name| !matches!(*name, "bun" | "pwsh" | "msvc"))
         .collect::<Vec<_>>();
     if unsupported.is_empty() {
         Ok(())
     } else {
         Err(format!(
-            "native archive setup does not yet handle these enabled declarations: {}.",
+            "native development setup does not yet handle these enabled declarations: {}.",
             unsupported.join(", ")
         ))
     }
 }
 
-fn setup_tool(
-    context: &ArchiveSetupContext,
+fn setup_archive_tool(
+    context: &NativeSetupContext,
     tool: &'static ArchiveToolContract,
     request: ArchiveToolRequest,
     progress: &mut dyn FnMut(&str, u64, Option<u64>),
@@ -206,6 +261,34 @@ fn setup_tool(
     })
 }
 
+fn setup_msvc(
+    context: &NativeSetupContext,
+    definition: Option<&MsvcDefinition>,
+    plan: &mut EnvironmentPlan,
+    progress: &mut dyn FnMut(&str, u64, Option<u64>),
+) -> Result<Option<MsvcSetupResult>, String> {
+    let Some(definition) = definition else {
+        return Ok(None);
+    };
+    let mut msvc_progress = |_: &str, current, total| progress("msvc", current, total);
+    let result = ensure_msvc_installed(
+        MsvcInstallContext::new(&context.data_root, &context.cache_data_root)
+            .map_err(|error| error.to_string())?,
+        &definition,
+        &mut msvc_progress,
+    )
+    .map_err(|error| error.to_string())?;
+    result.installation().add_environment(plan)?;
+    Ok(Some(MsvcSetupResult {
+        channel: definition.channel().to_owned(),
+        tool_version: result.installation().tool_version().to_owned(),
+        sdk_version: result.installation().sdk_version().to_owned(),
+        root: result.installation().root().to_path_buf(),
+        outcome: result.outcome(),
+        warnings: result.warnings().to_vec(),
+    }))
+}
+
 fn resolve_source(
     tool: &'static ArchiveToolContract,
     resolved: &ResolvedDefinition,
@@ -222,4 +305,5 @@ fn resolve_source(
 }
 
 #[cfg(test)]
+#[path = "native/tests.rs"]
 mod tests;

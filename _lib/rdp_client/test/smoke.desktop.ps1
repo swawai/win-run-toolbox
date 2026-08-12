@@ -17,6 +17,9 @@ $SshEntry = Join-Path $ScratchRoot 'peer.ssh.cmd'
 $OutputPath = Join-Path $ScratchRoot 'capture.png'
 $ExistingOutputPath = Join-Path $ScratchRoot 'existing.png'
 $CloseCapture = Join-Path $ScratchRoot 'display-closed.txt'
+$TimeoutCapture = Join-Path $ScratchRoot 'timeout-budget.txt'
+$BootstrapRuntime = Join-Path $ScratchRoot 'bootstrap-runtime'
+$BootstrapPidPath = Join-Path $ScratchRoot 'bootstrap-child.pid'
 
 function Assert-DesktopSourceParses {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -203,7 +206,12 @@ try {
     }
 
     [IO.Directory]::CreateDirectory($Runtime) | Out-Null
-    foreach ($Name in @('desktop.ps1', 'helper.ps1', 'psexec-lib.remote.ps1')) {
+    foreach ($Name in @(
+        'desktop.ps1',
+        'helper.ps1',
+        'process-job.ps1',
+        'psexec-lib.remote.ps1'
+    )) {
         [IO.File]::Copy(
             (Join-Path $RuntimeRoot $Name),
             (Join-Path $Runtime $Name)
@@ -246,6 +254,18 @@ function Resolve-RdpClientSessionId {
 function Resolve-RdpClientPeerSshEntryPath { return $SshEntryFile }
 function Assert-RdpClientPeerSshEntryIsSeparate {}
 function Invoke-RdpClientPeerSshPowerShell {
+    param(
+        [string]$SshEntryPath,
+        [string]$RemoteSource,
+        [int]$TimeoutSeconds
+    )
+    if (-not [string]::IsNullOrWhiteSpace(
+        $env:RDP_DESKTOP_FAKE_TIMEOUT_CAPTURE
+    )) {
+        Add-Content `
+            -LiteralPath $env:RDP_DESKTOP_FAKE_TIMEOUT_CAPTURE `
+            -Value "task:$TimeoutSeconds"
+    }
     return [pscustomobject]@{
         ExitCode = 0
         Output = @('RDP_CLIENT_DESKTOP_RESULT_V1:' + $env:RDP_DESKTOP_FAKE_RESULT)
@@ -259,6 +279,19 @@ function Invoke-RdpClientPeerSshPowerShell {
     )
     $FakeSession = @'
 function Get-RdpClientPeerSessionState {
+    param([string]$SshEntryPath, [int]$TimeoutSeconds)
+    if (-not [string]::IsNullOrWhiteSpace(
+        $env:RDP_DESKTOP_FAKE_TIMEOUT_CAPTURE
+    )) {
+        Add-Content `
+            -LiteralPath $env:RDP_DESKTOP_FAKE_TIMEOUT_CAPTURE `
+            -Value "state:$TimeoutSeconds"
+    }
+    if (-not [string]::IsNullOrWhiteSpace(
+        $env:RDP_DESKTOP_FAKE_STATE_DELAY_MS
+    )) {
+        Start-Sleep -Milliseconds ([int]$env:RDP_DESKTOP_FAKE_STATE_DELAY_MS)
+    }
     return [pscustomobject]@{ Sessions = @() }
 }
 function Resolve-RdpClientSessionSelection {
@@ -293,6 +326,29 @@ function Test-RdpClientSessionDisplayReady {
     return $Session.State -eq 'Active' -and -not [bool]$Session.Locked
 }
 function Open-RdpClientSessionDisplayLease {
+    param(
+        [string]$SshEntryPath,
+        [string]$EntryFile,
+        [string]$EntryUserName,
+        [string]$CommandName,
+        [pscustomobject]$BeforeState,
+        [uint32]$SessionId,
+        [pscustomobject]$TimeoutBudget
+    )
+    if (-not [string]::IsNullOrWhiteSpace(
+        $env:RDP_DESKTOP_FAKE_TIMEOUT_CAPTURE
+    )) {
+        $Remaining = Get-RdpClientTimeoutBudgetRemainingSeconds `
+            -Budget $TimeoutBudget
+        Add-Content `
+            -LiteralPath $env:RDP_DESKTOP_FAKE_TIMEOUT_CAPTURE `
+            -Value "display:$Remaining"
+    }
+    if (-not [string]::IsNullOrWhiteSpace(
+        $env:RDP_DESKTOP_FAKE_DISPLAY_DELAY_MS
+    )) {
+        Start-Sleep -Milliseconds ([int]$env:RDP_DESKTOP_FAKE_DISPLAY_DELAY_MS)
+    }
     return [pscustomobject]@{
         Session = [pscustomobject]@{
             Id = 2
@@ -432,12 +488,140 @@ function Close-RdpClientSessionDisplayLease {
         throw "The temporary-display screenshot path failed.`n$Output"
     }
 
+    [IO.File]::Delete($OutputPath)
+    [IO.File]::Delete($CloseCapture)
+    $env:RDP_DESKTOP_FAKE_TIMEOUT_CAPTURE = $TimeoutCapture
+    $env:RDP_DESKTOP_FAKE_STATE_DELAY_MS = '1100'
+    $env:RDP_DESKTOP_FAKE_DISPLAY_DELAY_MS = '1100'
+    $env:RDP_DESKTOP_FAKE_RESULT = New-FakeDesktopResultPayload `
+        -Action pixel `
+        -Success
+    $Output = Invoke-DesktopTestCommand `
+        -Arguments @(
+            '-Action', 'pixel',
+            '-EntryFile', $Entry,
+            '-SshEntryFile', $SshEntry,
+            '-SessionId', '2',
+            '-X', '640',
+            '-Y', '360',
+            '-Display',
+            '-Timeout', '4s',
+            '-CommandName', 'rdp-test'
+        ) `
+        -ExpectedExitCode 0
+    $ObservedTimeouts = @{}
+    foreach ($Line in [IO.File]::ReadAllLines($TimeoutCapture)) {
+        $Parts = $Line.Split(':')
+        $ObservedTimeouts[$Parts[0]] = [int]$Parts[1]
+    }
+    if ($ObservedTimeouts.state -ne 4 -or
+        $ObservedTimeouts.display -ge $ObservedTimeouts.state -or
+        $ObservedTimeouts.task -ge $ObservedTimeouts.display) {
+        throw (
+            'Desktop phases reset the timeout instead of consuming one ' +
+            "budget: $($ObservedTimeouts | ConvertTo-Json -Compress)`n$Output"
+        )
+    }
+
+    [IO.File]::Delete($TimeoutCapture)
+    [IO.File]::Delete($CloseCapture)
+    $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $Output = Invoke-DesktopTestCommand `
+            -Arguments @(
+                '-Action', 'pixel',
+                '-EntryFile', $Entry,
+                '-SshEntryFile', $SshEntry,
+                '-SessionId', '2',
+                '-X', '640',
+                '-Y', '360',
+                '-Display',
+                '-Timeout', '2s',
+                '-CommandName', 'rdp-test'
+            ) `
+            -ExpectedExitCode 1
+    } finally {
+        $Stopwatch.Stop()
+    }
+    $ExpiredStages = @([IO.File]::ReadAllLines($TimeoutCapture))
+    if (-not $Output.Contains('Desktop command timed out after 2 seconds') -or
+        $Stopwatch.Elapsed.TotalSeconds -gt 4 -or
+        @($ExpiredStages | Where-Object { $_ -like 'task:*' }).Count -ne 0 -or
+        -not [IO.File]::Exists($CloseCapture)) {
+        throw (
+            'An exhausted desktop deadline must stop before the task and ' +
+            "close its display lease. elapsed=$($Stopwatch.Elapsed)`n" +
+            ($ExpiredStages -join ',') + "`n$Output"
+        )
+    }
+
+    [IO.Directory]::CreateDirectory($BootstrapRuntime) | Out-Null
+    foreach ($Name in @('process-job.ps1', 'session-display.ps1')) {
+        [IO.File]::Copy(
+            (Join-Path $RuntimeRoot $Name),
+            (Join-Path $BootstrapRuntime $Name)
+        )
+    }
+    [IO.File]::WriteAllText(
+        (Join-Path $BootstrapRuntime 'connect.ps1'),
+        (
+            '[IO.File]::WriteAllText(' +
+            '$env:RDP_DESKTOP_BOOTSTRAP_PID,[string]$PID);' +
+            'Start-Sleep -Seconds 30'
+        ),
+        (New-Object Text.UTF8Encoding($false))
+    )
+    . (Join-Path $BootstrapRuntime 'session-display.ps1')
+    $env:RDP_DESKTOP_BOOTSTRAP_PID = $BootstrapPidPath
+    $BootstrapStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        try {
+            $null = Start-RdpClientDisplayBootstrap `
+                -EntryFile 'unused.rdp.cmd' `
+                -SshEntryFile 'unused.ssh.cmd' `
+                -CommandName 'rdp-test' `
+                -TimeoutSeconds 2
+            throw 'A blocked temporary RDP bootstrap unexpectedly completed.'
+        } catch {
+            if (-not $_.Exception.Message.Contains(
+                'timed out after 2 seconds while starting temporary RDP'
+            )) {
+                throw
+            }
+        }
+    } finally {
+        $BootstrapStopwatch.Stop()
+    }
+    if ($BootstrapStopwatch.Elapsed.TotalSeconds -gt 5 -or
+        -not [IO.File]::Exists($BootstrapPidPath)) {
+        throw (
+            'The temporary RDP bootstrap did not stop within its deadline. ' +
+            "elapsed=$($BootstrapStopwatch.Elapsed)"
+        )
+    }
+    $BootstrapPid = [int][IO.File]::ReadAllText($BootstrapPidPath)
+    try {
+        $BootstrapProcess = [Diagnostics.Process]::GetProcessById($BootstrapPid)
+        try {
+            if (-not $BootstrapProcess.HasExited) {
+                throw "The timed-out RDP bootstrap left PID $BootstrapPid running."
+            }
+        } finally {
+            $BootstrapProcess.Dispose()
+        }
+    } catch [ArgumentException] {
+    }
+
     Write-Host 'rdp client desktop tests: PASS' -ForegroundColor Green
 } finally {
     Remove-Item Env:RDP_DESKTOP_FAKE_RESULT -ErrorAction SilentlyContinue
     Remove-Item Env:RDP_DESKTOP_FAKE_STATE -ErrorAction SilentlyContinue
     Remove-Item Env:RDP_DESKTOP_FAKE_LOCKED -ErrorAction SilentlyContinue
     Remove-Item Env:RDP_DESKTOP_FAKE_CLOSE -ErrorAction SilentlyContinue
+    Remove-Item Env:RDP_DESKTOP_FAKE_TIMEOUT_CAPTURE -ErrorAction SilentlyContinue
+    Remove-Item Env:RDP_DESKTOP_FAKE_STATE_DELAY_MS -ErrorAction SilentlyContinue
+    Remove-Item Env:RDP_DESKTOP_FAKE_DISPLAY_DELAY_MS -ErrorAction SilentlyContinue
+    Remove-Item Env:RDP_DESKTOP_BOOTSTRAP_PID -ErrorAction SilentlyContinue
     if ([IO.Directory]::Exists($ScratchRoot)) {
         [IO.Directory]::Delete($ScratchRoot, $true)
     }

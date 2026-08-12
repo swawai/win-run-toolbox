@@ -2,19 +2,6 @@ Set-StrictMode -Version 2.0
 
 . (Join-Path $PSScriptRoot 'process-job.ps1')
 
-function Get-RdpClientRemainingTimeoutMilliseconds {
-    param(
-        [Parameter(Mandatory = $true)][Diagnostics.Stopwatch]$Stopwatch,
-        [Parameter(Mandatory = $true)][int]$TimeoutSeconds
-    )
-
-    $Remaining = ([int64]$TimeoutSeconds * 1000) - $Stopwatch.ElapsedMilliseconds
-    if ($Remaining -le 0) {
-        return 0
-    }
-    return [int][Math]::Min($Remaining, [int]::MaxValue)
-}
-
 function Resolve-RdpClientPeerSshEntryPath {
     param([AllowNull()][AllowEmptyString()][string]$Value)
 
@@ -76,7 +63,7 @@ function Invoke-RdpClientPeerSshProcess {
         [Parameter(Mandatory = $true)][string]$Arguments,
         [Parameter(Mandatory = $true)][string]$Operation,
         [AllowNull()][Collections.IDictionary]$EnvironmentVariables,
-        [ValidateRange(1, 1800)][int]$TimeoutSeconds
+        [Parameter(Mandatory = $true)][pscustomobject]$TimeoutBudget
     )
 
     $Utf8 = New-Object Text.UTF8Encoding($false)
@@ -107,6 +94,15 @@ function Invoke-RdpClientPeerSshProcess {
             }
         }
 
+        $TimeoutMilliseconds = Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+            -Budget $TimeoutBudget
+        if ($TimeoutMilliseconds -eq 0) {
+            throw (
+                "SSH peer $Operation timed out after " +
+                "$($TimeoutBudget.TimeoutSeconds) seconds."
+            )
+        }
+
         $ProcessJob = New-Object SwawKit.RdpClient.ProcessJob
         $Process.Start() | Out-Null
         $Started = $true
@@ -118,9 +114,12 @@ function Invoke-RdpClientPeerSshProcess {
         }
         $StdOutTask = $Process.StandardOutput.ReadToEndAsync()
         $StdErrTask = $Process.StandardError.ReadToEndAsync()
-        if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
+        if (-not $Process.WaitForExit($TimeoutMilliseconds)) {
             Stop-RdpClientProcessTree -Process $Process -Job $ProcessJob
-            throw "SSH peer $Operation timed out after $TimeoutSeconds seconds."
+            throw (
+                "SSH peer $Operation timed out after " +
+                "$($TimeoutBudget.TimeoutSeconds) seconds."
+            )
         }
         foreach ($ReadTask in @($StdOutTask, $StdErrTask)) {
             if (-not $ReadTask.Wait(5000)) {
@@ -154,9 +153,14 @@ function Invoke-RdpClientPeerSshEncodedCommand {
     param(
         [Parameter(Mandatory = $true)][string]$SshEntryPath,
         [Parameter(Mandatory = $true)][string]$EncodedCommand,
-        [ValidateRange(1, 1800)][int]$TimeoutSeconds
+        [ValidateRange(1, 1800)][int]$TimeoutSeconds = 120,
+        [AllowNull()][pscustomobject]$TimeoutBudget
     )
 
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
     return Invoke-RdpClientPeerSshProcess `
         -SshEntryPath $SshEntryPath `
         -Arguments (
@@ -165,7 +169,7 @@ function Invoke-RdpClientPeerSshEncodedCommand {
             '-OutputFormat Text -EncodedCommand ' + $EncodedCommand + '"'
         ) `
         -Operation command `
-        -TimeoutSeconds $TimeoutSeconds
+        -TimeoutBudget $TimeoutBudget
 }
 
 function Invoke-RdpClientPeerSshPowerShell {
@@ -175,7 +179,7 @@ function Invoke-RdpClientPeerSshPowerShell {
         [ValidateRange(1, 1800)][int]$TimeoutSeconds = 120
     )
 
-    $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $TimeoutBudget = New-RdpClientTimeoutBudget -TimeoutSeconds $TimeoutSeconds
     $LocalDirectory = [IO.Path]::GetFullPath(
         (Join-Path $PSScriptRoot '..\..\data\rdp-client')
     )
@@ -190,9 +194,8 @@ function Invoke-RdpClientPeerSshPowerShell {
             (New-Object Text.UTF8Encoding($false))
         )
 
-        $Remaining = Get-RdpClientRemainingTimeoutMilliseconds `
-            -Stopwatch $Stopwatch `
-            -TimeoutSeconds $TimeoutSeconds
+        $Remaining = Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+            -Budget $TimeoutBudget
         if ($Remaining -eq 0) {
             throw "SSH peer command timed out after $TimeoutSeconds seconds."
         }
@@ -200,20 +203,19 @@ function Invoke-RdpClientPeerSshPowerShell {
             -SshEntryPath $SshEntryPath `
             -SourcePath $LocalPath `
             -RemoteName $RemoteName `
-            -TimeoutSeconds ([Math]::Max(1, [Math]::Ceiling($Remaining / 1000)))
+            -TimeoutBudget $TimeoutBudget
         if ($Copy.ExitCode -ne 0) {
             throw ('SSH peer script upload failed. ' + ($Copy.Output -join ' '))
         }
         [IO.File]::Delete($LocalPath)
         $RemoteMayExist = $true
 
-        $Remaining = Get-RdpClientRemainingTimeoutMilliseconds `
-            -Stopwatch $Stopwatch `
-            -TimeoutSeconds $TimeoutSeconds
+        $Remaining = Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+            -Budget $TimeoutBudget
         if ($Remaining -eq 0) {
             throw "SSH peer command timed out after $TimeoutSeconds seconds."
         }
-        $RemoteTimeoutMilliseconds = [Math]::Max(1000, $Remaining - 1000)
+        $RemoteTimeoutMilliseconds = [Math]::Max(100, $Remaining - 100)
         $Bootstrap = (
             '$ProgressPreference=''SilentlyContinue'';' +
             '$p=Join-Path $HOME ''' + $RemoteName + ''';$x=$null;$e=1;' +
@@ -231,11 +233,11 @@ function Invoke-RdpClientPeerSshPowerShell {
         $Invocation = Invoke-RdpClientPeerSshEncodedCommand `
             -SshEntryPath $SshEntryPath `
             -EncodedCommand (ConvertTo-RdpClientEncodedCommand -Source $Bootstrap) `
-            -TimeoutSeconds ([Math]::Max(1, [Math]::Ceiling($Remaining / 1000)))
+            -TimeoutBudget $TimeoutBudget
         $RemoteMayExist = $false
         return $Invocation
     } finally {
-        $Stopwatch.Stop()
+        $TimeoutBudget.Stopwatch.Stop()
         if ([IO.File]::Exists($LocalPath)) {
             [IO.File]::Delete($LocalPath)
         }
@@ -248,7 +250,7 @@ function Invoke-RdpClientPeerSshPowerShell {
                 $null = Invoke-RdpClientPeerSshEncodedCommand `
                     -SshEntryPath $SshEntryPath `
                     -EncodedCommand (ConvertTo-RdpClientEncodedCommand -Source $Cleanup) `
-                    -TimeoutSeconds 3
+                    -TimeoutSeconds 1
             } catch {
             }
         }
@@ -260,7 +262,8 @@ function Invoke-RdpClientPeerSshCopy {
         [Parameter(Mandatory = $true)][string]$SshEntryPath,
         [Parameter(Mandatory = $true)][string]$SourcePath,
         [Parameter(Mandatory = $true)][string]$RemoteName,
-        [ValidateRange(1, 1800)][int]$TimeoutSeconds = 120
+        [ValidateRange(1, 1800)][int]$TimeoutSeconds = 120,
+        [AllowNull()][pscustomobject]$TimeoutBudget
     )
 
     if (-not [IO.File]::Exists($SourcePath)) {
@@ -270,6 +273,10 @@ function Invoke-RdpClientPeerSshCopy {
         throw 'SSH copy remote name contains unsupported characters.'
     }
 
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
     return Invoke-RdpClientPeerSshProcess `
         -SshEntryPath $SshEntryPath `
         -Arguments (
@@ -282,5 +289,5 @@ function Invoke-RdpClientPeerSshCopy {
             RDP_CLIENT_PEER_COPY_SOURCE = $SourcePath
             RDP_CLIENT_PEER_COPY_NAME   = $RemoteName
         } `
-        -TimeoutSeconds $TimeoutSeconds
+        -TimeoutBudget $TimeoutBudget
 }

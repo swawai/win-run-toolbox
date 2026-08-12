@@ -1,5 +1,7 @@
 Set-StrictMode -Version 2.0
 
+. (Join-Path $PSScriptRoot 'process-job.ps1')
+
 function Get-RdpClientSessionPropertyText {
     param(
         [Parameter(Mandatory = $true)][pscustomobject]$Session,
@@ -111,7 +113,8 @@ function Invoke-RdpClientPeerSessionRoute {
         [ValidateSet('connect', 'connect-console-if-empty', 'disconnect')]
         [string]$Action,
         [Parameter(Mandatory = $true)][uint32]$SessionId,
-        [AllowEmptyString()][string]$DestinationSessionName = ''
+        [AllowEmptyString()][string]$DestinationSessionName = '',
+        [ValidateRange(1, 600)][int]$TimeoutSeconds = 20
     )
 
     $RemoteScriptPath = Join-Path $PSScriptRoot 'session-route.remote.ps1'
@@ -152,7 +155,7 @@ function Invoke-RdpClientPeerSessionRoute {
     $Invocation = Invoke-RdpClientPeerSshPowerShell `
         -SshEntryPath $SshEntryPath `
         -RemoteSource $RemoteSource `
-        -TimeoutSeconds 20
+        -TimeoutSeconds $TimeoutSeconds
     if ($Invocation.ExitCode -ne 0) {
         throw "SSH session route failed with exit code $($Invocation.ExitCode)."
     }
@@ -196,13 +199,22 @@ function Wait-RdpClientLandingSession {
         [Parameter(Mandatory = $true)][pscustomobject]$BeforeState,
         [Parameter(Mandatory = $true)][string]$EntryUserName,
         [Parameter(Mandatory = $true)]$MstscProcess,
-        [ValidateRange(1, 600)][int]$TimeoutSeconds = 120
+        [ValidateRange(1, 600)][int]$TimeoutSeconds = 120,
+        [AllowNull()][pscustomobject]$TimeoutBudget
     )
 
-    $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    while ($Stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
+    while ((Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+        -Budget $TimeoutBudget) -gt 0) {
+        $RemainingSeconds = Get-RdpClientTimeoutBudgetRemainingSeconds `
+            -Budget $TimeoutBudget `
+            -Operation 'RDP session connection'
         $CurrentState = Get-RdpClientPeerSessionState `
-            -SshEntryPath $SshEntryPath
+            -SshEntryPath $SshEntryPath `
+            -TimeoutSeconds ([Math]::Min(20, $RemainingSeconds))
         $Landing = Resolve-RdpClientLandingSession `
             -BeforeState $BeforeState `
             -CurrentState $CurrentState `
@@ -218,9 +230,16 @@ function Wait-RdpClientLandingSession {
         } catch [InvalidOperationException] {
             throw 'mstsc exited before an RDP session became active.'
         }
-        Start-Sleep -Milliseconds 1000
+        $RemainingMilliseconds = Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+            -Budget $TimeoutBudget
+        if ($RemainingMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds ([Math]::Min(1000, $RemainingMilliseconds))
+        }
     }
-    throw "Timed out after $TimeoutSeconds seconds waiting for mstsc to connect."
+    throw (
+        "Timed out after $($TimeoutBudget.TimeoutSeconds) seconds waiting " +
+        'for mstsc to connect.'
+    )
 }
 
 function Wait-RdpClientTargetSessionDestination {
@@ -228,12 +247,22 @@ function Wait-RdpClientTargetSessionDestination {
         [Parameter(Mandatory = $true)][string]$SshEntryPath,
         [Parameter(Mandatory = $true)][uint32]$TargetSessionId,
         [Parameter(Mandatory = $true)][string]$DestinationSessionName,
-        [ValidateRange(1, 60)][int]$TimeoutSeconds = 15
+        [ValidateRange(1, 60)][int]$TimeoutSeconds = 15,
+        [AllowNull()][pscustomobject]$TimeoutBudget
     )
 
-    $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    while ($Stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        $State = Get-RdpClientPeerSessionState -SshEntryPath $SshEntryPath
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
+    while ((Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+        -Budget $TimeoutBudget) -gt 0) {
+        $RemainingSeconds = Get-RdpClientTimeoutBudgetRemainingSeconds `
+            -Budget $TimeoutBudget `
+            -Operation 'RDP session connection'
+        $State = Get-RdpClientPeerSessionState `
+            -SshEntryPath $SshEntryPath `
+            -TimeoutSeconds ([Math]::Min(20, $RemainingSeconds))
         $Targets = @($State.Sessions | Where-Object {
             Test-RdpClientSessionOwnsDestination `
                 -Session $_ `
@@ -243,11 +272,15 @@ function Wait-RdpClientTargetSessionDestination {
         if ($Targets.Count -eq 1) {
             return $Targets[0]
         }
-        Start-Sleep -Milliseconds 500
+        $RemainingMilliseconds = Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+            -Budget $TimeoutBudget
+        if ($RemainingMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds ([Math]::Min(500, $RemainingMilliseconds))
+        }
     }
     throw (
         "Session $TargetSessionId did not take over destination " +
-        "$DestinationSessionName within $TimeoutSeconds seconds."
+        "$DestinationSessionName within $($TimeoutBudget.TimeoutSeconds) seconds."
     )
 }
 
@@ -255,10 +288,20 @@ function Disconnect-RdpClientSessionDestination {
     param(
         [Parameter(Mandatory = $true)][string]$SshEntryPath,
         [Parameter(Mandatory = $true)][string]$EntryUserName,
-        [Parameter(Mandatory = $true)][pscustomobject]$LandingSession
+        [Parameter(Mandatory = $true)][pscustomobject]$LandingSession,
+        [ValidateRange(1, 60)][int]$TimeoutSeconds = 20,
+        [AllowNull()][pscustomobject]$TimeoutBudget
     )
 
-    $State = Get-RdpClientPeerSessionState -SshEntryPath $SshEntryPath
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
+    $State = Get-RdpClientPeerSessionState `
+        -SshEntryPath $SshEntryPath `
+        -TimeoutSeconds (Get-RdpClientTimeoutBudgetRemainingSeconds `
+            -Budget $TimeoutBudget `
+            -Operation 'RDP session rollback')
     $Owners = @($State.Sessions | Where-Object {
         [string]::Equals(
             [string]$_.SessionName,
@@ -292,7 +335,13 @@ function Disconnect-RdpClientSessionDestination {
     $null = Invoke-RdpClientPeerSessionRoute `
         -SshEntryPath $SshEntryPath `
         -Action 'disconnect' `
-        -SessionId ([uint32]$Owners[0].Id)
+        -SessionId ([uint32]$Owners[0].Id) `
+        -TimeoutSeconds ([Math]::Min(
+            20,
+            (Get-RdpClientTimeoutBudgetRemainingSeconds `
+                -Budget $TimeoutBudget `
+                -Operation 'RDP session rollback')
+        ))
     return [uint32]$Owners[0].Id
 }
 
@@ -321,9 +370,14 @@ function Connect-RdpClientSessionById {
         [Parameter(Mandatory = $true)][string]$EntryUserName,
         [Parameter(Mandatory = $true)][uint32]$TargetSessionId,
         [Parameter(Mandatory = $true)]$MstscProcess,
-        [ValidateRange(1, 600)][int]$TimeoutSeconds = 120
+        [ValidateRange(1, 600)][int]$TimeoutSeconds = 120,
+        [AllowNull()][pscustomobject]$TimeoutBudget
     )
 
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
     $Landing = $null
     try {
         Write-Host "[RDP] Waiting:   session $TargetSessionId"
@@ -332,7 +386,7 @@ function Connect-RdpClientSessionById {
             -BeforeState $BeforeState `
             -EntryUserName $EntryUserName `
             -MstscProcess $MstscProcess `
-            -TimeoutSeconds $TimeoutSeconds
+            -TimeoutBudget $TimeoutBudget
 
         if ([uint64]$Landing.Id -ne [uint64]$TargetSessionId) {
             Write-Host (
@@ -344,11 +398,23 @@ function Connect-RdpClientSessionById {
                 -SshEntryPath $SshEntryPath `
                 -Action 'connect' `
                 -SessionId $TargetSessionId `
-                -DestinationSessionName ([string]$Landing.SessionName)
+                -DestinationSessionName ([string]$Landing.SessionName) `
+                -TimeoutSeconds ([Math]::Min(
+                    20,
+                    (Get-RdpClientTimeoutBudgetRemainingSeconds `
+                        -Budget $TimeoutBudget `
+                        -Operation 'RDP session connection')
+                ))
             $FinalSession = Wait-RdpClientTargetSessionDestination `
                 -SshEntryPath $SshEntryPath `
                 -TargetSessionId $TargetSessionId `
-                -DestinationSessionName ([string]$Landing.SessionName)
+                -DestinationSessionName ([string]$Landing.SessionName) `
+                -TimeoutSeconds ([Math]::Min(
+                    15,
+                    (Get-RdpClientTimeoutBudgetRemainingSeconds `
+                        -Budget $TimeoutBudget `
+                        -Operation 'RDP session connection')
+                ))
         } else {
             $FinalSession = $Landing
         }
@@ -364,10 +430,12 @@ function Connect-RdpClientSessionById {
         $Rollback = New-Object 'Collections.Generic.List[string]'
         if ($null -ne $Landing) {
             try {
+                $RollbackBudget = New-RdpClientTimeoutBudget -TimeoutSeconds 5
                 $DisconnectedId = Disconnect-RdpClientSessionDestination `
                     -SshEntryPath $SshEntryPath `
                     -EntryUserName $EntryUserName `
-                    -LandingSession $Landing
+                    -LandingSession $Landing `
+                    -TimeoutBudget $RollbackBudget
                 if ($null -ne $DisconnectedId) {
                     $Rollback.Add("disconnected peer session $DisconnectedId")
                 }

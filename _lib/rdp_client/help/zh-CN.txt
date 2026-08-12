@@ -11,7 +11,7 @@
   {{COMMAND}} .2 screenshot --output D:\shot.png 保存到绝对 PNG 路径；目标文件必须尚不存在
   {{COMMAND}} .2 pixel 640 360              按会话截图坐标读取像素
   {{COMMAND}} .2 click 640 360              按会话截图坐标左键点击；会话未就绪时追加 --display
-  {{COMMAND}} .2 screenshot --display --timeout 60s 显示建立和桌面任务最多等待 60 秒
+  {{COMMAND}} .2 screenshot --display --timeout 60s 所有桌面工作阶段共享同一份 60 秒预算
   {{COMMAND}} .rdp create                   仅生成 RDP 文件；目标已存在时拒绝覆盖
   {{COMMAND}} .rdp create --force           生成 RDP 文件并覆盖已有目标
 

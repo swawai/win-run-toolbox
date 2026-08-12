@@ -11,7 +11,7 @@
   {{COMMAND}} .2 screenshot --output D:\shot.png Save to an absolute PNG path; the target must not already exist
   {{COMMAND}} .2 pixel 640 360              Read a pixel in session-image coordinates
   {{COMMAND}} .2 click 640 360              Left-click session-image coordinates; append --display when the session is not display-ready
-  {{COMMAND}} .2 screenshot --display --timeout 60s Limit display establishment and the desktop task to 60 seconds
+  {{COMMAND}} .2 screenshot --display --timeout 60s Give all desktop-work phases one shared 60-second budget
   {{COMMAND}} .rdp create                   Generate the RDP file only; refuse to overwrite an existing target
   {{COMMAND}} .rdp create --force           Generate the RDP file and overwrite an existing target
 

@@ -1,33 +1,95 @@
 Set-StrictMode -Version 2.0
 
+. (Join-Path $PSScriptRoot 'process-job.ps1')
+
 function Start-RdpClientDisplayBootstrap {
     param(
         [Parameter(Mandatory = $true)][string]$EntryFile,
         [Parameter(Mandatory = $true)][string]$SshEntryFile,
-        [Parameter(Mandatory = $true)][string]$CommandName
+        [Parameter(Mandatory = $true)][string]$CommandName,
+        [ValidateRange(1, 600)][int]$TimeoutSeconds = 120,
+        [AllowNull()][pscustomobject]$TimeoutBudget
     )
 
     $ConnectScript = Join-Path $PSScriptRoot 'connect.ps1'
     if (-not [IO.File]::Exists($ConnectScript)) {
         throw "RDP connection script was not found: $ConnectScript"
     }
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
 
-    $PreviousPreference = $ErrorActionPreference
+    $Bootstrap = (
+        '$ProgressPreference=''SilentlyContinue'';' +
+        '& $env:RDP_CLIENT_DISPLAY_CONNECT_SCRIPT ' +
+        '-EntryFile $env:RDP_CLIENT_DISPLAY_ENTRY ' +
+        '-SshEntryFile $env:RDP_CLIENT_DISPLAY_SSH_ENTRY ' +
+        '-CommandName $env:RDP_CLIENT_DISPLAY_COMMAND ' +
+        '-Launch -ReportMstscProcessId 6>&1;' +
+        'exit $LASTEXITCODE'
+    )
+    $EncodedBootstrap = [Convert]::ToBase64String(
+        [Text.Encoding]::Unicode.GetBytes($Bootstrap)
+    )
+    $Utf8 = New-Object Text.UTF8Encoding($false)
+    $Process = New-Object Diagnostics.Process
+    $Started = $false
     try {
-        $ErrorActionPreference = 'Continue'
-        $Output = @(& PowerShell.exe `
-            -NoLogo `
-            -NoProfile `
-            -ExecutionPolicy Bypass `
-            -File $ConnectScript `
-            -EntryFile $EntryFile `
-            -SshEntryFile $SshEntryFile `
-            -CommandName $CommandName `
-            -Launch `
-            -ReportMstscProcessId 2>&1 | ForEach-Object { [string]$_ })
-        $ExitCode = $LASTEXITCODE
+        $Process.StartInfo.FileName = Join-Path $PSHOME 'powershell.exe'
+        $Process.StartInfo.Arguments = (
+            '-NoLogo -NoProfile -NonInteractive -OutputFormat Text ' +
+            '-ExecutionPolicy Bypass -EncodedCommand ' + $EncodedBootstrap
+        )
+        $Process.StartInfo.UseShellExecute = $false
+        $Process.StartInfo.CreateNoWindow = $true
+        $Process.StartInfo.RedirectStandardOutput = $true
+        $Process.StartInfo.RedirectStandardError = $true
+        $Process.StartInfo.StandardOutputEncoding = $Utf8
+        $Process.StartInfo.StandardErrorEncoding = $Utf8
+        [void]$Process.StartInfo.EnvironmentVariables
+        $ChildEnvironment = $Process.StartInfo.EnvironmentVariables
+        $ChildEnvironment['RDP_CLIENT_DISPLAY_CONNECT_SCRIPT'] = $ConnectScript
+        $ChildEnvironment['RDP_CLIENT_DISPLAY_ENTRY'] = $EntryFile
+        $ChildEnvironment['RDP_CLIENT_DISPLAY_SSH_ENTRY'] = $SshEntryFile
+        $ChildEnvironment['RDP_CLIENT_DISPLAY_COMMAND'] = $CommandName
+
+        $TimeoutSeconds = Get-RdpClientTimeoutBudgetRemainingSeconds `
+            -Budget $TimeoutBudget `
+            -Operation 'Desktop command'
+        $Process.Start() | Out-Null
+        $Started = $true
+        $StdOutTask = $Process.StandardOutput.ReadToEndAsync()
+        $StdErrTask = $Process.StandardError.ReadToEndAsync()
+        if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
+            Stop-RdpClientProcessTree -Process $Process -Job $null
+            throw (
+                'Desktop command timed out after ' +
+                "$($TimeoutBudget.TimeoutSeconds) seconds while starting " +
+                'temporary RDP.'
+            )
+        }
+        foreach ($ReadTask in @($StdOutTask, $StdErrTask)) {
+            if (-not $ReadTask.Wait(5000)) {
+                throw 'Temporary RDP bootstrap output did not close.'
+            }
+        }
+        $Output = @(
+            foreach ($Text in @($StdOutTask.Result, $StdErrTask.Result)) {
+                @($Text -split '\r?\n' | Where-Object { $_.Length -gt 0 })
+            }
+        )
+        $ExitCode = $Process.ExitCode
     } finally {
-        $ErrorActionPreference = $PreviousPreference
+        if ($Started) {
+            try {
+                if (-not $Process.HasExited) {
+                    Stop-RdpClientProcessTree -Process $Process -Job $null
+                }
+            } catch {
+            }
+        }
+        $Process.Dispose()
     }
 
     $MarkerPattern = '^RDP_CLIENT_MSTSC_PROCESS_V1:(?<ProcessId>[0-9]+)$'
@@ -75,17 +137,21 @@ function Wait-RdpClientSessionDisplayStable {
         [Parameter(Mandatory = $true)][string]$SshEntryPath,
         [Parameter(Mandatory = $true)][uint32]$SessionId,
         [ValidateRange(1, 600)][int]$TimeoutSeconds = 120,
+        [AllowNull()][pscustomobject]$TimeoutBudget,
         [ValidateRange(0, 10000)][int]$StableMilliseconds = 3000
     )
 
-    $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
     $StableSince = $null
     $LastDetail = 'session was not observed'
-    while ($Stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        $RemainingSeconds = [Math]::Max(
-            1,
-            [Math]::Ceiling($TimeoutSeconds - $Stopwatch.Elapsed.TotalSeconds)
-        )
+    while ((Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+        -Budget $TimeoutBudget) -gt 0) {
+        $RemainingSeconds = Get-RdpClientTimeoutBudgetRemainingSeconds `
+            -Budget $TimeoutBudget `
+            -Operation 'Desktop command'
         try {
             $State = Get-RdpClientPeerSessionState `
                 -SshEntryPath $SshEntryPath `
@@ -96,9 +162,10 @@ function Wait-RdpClientSessionDisplayStable {
             if ($Targets.Count -eq 1 -and
                 (Test-RdpClientSessionDisplayReady -Session $Targets[0])) {
                 if ($null -eq $StableSince) {
-                    $StableSince = $Stopwatch.Elapsed.TotalMilliseconds
+                    $StableSince = $TimeoutBudget.Stopwatch.Elapsed.TotalMilliseconds
                 }
-                if (($Stopwatch.Elapsed.TotalMilliseconds - $StableSince) -ge
+                if (($TimeoutBudget.Stopwatch.Elapsed.TotalMilliseconds -
+                    $StableSince) -ge
                     $StableMilliseconds) {
                     return $Targets[0]
                 }
@@ -115,11 +182,16 @@ function Wait-RdpClientSessionDisplayStable {
             $StableSince = $null
             $LastDetail = $_.Exception.Message
         }
-        Start-Sleep -Milliseconds 500
+        $RemainingMilliseconds = Get-RdpClientTimeoutBudgetRemainingMilliseconds `
+            -Budget $TimeoutBudget
+        if ($RemainingMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds ([Math]::Min(500, $RemainingMilliseconds))
+        }
     }
     throw (
         "Session $SessionId did not expose a stable interactive desktop " +
-        "within $TimeoutSeconds seconds. Last observation: $LastDetail"
+        "within $($TimeoutBudget.TimeoutSeconds) seconds. " +
+        "Last observation: $LastDetail"
     )
 }
 
@@ -132,27 +204,33 @@ function Open-RdpClientSessionDisplayLease {
         [Parameter(Mandatory = $true)][pscustomobject]$BeforeState,
         [Parameter(Mandatory = $true)][uint32]$SessionId,
         [ValidateRange(1, 600)][int]$TimeoutSeconds = 120,
+        [AllowNull()][pscustomobject]$TimeoutBudget,
         [ValidateRange(0, 10000)][int]$StableMilliseconds = 3000
     )
 
+    if ($null -eq $TimeoutBudget) {
+        $TimeoutBudget = New-RdpClientTimeoutBudget `
+            -TimeoutSeconds $TimeoutSeconds
+    }
     $MstscProcess = $null
     try {
         Write-Host "[RDP] Display:   starting temporary RDP for session $SessionId"
         $MstscProcess = Start-RdpClientDisplayBootstrap `
             -EntryFile $EntryFile `
             -SshEntryFile $SshEntryPath `
-            -CommandName $CommandName
+            -CommandName $CommandName `
+            -TimeoutBudget $TimeoutBudget
         $Session = Connect-RdpClientSessionById `
             -SshEntryPath $SshEntryPath `
             -BeforeState $BeforeState `
             -EntryUserName $EntryUserName `
             -TargetSessionId $SessionId `
             -MstscProcess $MstscProcess `
-            -TimeoutSeconds $TimeoutSeconds
+            -TimeoutBudget $TimeoutBudget
         $Session = Wait-RdpClientSessionDisplayStable `
             -SshEntryPath $SshEntryPath `
             -SessionId $SessionId `
-            -TimeoutSeconds $TimeoutSeconds `
+            -TimeoutBudget $TimeoutBudget `
             -StableMilliseconds $StableMilliseconds
         Write-Host (
             '[RDP] Display:   session {0} stable for {1:N1}s' -f `

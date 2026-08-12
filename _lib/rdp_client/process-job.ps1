@@ -138,6 +138,42 @@ if (-not ('SwawKit.RdpClient.ProcessJob' -as [type])) {
     Add-Type -TypeDefinition $ProcessJobSource -Language CSharp
 }
 
+function New-RdpClientTimeoutBudget {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1, 1800)][int]$TimeoutSeconds
+    )
+
+    return [pscustomobject]@{
+        TimeoutSeconds = $TimeoutSeconds
+        Stopwatch      = [Diagnostics.Stopwatch]::StartNew()
+    }
+}
+
+function Get-RdpClientTimeoutBudgetRemainingMilliseconds {
+    param([Parameter(Mandatory = $true)][pscustomobject]$Budget)
+
+    $Remaining = ([int64]$Budget.TimeoutSeconds * 1000) -
+        $Budget.Stopwatch.ElapsedMilliseconds
+    if ($Remaining -le 0) {
+        return 0
+    }
+    return [int][Math]::Min($Remaining, [int]::MaxValue)
+}
+
+function Get-RdpClientTimeoutBudgetRemainingSeconds {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject]$Budget,
+        [string]$Operation = 'RDP command'
+    )
+
+    $Remaining = Get-RdpClientTimeoutBudgetRemainingMilliseconds -Budget $Budget
+    if ($Remaining -eq 0) {
+        throw "$Operation timed out after $($Budget.TimeoutSeconds) seconds."
+    }
+    return [int][Math]::Ceiling($Remaining / 1000)
+}
+
 function Stop-RdpClientProcessTree {
     param(
         [Parameter(Mandatory = $true)][Diagnostics.Process]$Process,

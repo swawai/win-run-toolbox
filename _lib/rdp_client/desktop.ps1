@@ -27,6 +27,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'entry.ps1')
+. (Join-Path $PSScriptRoot 'process-job.ps1')
 . (Join-Path $PSScriptRoot 'peer-ssh.ps1')
 . (Join-Path $PSScriptRoot 'session.ps1')
 . (Join-Path $PSScriptRoot 'session-connect.ps1')
@@ -119,9 +120,12 @@ function Invoke-RdpClientDesktopTask {
         [AllowEmptyString()][string]$ExpectedDomainName,
         [AllowNull()][Nullable[int]]$CoordinateX,
         [AllowNull()][Nullable[int]]$CoordinateY,
-        [ValidateRange(1, 600)][int]$TimeoutSeconds
+        [Parameter(Mandatory = $true)][pscustomobject]$TimeoutBudget
     )
 
+    $TimeoutSeconds = Get-RdpClientTimeoutBudgetRemainingSeconds `
+        -Budget $TimeoutBudget `
+        -Operation 'Desktop command'
     $Utf8 = New-Object Text.UTF8Encoding($false)
     $TaskRequest = [ordered]@{
         Action             = $TaskAction
@@ -196,7 +200,7 @@ function Invoke-RdpClientDesktopTask {
     $Invocation = Invoke-RdpClientPeerSshPowerShell `
         -SshEntryPath $SshEntryPath `
         -RemoteSource $RemoteSource `
-        -TimeoutSeconds ([Math]::Min($TimeoutSeconds + 30, 630))
+        -TimeoutSeconds $TimeoutSeconds
 
     $ResultPattern = '^RDP_CLIENT_DESKTOP_RESULT_V1:(?<Payload>[A-Za-z0-9+/=]+)$'
     $Markers = @($Invocation.Output | Where-Object { $_ -match $ResultPattern })
@@ -288,6 +292,7 @@ try {
         throw 'Desktop session ID exceeds the range supported by PsExec.'
     }
     $TimeoutSeconds = Resolve-RdpClientDesktopTimeoutSeconds -Value $Timeout
+    $TimeoutBudget = New-RdpClientTimeoutBudget -TimeoutSeconds $TimeoutSeconds
     $CoordinateX = $null
     $CoordinateY = $null
     if ($Action -in @('pixel', 'click')) {
@@ -326,7 +331,10 @@ try {
         -SshEntryPath $ResolvedSshEntry `
         -RdpEntryPath $ResolvedEntry
     $InitialState = Get-RdpClientPeerSessionState `
-        -SshEntryPath $ResolvedSshEntry
+        -SshEntryPath $ResolvedSshEntry `
+        -TimeoutSeconds (Get-RdpClientTimeoutBudgetRemainingSeconds `
+            -Budget $TimeoutBudget `
+            -Operation 'Desktop command')
     $SelectedSession = Resolve-RdpClientSessionSelection `
         -State $InitialState `
         -EntryUserName $Document.Username `
@@ -362,7 +370,7 @@ try {
             -CommandName $CommandName `
             -BeforeState $InitialState `
             -SessionId $ResolvedSessionId `
-            -TimeoutSeconds $TimeoutSeconds
+            -TimeoutBudget $TimeoutBudget
         $SelectedSession = $Lease.Session
         $DisplaySource = 'temporary-rdp'
     }
@@ -386,7 +394,7 @@ try {
         -ExpectedDomainName ([string]$SelectedSession.DomainName) `
         -CoordinateX $CoordinateX `
         -CoordinateY $CoordinateY `
-        -TimeoutSeconds $TimeoutSeconds
+        -TimeoutBudget $TimeoutBudget
 
     $PublicResult = [ordered]@{
         Version       = 1

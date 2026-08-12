@@ -149,7 +149,10 @@ try {
 } finally {
     $ctx = $null
     try { $ctx = Get-RemoteKitContext } catch { }
-    if ($ctx -and (Test-Path -LiteralPath $ctx.TempWorkspaceRoot)) {
-        Remove-Item -LiteralPath $ctx.TempWorkspaceRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if ($ctx -and (Test-Path -LiteralPath $ctx.UploadTempRoot)) {
+        Remove-Item -LiteralPath $ctx.UploadTempRoot `
+            -Recurse `
+            -Force `
+            -ErrorAction SilentlyContinue
     }
 }

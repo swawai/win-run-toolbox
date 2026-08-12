@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::ArchiveToolContract;
 
-mod filesystem;
+pub(crate) mod filesystem;
 pub mod github;
 pub mod install;
 mod selection;

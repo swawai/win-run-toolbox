@@ -12,7 +12,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 use super::{ArchiveToolError, ArchiveToolErrorKind};
 
 pub(super) const MAX_SELECTION_BYTES: u64 = 16 * 1024;
-pub(super) const MAX_METADATA_BYTES: u64 = 1024 * 1024;
+pub(crate) const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 
 pub(super) fn optional_directory_chain(
     root: &Path,
@@ -39,7 +39,7 @@ pub(super) fn optional_directory_chain(
     Ok(Some(path))
 }
 
-pub(super) fn directory_chain(
+pub(crate) fn directory_chain(
     root: &Path,
     components: &[&str],
     subject: &str,
@@ -104,7 +104,7 @@ pub(super) fn optional_regular_file(path: &Path, subject: &str) -> Result<bool, 
     }
 }
 
-pub(super) fn child_file(
+pub(crate) fn child_file(
     root: &Path,
     relative: &str,
     subject: &str,
@@ -136,7 +136,7 @@ pub(super) fn child_file(
     Ok(path)
 }
 
-pub(super) fn read_json<T: DeserializeOwned>(
+pub(crate) fn read_json<T: DeserializeOwned>(
     path: &Path,
     subject: &str,
     max_bytes: u64,
@@ -157,7 +157,7 @@ pub(super) fn read_json<T: DeserializeOwned>(
     })
 }
 
-pub(super) fn verify_regular_file(
+pub(crate) fn verify_regular_file(
     path: &Path,
     subject: &str,
     expected_length: u64,
@@ -191,7 +191,7 @@ pub(super) fn verify_regular_file(
     Ok(())
 }
 
-pub(super) fn verify_regular_file_length(
+pub(crate) fn verify_regular_file_length(
     path: &Path,
     subject: &str,
     expected_length: u64,
@@ -234,7 +234,7 @@ pub(super) fn regular_file_digest(
     Ok((length, format!("{:x}", digest.finalize())))
 }
 
-pub(super) fn is_lower_hex(value: &str, length: usize) -> bool {
+pub(crate) fn is_lower_hex(value: &str, length: usize) -> bool {
     value.len() == length
         && value
             .bytes()

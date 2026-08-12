@@ -8,7 +8,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use super::CommandExecutor;
-use super::{CommandExecutionContext, CommandProcessMode, resolve_entry_bun};
+use super::{CommandExecutionContext, CommandProcessMode, ProcessEnvironment, resolve_entry_bun};
 use crate::catalog::CatalogSnapshot;
 use crate::development::BUN;
 use crate::profile::EntryProfileRecord;
@@ -39,7 +39,10 @@ impl Fixture {
         }
         fs::write(root.join("swawkit-proj-toolchain.exe"), "fixture")
             .expect("write Toolchain fixture");
-        let profile = EntryProfileRecord::default();
+        let mut profile = EntryProfileRecord::default();
+        profile.development.pwsh.mode = "disabled".to_owned();
+        profile.development.msvc.mode = "disabled".to_owned();
+        profile.development.rust.mode = "disabled".to_owned();
         let context = CommandExecutionContext {
             swawkit_home: root.clone(),
             kernel_root: root.join("_lib/proj"),
@@ -145,7 +148,7 @@ fn unsafe_bun_version_segment_is_rejected() {
     fixture.context.profile.development.bun.version = "../1.2.3".to_owned();
 
     let error = resolve_entry_bun(&fixture.context).unwrap_err().to_string();
-    assert!(error.contains("not a supported Bun version"));
+    assert!(error.contains("not a supported Bun version"), "{error}");
 }
 
 #[test]
@@ -251,6 +254,50 @@ fn bun_is_resolved_after_guards_can_change_the_published_installation() {
 
     assert!(error.contains("SHA-256"), "{error}");
     assert!(error.contains("fixture .dev.setup"), "{error}");
+}
+
+#[test]
+fn action_environment_contains_only_validated_enabled_domains() {
+    let fixture = Fixture::new();
+    let expected = fixture.publish_exact(
+        &fixture.context.environment_input_revision,
+        &fixture.context.profile.development.bun.version,
+    );
+
+    let resolved = super::resolve_entry_development(&fixture.context).unwrap();
+
+    assert_eq!(resolved.bun_executable, expected);
+    assert_eq!(resolved.environment.paths(), [expected.parent().unwrap()]);
+    assert!(resolved.environment.variables().is_empty());
+}
+
+#[test]
+fn applying_action_environment_removes_disabled_domain_variables() {
+    let fixture = Fixture::new();
+    let expected = fixture.publish_exact(
+        &fixture.context.environment_input_revision,
+        &fixture.context.profile.development.bun.version,
+    );
+    let resolved = super::resolve_entry_development(&fixture.context).unwrap();
+    let mut environment = ProcessEnvironment::default();
+    environment
+        .apply_development_environment(
+            &resolved.environment,
+            &fixture
+                .context
+                .data_root
+                .join("modules/kernel/.dev/setup/export"),
+        )
+        .unwrap();
+
+    assert_eq!(environment.value("CARGO_HOME"), Some(None));
+    let path = environment
+        .value("PATH")
+        .and_then(|value| value)
+        .unwrap()
+        .to_string_lossy();
+    let first = std::env::split_paths(path.as_ref()).next().unwrap();
+    assert_eq!(first, expected.parent().unwrap());
 }
 
 fn write_json(path: &Path, value: &serde_json::Value) {

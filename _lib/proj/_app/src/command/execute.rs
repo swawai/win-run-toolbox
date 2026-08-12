@@ -8,7 +8,7 @@ use super::{
     CommandError, CommandExecutionContext, CommandResult, ExecutionPhase, GuardPlan, Invocation,
     ProcessEnvironment, ResolvedCommand, command_data_root,
     process::{AdapterLaunch, run_process, run_process_journaled, validate_adapter},
-    resolve_entry_bun,
+    resolve_entry_development,
 };
 
 pub struct CommandExecutor<'a> {
@@ -102,8 +102,13 @@ impl<'a> CommandExecutor<'a> {
 
         // Guards can repair or invalidate the managed runtime. Resolve mutable adapter
         // resources only after every guard has completed, immediately before launch.
+        let mut development_environment = None;
         let adapter_launch = match invocation.command.adapter {
-            CommandAdapter::Bun => AdapterLaunch::Bun(resolve_entry_bun(self.context)?),
+            CommandAdapter::Bun => {
+                let resolved = resolve_entry_development(self.context)?;
+                development_environment = Some(resolved.environment);
+                AdapterLaunch::Bun(resolved.bun_executable)
+            }
             CommandAdapter::Toolchain => AdapterLaunch::Toolchain {
                 executable: self.context.toolchain_executable.clone(),
                 handler: invocation.command.handler.clone().ok_or_else(|| {
@@ -117,11 +122,14 @@ impl<'a> CommandExecutor<'a> {
             &invocation.command,
             ExecutionPhase::Run,
         )?;
-        if let AdapterLaunch::Bun(executable) = &adapter_launch {
-            let directory = executable.parent().ok_or_else(|| {
-                CommandError::new("the resolved Entry Bun path has no parent directory")
-            })?;
-            environment.prepend_path(directory)?;
+        if let Some(plan) = &development_environment {
+            environment.apply_development_environment(
+                plan,
+                &self
+                    .context
+                    .data_root
+                    .join("modules/kernel/.dev/setup/export"),
+            )?;
         }
         run(
             invocation.command.adapter,

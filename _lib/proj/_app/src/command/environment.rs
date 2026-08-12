@@ -12,6 +12,7 @@ use crate::{
     catalog::{CommandNode, CommandSource},
     command_event::{COMMAND_EVENT_FRAME_PROTOCOL, COMMAND_EVENT_PROTOCOL_ENV},
     context::EntryContext,
+    development::setup::environment::EnvironmentPlan,
     launch::{ENTRY_FILE_ENV, LAUNCH_MODE_ENV},
     profile::{EntryProfile, EntryProfileRecord},
 };
@@ -23,6 +24,33 @@ const TRANSIENT_ENVIRONMENT: [&str; 3] = [
     LAUNCH_MODE_ENV,
     "SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE",
 ];
+const DEVELOPMENT_ENVIRONMENT_VARIABLES: &[&str] = &[
+    "CARGO_BUILD_RUSTC",
+    "CARGO_BUILD_RUSTDOC",
+    "CARGO_HOME",
+    "INCLUDE",
+    "LIB",
+    "RUSTC",
+    "RUSTDOC",
+    "RUSTUP_DIST_ROOT",
+    "RUSTUP_DIST_SERVER",
+    "RUSTUP_HOME",
+    "RUSTUP_TOOLCHAIN",
+    "RUSTUP_TOOLCHAIN_SOURCE",
+    "RUSTUP_UPDATE_ROOT",
+    "RUSTUP_VERSION",
+    "UCRTVersion",
+    "UniversalCRTSdkDir",
+    "VCINSTALLDIR",
+    "VCToolsInstallDir",
+    "VCToolsVersion",
+    "VSCMD_ARG_HOST_ARCH",
+    "VSCMD_ARG_TGT_ARCH",
+    "WindowsSDKVersion",
+    "WindowsSdkBinPath",
+    "WindowsSdkVerBinPath",
+];
+const DEVELOPMENT_METADATA_PREFIX: &str = "SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandExecutionContext {
@@ -156,15 +184,48 @@ impl ProcessEnvironment {
         }
     }
 
-    pub(crate) fn prepend_path(&mut self, directory: &Path) -> CommandResult<()> {
-        let mut paths = vec![directory.to_path_buf()];
+    pub(crate) fn apply_development_environment(
+        &mut self,
+        plan: &EnvironmentPlan,
+        managed_root: &Path,
+    ) -> CommandResult<()> {
+        for name in DEVELOPMENT_ENVIRONMENT_VARIABLES {
+            self.remove(name);
+        }
+        for (name, _) in env::vars_os() {
+            if name
+                .to_str()
+                .is_some_and(|name| has_ascii_prefix(name, DEVELOPMENT_METADATA_PREFIX))
+            {
+                self.remove(name);
+            }
+        }
+        for (name, value) in plan.variables() {
+            match value {
+                Some(value) => self.set(name, value),
+                None => self.remove(name),
+            }
+        }
+        self.prepend_paths(plan.paths(), Some(managed_root))
+    }
+
+    fn prepend_paths(
+        &mut self,
+        directories: &[PathBuf],
+        excluded_inherited_root: Option<&Path>,
+    ) -> CommandResult<()> {
+        let mut paths = directories.to_vec();
         if let Some(inherited) = env::var_os("PATH") {
-            paths.extend(env::split_paths(&inherited));
+            paths.extend(env::split_paths(&inherited).filter(|path| {
+                excluded_inherited_root.is_none_or(|root| !path_is_within_windows(path, root))
+            }));
         }
         let value = env::join_paths(paths).map_err(|error| {
             CommandError::new(format!(
                 "cannot publish the Entry tool path '{}': {error}",
-                directory.display()
+                directories
+                    .first()
+                    .map_or_else(|| "<empty>".into(), |path| path.display().to_string())
             ))
         })?;
         self.set("PATH", value);
@@ -207,6 +268,25 @@ impl ProcessEnvironment {
             .get(OsStr::new(name))
             .map(|value| value.as_deref())
     }
+}
+
+fn has_ascii_prefix(value: &str, prefix: &str) -> bool {
+    value
+        .get(..prefix.len())
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+}
+
+fn path_is_within_windows(path: &Path, root: &Path) -> bool {
+    let path = path.to_string_lossy();
+    let root = root.to_string_lossy();
+    path.eq_ignore_ascii_case(&root)
+        || path
+            .get(..root.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(&root))
+            && path
+                .as_bytes()
+                .get(root.len())
+                .is_some_and(|byte| *byte == b'\\' || *byte == b'/')
 }
 
 fn validate_toolchain_executable(path: &Path) -> CommandResult<()> {

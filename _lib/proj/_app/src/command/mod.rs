@@ -6,7 +6,9 @@ mod invocation;
 mod process;
 mod resolve;
 
+#[cfg(test)]
 pub(crate) use development::resolve_entry_bun;
+pub(crate) use development::resolve_entry_development;
 pub use environment::{CommandExecutionContext, CommandProcessMode};
 pub(crate) use environment::{
     ExecutionPhase, ProcessEnvironment, catalog_command_data_root, command_data_root,

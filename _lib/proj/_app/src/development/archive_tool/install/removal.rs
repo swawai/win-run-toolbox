@@ -49,12 +49,20 @@ pub(super) fn move_path_with_retry(
 }
 
 pub(in super::super) fn remove_residues(paths: &[PathBuf]) -> Vec<String> {
+    remove_residues_with(paths, |_| Ok(()))
+}
+
+pub(in super::super) fn remove_residues_with(
+    paths: &[PathBuf],
+    prepare: fn(&Path) -> Result<(), ArchiveToolError>,
+) -> Vec<String> {
     let mut warnings = Vec::new();
     for path in paths {
         match path_exists(path) {
             Ok(false) => {}
             Ok(true) => {
-                if let Err(error) = remove_path_with_retry(path, "clean installation recovery data")
+                if let Err(error) =
+                    remove_path_with_retry_with(path, "clean installation recovery data", prepare)
                 {
                     warnings.push(error.to_string());
                 }
@@ -86,6 +94,15 @@ pub(in super::super) fn remove_controlled(path: &Path) -> Result<(), ArchiveTool
 }
 
 pub(super) fn remove_path_with_retry(path: &Path, activity: &str) -> Result<(), ArchiveToolError> {
+    remove_path_with_retry_with(path, activity, |_| Ok(()))
+}
+
+pub(super) fn remove_path_with_retry_with(
+    path: &Path,
+    activity: &str,
+    prepare: fn(&Path) -> Result<(), ArchiveToolError>,
+) -> Result<(), ArchiveToolError> {
+    prepare(path)?;
     let mut last_error = None;
     for attempt in 1..=PATH_ATTEMPTS {
         match remove_path_once(path) {

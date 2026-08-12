@@ -162,12 +162,37 @@ fn validate_inventory(
             "Rust rustup digest does not match its source",
         ));
     }
-    if inventory_paths(root, definition, &required)?
-        != records.keys().map(|path| (*path).to_owned()).collect()
-    {
-        return Err(invalid_inventory("Rust installation inventory changed"));
+    let current = inventory_paths(root, definition, &required)?;
+    let published = records
+        .keys()
+        .map(|path| (*path).to_owned())
+        .collect::<BTreeSet<_>>();
+    if current != published {
+        let added = current
+            .difference(&published)
+            .take(5)
+            .cloned()
+            .collect::<Vec<_>>();
+        let missing = published
+            .difference(&current)
+            .take(5)
+            .cloned()
+            .collect::<Vec<_>>();
+        return Err(invalid_inventory(format!(
+            "Rust installation inventory changed; added: {}; missing: {}",
+            display_paths(&added),
+            display_paths(&missing)
+        )));
     }
     Ok(())
+}
+
+fn display_paths(paths: &[String]) -> String {
+    if paths.is_empty() {
+        "none".to_owned()
+    } else {
+        paths.join(", ")
+    }
 }
 
 fn validate_shape(root: &Path, record: &RustFile) -> Result<(), RustError> {

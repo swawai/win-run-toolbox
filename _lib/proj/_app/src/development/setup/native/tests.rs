@@ -137,6 +137,79 @@ impl Fixture {
         .unwrap();
         root
     }
+
+    fn publish_rust(&self) -> PathBuf {
+        let definition = crate::development::rust::RustDefinition::new(
+            "stable",
+            "minimal",
+            "x86_64-pc-windows-msvc",
+        )
+        .unwrap();
+        let root = self
+            .data_root
+            .join("modules/kernel/.dev/setup/export/rust/installs/stable");
+        fs::create_dir_all(&root).unwrap();
+        let mut files = Vec::new();
+        for (index, relative) in definition.required_paths().into_iter().enumerate() {
+            let content = if relative == "cargo\\bin\\rustup.exe" {
+                b"rustup-native-fixture".to_vec()
+            } else {
+                format!("rust-native-{index}").into_bytes()
+            };
+            let path = root.join(&relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, &content).unwrap();
+            files.push(json!({
+                "path": relative,
+                "kind": "file",
+                "target": "",
+                "length": content.len(),
+                "sha256": sha256(&content),
+            }));
+        }
+        let extra = format!(
+            "rustup\\toolchains\\{}\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib\\libstd.rlib",
+            definition.toolchain_name()
+        );
+        let extra_path = root.join(&extra);
+        fs::create_dir_all(extra_path.parent().unwrap()).unwrap();
+        fs::write(extra_path, b"std").unwrap();
+        files.push(json!({
+            "path": extra,
+            "kind": "file",
+            "target": "",
+            "length": 3,
+            "sha256": sha256(b"std"),
+        }));
+        files.sort_by(|left, right| left["path"].as_str().cmp(&right["path"].as_str()));
+        let metadata = json!({
+            "schema": "swawkit.proj-dev.rust-install.v0",
+            "name": "rust",
+            "inventory": "toolchain-files-v0",
+            "declaredToolchain": "stable",
+            "toolchainName": definition.toolchain_name(),
+            "profile": "minimal",
+            "host": "x86_64-pc-windows-msvc",
+            "components": ["rustfmt"],
+            "recipeVersion": "2",
+            "definitionSignature": definition.definition_signature(),
+            "rustupInitUrl": crate::development::rust::RUSTUP_URL,
+            "rustupInitSha256": sha256(b"rustup-native-fixture"),
+            "rustupVersion": "1.29.0",
+            "rustcVersion": "1.97.1",
+            "rustcCommit": "a".repeat(40),
+            "cargoVersion": "1.97.1",
+            "rustfmtVersion": "1.9.0-stable",
+            "sourceVerification": "rust-static-sha256",
+            "files": files,
+        });
+        fs::write(
+            root.join(".swawkit-dev-rust.json"),
+            serde_json::to_vec_pretty(&metadata).unwrap(),
+        )
+        .unwrap();
+        root
+    }
 }
 
 impl Drop for Fixture {
@@ -216,18 +289,18 @@ fn native_setup_is_offline_and_publishes_one_ready_environment() {
 }
 
 #[test]
-fn unsupported_enabled_domain_leaves_the_provider_unavailable() {
+fn invalid_rust_declaration_leaves_the_provider_unavailable() {
     let fixture = Fixture::new();
     let declarations = declarations(&[
         ("SWAWKIT_PROJ_RUST_MODE", "rustup"),
-        ("SWAWKIT_PROJ_RUST_TOOLCHAIN", "stable"),
+        ("SWAWKIT_PROJ_RUST_TOOLCHAIN", "invalid/toolchain"),
         ("SWAWKIT_PROJ_RUST_PROFILE", "minimal"),
         ("SWAWKIT_PROJ_RUST_HOST", "x86_64-pc-windows-msvc"),
     ]);
 
     let error = run_native(&fixture.context(), &declarations, &mut |_, _, _| {}).unwrap_err();
 
-    assert!(error.contains("native development setup"), "{error}");
+    assert!(error.contains("RUST_TOOLCHAIN"), "{error}");
     assert!(read_ready(&fixture.data_root, &fixture.input_revision).is_err());
     let state: Value = serde_json::from_slice(
         &fs::read(
@@ -245,6 +318,40 @@ fn unsupported_enabled_domain_leaves_the_provider_unavailable() {
             .join("modules/kernel/.dev/setup/export/env.cmd")
             .exists()
     );
+}
+
+#[test]
+fn ready_rust_joins_the_shared_environment_and_provider_transaction() {
+    let fixture = Fixture::new();
+    let root = fixture.publish_rust();
+    let declarations = declarations(&[
+        ("SWAWKIT_PROJ_RUST_MODE", "rustup"),
+        ("SWAWKIT_PROJ_RUST_TOOLCHAIN", "stable"),
+        ("SWAWKIT_PROJ_RUST_PROFILE", "minimal"),
+        ("SWAWKIT_PROJ_RUST_HOST", "x86_64-pc-windows-msvc"),
+    ]);
+
+    let result = run_native(&fixture.context(), &declarations, &mut |_, _, _| {
+        panic!("ready Rust must remain offline")
+    })
+    .unwrap();
+
+    let rust = result.rust().unwrap();
+    assert_eq!(rust.toolchain(), "stable");
+    assert_eq!(rust.root(), root);
+    assert_eq!(
+        rust.outcome(),
+        crate::development::rust::RustInstallOutcome::Ready
+    );
+    let cmd = fs::read_to_string(
+        fixture
+            .data_root
+            .join("modules/kernel/.dev/setup/export/env.cmd"),
+    )
+    .unwrap();
+    assert!(cmd.contains("set \"RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc\""));
+    assert!(cmd.contains(r"\rust\installs\stable\cargo\bin"));
+    assert!(read_ready(&fixture.data_root, &fixture.input_revision).is_ok());
 }
 
 #[test]

@@ -22,6 +22,18 @@ pub(super) fn transfer(
     destination: &Path,
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<u64, ArchiveToolError> {
+    transfer_bounded(source, destination, MAX_TRANSFER_BYTES, progress)
+}
+
+pub(super) fn transfer_bounded(
+    source: &OsStr,
+    destination: &Path,
+    maximum: u64,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<u64, ArchiveToolError> {
+    if maximum == 0 || maximum > MAX_TRANSFER_BYTES {
+        return Err(download_error("download byte limit is invalid"));
+    }
     if destination.exists() {
         return Err(storage_error(format!(
             "download destination already exists: {}",
@@ -29,9 +41,9 @@ pub(super) fn transfer(
         )));
     }
     if let Some(source_path) = local_source(source) {
-        copy_local(&source_path, destination, progress)
+        copy_local(&source_path, destination, maximum, progress)
     } else {
-        download_http(source, destination, progress)
+        download_http(source, destination, maximum, progress)
     }
 }
 
@@ -45,6 +57,7 @@ fn local_source(source: &OsStr) -> Option<PathBuf> {
 fn copy_local(
     source: &Path,
     destination: &Path,
+    maximum: u64,
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<u64, ArchiveToolError> {
     let input = open_regular(source, "download source")?;
@@ -52,18 +65,19 @@ fn copy_local(
         .metadata()
         .map_err(|cause| io_error("inspect download source", source, cause))?
         .len();
-    if total == 0 || total > MAX_TRANSFER_BYTES {
+    if total == 0 || total > maximum {
         return Err(download_error(format!(
             "download source has an invalid size: {}",
             source.display()
         )));
     }
-    publish_stream(input, destination, Some(total), progress)
+    publish_stream(input, destination, Some(total), maximum, progress)
 }
 
 fn download_http(
     source: &OsStr,
     destination: &Path,
+    maximum: u64,
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<u64, ArchiveToolError> {
     let source = source
@@ -84,13 +98,14 @@ fn download_http(
                     .get("content-length")
                     .and_then(|value| value.to_str().ok())
                     .and_then(|value| value.parse::<u64>().ok());
-                if total.is_some_and(|value| value == 0 || value > MAX_TRANSFER_BYTES) {
+                if total.is_some_and(|value| value == 0 || value > maximum) {
                     return Err(download_error("HTTP download declares an invalid size"));
                 }
                 match publish_stream(
                     response.body_mut().as_reader(),
                     destination,
                     total,
+                    maximum,
                     progress,
                 ) {
                     Ok(bytes) => return Ok(bytes),
@@ -124,6 +139,7 @@ fn publish_stream(
     mut reader: impl Read,
     destination: &Path,
     total: Option<u64>,
+    maximum: u64,
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<u64, ArchiveToolError> {
     let stage = temporary_sibling(destination)?;
@@ -152,8 +168,8 @@ fn publish_stream(
             }
             bytes = bytes
                 .checked_add(count as u64)
-                .filter(|value| *value <= MAX_TRANSFER_BYTES)
-                .ok_or_else(|| download_error("download exceeds the 12 GB safety limit"))?;
+                .filter(|value| *value <= maximum)
+                .ok_or_else(|| download_error("download exceeds its byte safety limit"))?;
             if total.is_some_and(|value| bytes > value) {
                 return Err(download_error(
                     "download exceeds its declared Content-Length",
@@ -262,6 +278,26 @@ mod tests {
 
         assert_eq!(bytes, 7);
         assert_eq!(fs::read(destination).unwrap(), b"fixture");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn caller_limit_is_enforced_before_copying_a_local_source() {
+        let root = env::temp_dir().join(format!(
+            "swawkit-archive-transfer-limit-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("out")).unwrap();
+        let source = root.join("source.bin");
+        let destination = root.join("out/artifact.bin");
+        fs::write(&source, b"fixture").unwrap();
+
+        let error =
+            transfer_bounded(source.as_os_str(), &destination, 6, &mut |_, _| {}).unwrap_err();
+
+        assert_eq!(error.kind(), ArchiveToolErrorKind::DownloadFailed);
+        assert!(!destination.exists());
         fs::remove_dir_all(root).unwrap();
     }
 

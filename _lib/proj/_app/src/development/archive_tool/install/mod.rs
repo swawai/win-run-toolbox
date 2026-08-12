@@ -437,12 +437,29 @@ pub fn transfer_archive(
     transfer::transfer(source, destination, progress)
 }
 
+#[doc(hidden)]
+pub fn transfer_bounded(
+    source: &OsStr,
+    destination: &Path,
+    maximum: u64,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<u64, ArchiveToolError> {
+    transfer::transfer_bounded(source, destination, maximum, progress)
+}
+
 pub(crate) fn remove_controlled_data(path: &Path) -> Result<(), ArchiveToolError> {
     transaction::remove_controlled(path)
 }
 
 pub(crate) fn cleanup_installation_data(paths: &[std::path::PathBuf]) -> Vec<String> {
     transaction::remove_residues(paths)
+}
+
+pub(crate) fn cleanup_installation_data_with(
+    paths: &[std::path::PathBuf],
+    prepare_removal: fn(&Path) -> Result<(), ArchiveToolError>,
+) -> Vec<String> {
+    transaction::remove_residues_with(paths, prepare_removal)
 }
 
 pub(crate) fn extract_vsix_contents(
@@ -452,6 +469,14 @@ pub(crate) fn extract_vsix_contents(
     archive::extract_contents_file(archive, destination)
 }
 
+pub(crate) use recipe::CapturedProcess;
+
+pub(crate) fn run_bounded_process(
+    command: std::process::Command,
+) -> Result<CapturedProcess, ArchiveToolError> {
+    recipe::run_bounded_process(command)
+}
+
 pub(crate) struct InstallationTransaction<T, F>
 where
     F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
@@ -459,6 +484,7 @@ where
     _lock: ExclusiveFileLock,
     target: std::path::PathBuf,
     validate: F,
+    prepare_removal: fn(&Path) -> Result<(), ArchiveToolError>,
 }
 
 impl<T, F> InstallationTransaction<T, F>
@@ -470,6 +496,16 @@ where
         tool_name: &str,
         target: std::path::PathBuf,
         validate: F,
+    ) -> Result<Self, ArchiveToolError> {
+        Self::open_with_removal(data_root, tool_name, target, validate, |_| Ok(()))
+    }
+
+    pub(crate) fn open_with_removal(
+        data_root: &Path,
+        tool_name: &str,
+        target: std::path::PathBuf,
+        validate: F,
+        prepare_removal: fn(&Path) -> Result<(), ArchiveToolError>,
     ) -> Result<Self, ArchiveToolError> {
         let locks = ensure_directory_chain(
             data_root,
@@ -486,11 +522,13 @@ where
             _lock: lock,
             target,
             validate,
+            prepare_removal,
         })
     }
 
     pub(crate) fn recover(&mut self) -> Result<(Option<T>, bool, Vec<String>), ArchiveToolError> {
-        let report = transaction::recover(&self.target, &mut self.validate)?;
+        let report =
+            transaction::recover_with(&self.target, &mut self.validate, self.prepare_removal)?;
         match report.outcome {
             RecoveryOutcome::Ready(value) => Ok((Some(value), false, report.warnings)),
             RecoveryOutcome::Recovered(value) => Ok((Some(value), true, report.warnings)),
@@ -507,7 +545,12 @@ where
     }
 
     pub(crate) fn publish(&mut self, staged: &Path) -> Result<(T, Vec<String>), ArchiveToolError> {
-        transaction::publish(staged, &self.target, &mut self.validate)
+        transaction::publish_with(
+            staged,
+            &self.target,
+            &mut self.validate,
+            self.prepare_removal,
+        )
     }
 }
 

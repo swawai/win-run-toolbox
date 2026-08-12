@@ -12,6 +12,10 @@ use crate::development::msvc::{
     MsvcDefinition, MsvcInstallContext, MsvcInstallOutcome,
     ensure_installed as ensure_msvc_installed,
 };
+use crate::development::rust::{
+    RustDefinition, RustInstallContext, RustInstallOutcome,
+    ensure_installed as ensure_rust_installed,
+};
 use crate::development::{ArchiveToolContract, BUN, PWSH};
 
 use super::PUBLICATION_TOKEN_VARIABLE;
@@ -129,6 +133,7 @@ impl MsvcSetupResult {
 pub struct NativeSetupResult {
     archive_tools: Vec<ArchiveToolSetupResult>,
     msvc: Option<MsvcSetupResult>,
+    rust: Option<RustSetupResult>,
     environment_changed: bool,
 }
 
@@ -141,8 +146,38 @@ impl NativeSetupResult {
         self.msvc.as_ref()
     }
 
+    pub fn rust(&self) -> Option<&RustSetupResult> {
+        self.rust.as_ref()
+    }
+
     pub fn environment_changed(&self) -> bool {
         self.environment_changed
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RustSetupResult {
+    toolchain: String,
+    root: PathBuf,
+    outcome: RustInstallOutcome,
+    warnings: Vec<String>,
+}
+
+impl RustSetupResult {
+    pub fn toolchain(&self) -> &str {
+        &self.toolchain
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn outcome(&self) -> RustInstallOutcome {
+        self.outcome
+    }
+
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 }
 
@@ -184,6 +219,9 @@ pub fn run_native(
     let msvc_definition = declarations
         .msvc_definition()
         .map_err(|error| error.to_string())?;
+    let rust_definition = declarations
+        .rust_definition()
+        .map_err(|error| error.to_string())?;
     let mut plan = EnvironmentPlan::default();
     let mut archive_tools = Vec::new();
     for (tool, request) in archive_requests {
@@ -192,12 +230,14 @@ pub fn run_native(
         archive_tools.push(installed);
     }
     let msvc = setup_msvc(context, msvc_definition.as_ref(), &mut plan, progress)?;
+    let rust = setup_rust(context, rust_definition.as_ref(), &mut plan, progress)?;
     plan.set(PUBLICATION_TOKEN_VARIABLE, Some(publication.token()))?;
     let environment_changed = plan.render().publish(&context.data_root)?;
     provider.complete(&publication)?;
     Ok(NativeSetupResult {
         archive_tools,
         msvc,
+        rust,
         environment_changed,
     })
 }
@@ -206,7 +246,7 @@ fn require_native_domains(declarations: &DeclarationSnapshot) -> Result<(), Stri
     let unsupported = declarations
         .enabled_modules()
         .into_iter()
-        .filter(|name| !matches!(*name, "bun" | "pwsh" | "msvc"))
+        .filter(|name| !matches!(*name, "bun" | "pwsh" | "msvc" | "rust"))
         .collect::<Vec<_>>();
     if unsupported.is_empty() {
         Ok(())
@@ -302,6 +342,32 @@ fn resolve_source(
     } else {
         github::resolve_exact(tool, resolved).map(|release| release.into_parts().1)
     }
+}
+
+fn setup_rust(
+    context: &NativeSetupContext,
+    definition: Option<&RustDefinition>,
+    plan: &mut EnvironmentPlan,
+    progress: &mut dyn FnMut(&str, u64, Option<u64>),
+) -> Result<Option<RustSetupResult>, String> {
+    let Some(definition) = definition else {
+        return Ok(None);
+    };
+    let mut rust_progress = |current, total| progress("rust", current, total);
+    let result = ensure_rust_installed(
+        RustInstallContext::new(&context.data_root, &context.cache_data_root)
+            .map_err(|error| error.to_string())?,
+        definition,
+        &mut rust_progress,
+    )
+    .map_err(|error| error.to_string())?;
+    result.installation().add_environment(definition, plan)?;
+    Ok(Some(RustSetupResult {
+        toolchain: definition.toolchain().to_owned(),
+        root: result.installation().root().to_path_buf(),
+        outcome: result.outcome(),
+        warnings: result.warnings().to_vec(),
+    }))
 }
 
 #[cfg(test)]

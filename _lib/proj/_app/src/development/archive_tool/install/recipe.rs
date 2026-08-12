@@ -57,7 +57,9 @@ impl Recipe for NativeRecipe {
             name if name == PWSH.name => &["-Version"],
             name => return Err(unsupported(name)),
         };
-        let output = run_probe(&executable, staged_root, arguments)?;
+        let mut command = Command::new(&executable);
+        command.args(arguments).current_dir(staged_root);
+        let output = run_bounded_process(command)?;
         if output.exit_code != 0 {
             return Err(ArchiveToolError::new(
                 ArchiveToolErrorKind::ProbeFailed,
@@ -106,20 +108,16 @@ fn write_bunx(staged_root: &Path) -> Result<(), ArchiveToolError> {
 }
 
 #[derive(Debug)]
-struct ProbeOutput {
-    exit_code: i32,
-    stdout: String,
-    stderr: String,
+pub(crate) struct CapturedProcess {
+    pub(crate) exit_code: i32,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
 }
 
-fn run_probe(
-    executable: &Path,
-    working_directory: &Path,
-    arguments: &[&str],
-) -> Result<ProbeOutput, ArchiveToolError> {
-    let mut child = Command::new(executable)
-        .args(arguments)
-        .current_dir(working_directory)
+pub(crate) fn run_bounded_process(
+    mut command: Command,
+) -> Result<CapturedProcess, ArchiveToolError> {
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -127,10 +125,7 @@ fn run_probe(
         .map_err(|error| {
             ArchiveToolError::new(
                 ArchiveToolErrorKind::ProbeFailed,
-                format!(
-                    "cannot start staged executable '{}': {error}",
-                    executable.display()
-                ),
+                format!("cannot start staged executable: {error}"),
             )
         })?;
     let stdout_pipe = match child.stdout.take() {
@@ -195,7 +190,7 @@ fn run_probe(
         (Ok(stdout), Ok(stderr)) => (stdout, stderr),
         (Err(error), _) | (_, Err(error)) => return Err(abort_probe(&mut child, error)),
     };
-    Ok(ProbeOutput {
+    Ok(CapturedProcess {
         exit_code: status.code().unwrap_or(-1),
         stdout: String::from_utf8_lossy(&stdout).trim().to_owned(),
         stderr: String::from_utf8_lossy(&stderr).trim().to_owned(),
@@ -326,11 +321,11 @@ mod tests {
             .unwrap_or_else(|| OsString::from(r"C:\Windows\System32\cmd.exe"));
         let script = script.to_string_lossy();
 
-        let error = match run_probe(
-            Path::new(&command),
-            &root,
-            &["/d", "/q", "/c", script.as_ref()],
-        ) {
+        let mut process = Command::new(Path::new(&command));
+        process
+            .args(["/d", "/q", "/c", script.as_ref()])
+            .current_dir(&root);
+        let error = match run_bounded_process(process) {
             Ok(_) => panic!("excessive probe output must fail"),
             Err(error) => error,
         };

@@ -7,7 +7,19 @@ mod store;
 
 #[path = "rust/environment.rs"]
 mod environment;
+#[path = "rust/install.rs"]
+mod install;
+#[path = "rust/metadata.rs"]
+mod metadata;
+#[path = "rust/probe.rs"]
+mod probe;
+#[path = "rust/process.rs"]
+mod process;
+#[path = "rust/source.rs"]
+mod source;
 
+pub use install::{RustInstallContext, RustInstallOutcome, RustInstallResult, ensure_installed};
+pub use source::{RustupCache, VerifiedRustup};
 pub use store::RustInstallation;
 
 use super::archive_tool::{ArchiveToolError, ArchiveToolErrorKind};
@@ -119,7 +131,7 @@ impl RustDefinition {
 
 pub struct RustStore<'a> {
     data_root: &'a Path,
-    definition: &'a RustDefinition,
+    pub(crate) definition: &'a RustDefinition,
 }
 
 impl<'a> RustStore<'a> {
@@ -156,9 +168,11 @@ impl<'a> RustStore<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RustErrorKind {
     InvalidDefinition,
+    DownloadFailed,
     MetadataUnreadable,
     MetadataStale,
     InvalidInventory,
+    InstallationFailed,
     FileMismatch,
     MissingStorage,
     UnsafeStorage,
@@ -172,7 +186,6 @@ pub struct RustError {
 }
 
 impl RustError {
-    #[cfg(test)]
     pub(crate) fn kind(&self) -> RustErrorKind {
         self.kind
     }
@@ -191,11 +204,21 @@ impl From<ArchiveToolError> for RustError {
         let kind = match source.kind() {
             ArchiveToolErrorKind::InvalidDocument => RustErrorKind::MetadataUnreadable,
             ArchiveToolErrorKind::FileMismatch => RustErrorKind::FileMismatch,
+            ArchiveToolErrorKind::DownloadFailed => RustErrorKind::DownloadFailed,
+            ArchiveToolErrorKind::ProbeFailed | ArchiveToolErrorKind::InstallationFailed => {
+                RustErrorKind::InstallationFailed
+            }
             ArchiveToolErrorKind::MissingStorage => RustErrorKind::MissingStorage,
             ArchiveToolErrorKind::UnsafeStorage => RustErrorKind::UnsafeStorage,
             _ => RustErrorKind::Storage,
         };
         error(kind, source.to_string())
+    }
+}
+
+impl From<std::io::Error> for RustError {
+    fn from(source: std::io::Error) -> Self {
+        error(RustErrorKind::Storage, source.to_string())
     }
 }
 

@@ -12,11 +12,13 @@ mod recovery;
 mod removal;
 
 pub(super) use lock::ExclusiveFileLock;
-pub(super) use recovery::{RecoveryOutcome, recover};
-pub(super) use removal::{remove_controlled, remove_residues, with_cleanup_warnings};
+pub(super) use recovery::{RecoveryOutcome, recover, recover_with};
+pub(super) use removal::{
+    remove_controlled, remove_residues, remove_residues_with, with_cleanup_warnings,
+};
 
 use removal::{
-    move_path_with_retry, path_exists, reject_reparse_or_missing, remove_path_with_retry,
+    move_path_with_retry, path_exists, reject_reparse_or_missing, remove_path_with_retry_with,
     require_regular_directory, target_parent_and_leaf,
 };
 
@@ -59,11 +61,23 @@ pub(super) fn publish<T, F>(
 where
     F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
 {
+    publish_with(staged, target, validate, |_| Ok(()))
+}
+
+pub(super) fn publish_with<T, F>(
+    staged: &Path,
+    target: &Path,
+    validate: &mut F,
+    prepare_removal: fn(&Path) -> Result<(), ArchiveToolError>,
+) -> Result<(T, Vec<String>), ArchiveToolError>
+where
+    F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
+{
     require_siblings(staged, target)?;
-    match publish_inner(staged, target, validate) {
+    match publish_inner(staged, target, validate, prepare_removal) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let warnings = remove_residues(&[staged.to_path_buf()]);
+            let warnings = remove_residues_with(&[staged.to_path_buf()], prepare_removal);
             Err(with_cleanup_warnings(error, &warnings))
         }
     }
@@ -73,6 +87,7 @@ fn publish_inner<T, F>(
     staged: &Path,
     target: &Path,
     validate: &mut F,
+    prepare_removal: fn(&Path) -> Result<(), ArchiveToolError>,
 ) -> Result<(T, Vec<String>), ArchiveToolError>
 where
     F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
@@ -113,7 +128,7 @@ where
     let installation = match publication {
         Ok(installation) => installation,
         Err(publication_error) => {
-            let rollback = rollback(target, &backup, had_target, published);
+            let rollback = rollback(target, &backup, had_target, published, prepare_removal);
             if let Err(rollback_error) = rollback {
                 let target_remains = path_exists(target).unwrap_or(true);
                 let backup_remains = path_exists(&backup).unwrap_or(true);
@@ -135,7 +150,10 @@ where
     if had_target {
         residues.push(backup);
     }
-    Ok((installation, remove_residues(&residues)))
+    Ok((
+        installation,
+        remove_residues_with(&residues, prepare_removal),
+    ))
 }
 
 fn rollback(
@@ -143,9 +161,10 @@ fn rollback(
     backup: &Path,
     had_target: bool,
     published: bool,
+    prepare_removal: fn(&Path) -> Result<(), ArchiveToolError>,
 ) -> Result<(), ArchiveToolError> {
     if published && path_exists(target)? {
-        remove_path_with_retry(target, "roll back a failed installation")?;
+        remove_path_with_retry_with(target, "roll back a failed installation", prepare_removal)?;
     }
     if had_target && path_exists(backup)? {
         move_path_with_retry(backup, target, "restore the previous installation")?;
@@ -302,7 +321,7 @@ mod tests {
             .open(&locked_path)
             .expect("lock failed target");
 
-        let error = rollback(&target, &backup, true, true).unwrap_err();
+        let error = rollback(&target, &backup, true, true, |_| Ok(())).unwrap_err();
 
         assert!(error.to_string().contains("after 5 attempts"));
         assert!(target.is_dir());

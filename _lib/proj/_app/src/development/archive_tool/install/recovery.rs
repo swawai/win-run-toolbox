@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::removal::{
     is_reparse, move_path_with_retry, path_exists, reject_reparse_or_missing,
-    remove_path_with_retry, remove_residues, require_regular_directory, storage,
+    remove_path_with_retry_with, remove_residues_with, require_regular_directory, storage,
     target_parent_and_leaf, unsafe_path,
 };
 use crate::development::archive_tool::{ArchiveToolError, ArchiveToolErrorKind};
@@ -28,13 +28,24 @@ pub(in super::super) fn recover<T, F>(
 where
     F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
 {
+    recover_with(target, validate, |_| Ok(()))
+}
+
+pub(in super::super) fn recover_with<T, F>(
+    target: &Path,
+    validate: &mut F,
+    prepare_removal: fn(&Path) -> Result<(), ArchiveToolError>,
+) -> Result<RecoveryReport<T>, ArchiveToolError>
+where
+    F: FnMut(&Path) -> Result<Option<T>, ArchiveToolError>,
+{
     let (parent, _) = target_parent_and_leaf(target)?;
     require_regular_directory(parent, "installation parent")?;
     reject_reparse_or_missing(target, "installation target")?;
 
     let mut paths = scan_recovery_paths(target)?;
     if let Some(installation) = validate(target)? {
-        let warnings = remove_residues(&paths.all());
+        let warnings = remove_residues_with(&paths.all(), prepare_removal);
         return Ok(RecoveryReport {
             outcome: RecoveryOutcome::Ready(installation),
             warnings,
@@ -49,7 +60,7 @@ where
     }
 
     if path_exists(target)? {
-        remove_path_with_retry(target, "remove an invalid installation")?;
+        remove_path_with_retry_with(target, "remove an invalid installation", prepare_removal)?;
     }
 
     if let Some(selected) = select_backup(&valid_backups)? {
@@ -66,13 +77,13 @@ where
         paths = scan_recovery_paths(target)?;
         return Ok(RecoveryReport {
             outcome: RecoveryOutcome::Recovered(installation),
-            warnings: remove_residues(&paths.all()),
+            warnings: remove_residues_with(&paths.all(), prepare_removal),
         });
     }
 
     Ok(RecoveryReport {
         outcome: RecoveryOutcome::Missing,
-        warnings: remove_residues(&paths.all()),
+        warnings: remove_residues_with(&paths.all(), prepare_removal),
     })
 }
 

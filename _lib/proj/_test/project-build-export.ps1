@@ -200,7 +200,7 @@ try {
     }
 
     $AppAction = [IO.File]::ReadAllText((Join-Path $RepoRoot (
-        '.swaw\proj\build\app\run.ps1'
+        '.swaw\proj\build\app\run.ts'
     )))
     $LauncherAction = [IO.File]::ReadAllText((Join-Path $RepoRoot (
         '.swaw\proj\build\launcher\run.ps1'
@@ -216,7 +216,12 @@ try {
             -Message 'a project build Action still writes through the Entry data root'
     }
     Assert-ProjProjectBuildExport `
-        -Condition $AppAction.Contains('Publish-ProjBuildReleaseSet') `
+        -Condition (
+            $AppAction.Contains('publishBuildReleaseSet') -and
+            -not [IO.File]::Exists((Join-Path $RepoRoot (
+                '.swaw\proj\build\app\run.ps1'
+            )))
+        ) `
         -Message 'the App Action bypasses the Release Set export boundary'
     Assert-ProjProjectBuildExport `
         -Condition $LauncherAction.Contains('Publish-ProjBuildArtifact') `

@@ -10,7 +10,6 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
 };
 
-pub(super) const MAX_STATE_BYTES: u64 = 16 * 1024;
 pub(super) const MAX_METADATA_BYTES: u64 = 4 * 1024 * 1024;
 
 pub(super) fn directory_chain(

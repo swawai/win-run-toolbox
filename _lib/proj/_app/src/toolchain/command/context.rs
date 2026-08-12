@@ -8,7 +8,6 @@ const REVISION_PREFIX: &str = "sha256-";
 
 pub(super) struct CommandContext {
     pub(super) data_root: PathBuf,
-    pub(super) setup_root: PathBuf,
     pub(super) export_root: PathBuf,
     pub(super) entry_command: String,
     pub(super) environment_input_revision: String,
@@ -41,7 +40,6 @@ impl CommandContext {
         let export_root = setup_root.join("export");
         Ok(Self {
             data_root,
-            setup_root,
             export_root,
             entry_command,
             environment_input_revision,

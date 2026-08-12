@@ -1,6 +1,7 @@
 use sha2::{Digest, Sha256};
 
 pub mod archive_tool;
+pub mod setup;
 
 #[derive(Clone, Copy)]
 struct GithubReleaseContract {

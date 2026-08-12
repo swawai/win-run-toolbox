@@ -1,31 +1,12 @@
-use std::path::{Path, PathBuf};
-
-use serde::Deserialize;
+use std::path::PathBuf;
 
 use crate::development::BUN;
 use crate::development::archive_tool::{
     ArchiveToolError, ArchiveToolErrorKind, ArchiveToolRequest, ArchiveToolStore,
 };
+use crate::development::setup::provider::{ReadyProviderState, read_ready};
 
 use super::{CommandError, CommandExecutionContext, CommandResult};
-use filesystem::{directory_chain, is_lower_hex, read_json};
-
-mod filesystem;
-
-const STATE_SCHEMA: &str = "swawkit.command-provider-state/v1";
-const PRODUCER_CONTRACT: &str = "swawkit.proj.dev-setup/v2";
-const MAX_STATE_BYTES: u64 = 16 * 1024;
-
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ProviderState {
-    schema: String,
-    status: String,
-    input_revision: String,
-    token: String,
-    producer_contract: Option<String>,
-}
-
 pub(crate) fn resolve_entry_bun(context: &CommandExecutionContext) -> CommandResult<PathBuf> {
     let declaration = &context.profile.development.bun;
     if declaration.mode != "managed" {
@@ -38,16 +19,7 @@ pub(crate) fn resolve_entry_bun(context: &CommandExecutionContext) -> CommandRes
     let request = ArchiveToolRequest::new(&BUN, &declaration.version, &declaration.sha256)
         .map_err(|error| map_request_error(context, error))?;
 
-    let provider_root = directory_chain(
-        &context.data_root,
-        &["modules", "kernel", ".dev", "setup"],
-        "development environment provider",
-    )
-    .map_err(|error| {
-        repair_with_cause(context, "the development environment is unavailable", error)
-    })?;
-    let state_path = provider_root.join("_state.json");
-    let initial_state = read_ready_state(context, &state_path)?;
+    let initial_state = read_ready_state(context)?;
     let store = ArchiveToolStore::new(&context.data_root, &BUN);
     store.require_export().map_err(|error| {
         repair_with_archive_cause(
@@ -68,7 +40,7 @@ pub(crate) fn resolve_entry_bun(context: &CommandExecutionContext) -> CommandRes
     })?;
     let executable = installation.executable().to_path_buf();
 
-    let final_state = read_ready_state(context, &state_path)?;
+    let final_state = read_ready_state(context)?;
     if final_state != initial_state {
         return Err(repair_error(
             context,
@@ -78,33 +50,13 @@ pub(crate) fn resolve_entry_bun(context: &CommandExecutionContext) -> CommandRes
     Ok(executable)
 }
 
-fn read_ready_state(
-    context: &CommandExecutionContext,
-    path: &Path,
-) -> CommandResult<ProviderState> {
-    let state: ProviderState = read_json(
-        path,
-        "development environment provider state",
-        MAX_STATE_BYTES,
-    )
-    .map_err(|_| {
+fn read_ready_state(context: &CommandExecutionContext) -> CommandResult<ReadyProviderState> {
+    read_ready(&context.data_root, &context.environment_input_revision).map_err(|_| {
         repair_error(
             context,
-            "the development environment state is missing or invalid",
-        )
-    })?;
-    let valid = state.schema == STATE_SCHEMA
-        && state.status == "ready"
-        && state.input_revision == context.environment_input_revision
-        && is_lower_hex(&state.token, 32)
-        && state.producer_contract.as_deref() == Some(PRODUCER_CONTRACT);
-    if !valid {
-        return Err(repair_error(
-            context,
             "the development environment is not ready for the current Entry Profile",
-        ));
-    }
-    Ok(state)
+        )
+    })
 }
 
 fn map_request_error(context: &CommandExecutionContext, error: ArchiveToolError) -> CommandError {
@@ -164,18 +116,6 @@ fn map_installation_error(
 fn repair_error(context: &CommandExecutionContext, reason: &str) -> CommandError {
     CommandError::new(format!(
         "{reason}. Run '{} .dev.setup' to publish the current Entry development environment",
-        context.entry_name
-    ))
-}
-
-fn repair_with_cause(
-    context: &CommandExecutionContext,
-    reason: &str,
-    cause: CommandError,
-) -> CommandError {
-    CommandError::new(format!(
-        "{reason}: {cause}. Run '{} .dev.setup' to publish the current Entry development \
-         environment",
         context.entry_name
     ))
 }

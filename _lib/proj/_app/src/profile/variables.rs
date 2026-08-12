@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
 use super::{EntryProfileRecord, ProfileError};
+#[cfg(test)]
+use crate::development::setup::declaration::provider_input_names;
+use crate::development::setup::declaration::{InputNormalization, provider_input_normalization};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VariablePublication {
@@ -10,24 +13,17 @@ enum VariablePublication {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProviderInputNormalization {
-    Exact,
-    Lowercase,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct VariableSpec {
     group: &'static str,
     name: &'static str,
     field: &'static str,
     publication: VariablePublication,
-    dev_setup_input: Option<ProviderInputNormalization>,
 }
 
 const VARIABLE_SPECS: [VariableSpec; 32] = [
-    dev_setup_variable("bun", "SWAWKIT_PROJ_BUN_MODE", "development.bun.mode"),
-    dev_setup_lowercase_optional("bun", "SWAWKIT_PROJ_BUN_SHA256", "development.bun.sha256"),
-    dev_setup_variable("bun", "SWAWKIT_PROJ_BUN_VERSION", "development.bun.version"),
+    variable("bun", "SWAWKIT_PROJ_BUN_MODE", "development.bun.mode"),
+    optional("bun", "SWAWKIT_PROJ_BUN_SHA256", "development.bun.sha256"),
+    variable("bun", "SWAWKIT_PROJ_BUN_VERSION", "development.bun.version"),
     optional("git", "SWAWKIT_PROJ_GIT_ID_ACCESS", "git.access"),
     optional("git", "SWAWKIT_PROJ_GIT_ID_EMAIL", "git.email"),
     optional("git", "SWAWKIT_PROJ_GIT_ID_NAME", "git.name"),
@@ -35,12 +31,12 @@ const VARIABLE_SPECS: [VariableSpec; 32] = [
     variable("go", "SWAWKIT_PROJ_GO_MODE", "development.go.mode"),
     optional("go", "SWAWKIT_PROJ_GO_SHA256", "development.go.sha256"),
     optional("go", "SWAWKIT_PROJ_GO_VERSION", "development.go.version"),
-    dev_setup_variable(
+    variable(
         "msvc",
         "SWAWKIT_PROJ_MSVC_CHANNEL",
         "development.msvc.channel",
     ),
-    dev_setup_variable("msvc", "SWAWKIT_PROJ_MSVC_MODE", "development.msvc.mode"),
+    variable("msvc", "SWAWKIT_PROJ_MSVC_MODE", "development.msvc.mode"),
     variable(
         "preferences",
         "SWAWKIT_PROJ_DEFAULT_IDE",
@@ -61,13 +57,13 @@ const VARIABLE_SPECS: [VariableSpec; 32] = [
         "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
         "targetProjectRoot",
     ),
-    dev_setup_variable("pwsh", "SWAWKIT_PROJ_PWSH_MODE", "development.pwsh.mode"),
-    dev_setup_lowercase_optional(
+    variable("pwsh", "SWAWKIT_PROJ_PWSH_MODE", "development.pwsh.mode"),
+    optional(
         "pwsh",
         "SWAWKIT_PROJ_PWSH_SHA256",
         "development.pwsh.sha256",
     ),
-    dev_setup_variable(
+    variable(
         "pwsh",
         "SWAWKIT_PROJ_PWSH_VERSION",
         "development.pwsh.version",
@@ -87,14 +83,14 @@ const VARIABLE_SPECS: [VariableSpec; 32] = [
         "SWAWKIT_PROJ_PYTHON_VERSION",
         "development.python.version",
     ),
-    dev_setup_variable("rust", "SWAWKIT_PROJ_RUST_HOST", "development.rust.host"),
-    dev_setup_variable("rust", "SWAWKIT_PROJ_RUST_MODE", "development.rust.mode"),
-    dev_setup_variable(
+    variable("rust", "SWAWKIT_PROJ_RUST_HOST", "development.rust.host"),
+    variable("rust", "SWAWKIT_PROJ_RUST_MODE", "development.rust.mode"),
+    variable(
         "rust",
         "SWAWKIT_PROJ_RUST_PROFILE",
         "development.rust.profile",
     ),
-    dev_setup_lowercase_variable(
+    variable(
         "rust",
         "SWAWKIT_PROJ_RUST_TOOLCHAIN",
         "development.rust.toolchain",
@@ -121,7 +117,6 @@ const fn variable(group: &'static str, name: &'static str, field: &'static str) 
         name,
         field,
         publication: VariablePublication::Always,
-        dev_setup_input: None,
     }
 }
 
@@ -131,7 +126,6 @@ const fn optional(group: &'static str, name: &'static str, field: &'static str) 
         name,
         field,
         publication: VariablePublication::NonEmpty,
-        dev_setup_input: None,
     }
 }
 
@@ -145,49 +139,6 @@ const fn resolved_target(
         name,
         field,
         publication: VariablePublication::ResolvedTarget,
-        dev_setup_input: None,
-    }
-}
-
-const fn dev_setup_variable(
-    group: &'static str,
-    name: &'static str,
-    field: &'static str,
-) -> VariableSpec {
-    VariableSpec {
-        group,
-        name,
-        field,
-        publication: VariablePublication::Always,
-        dev_setup_input: Some(ProviderInputNormalization::Exact),
-    }
-}
-
-const fn dev_setup_lowercase_variable(
-    group: &'static str,
-    name: &'static str,
-    field: &'static str,
-) -> VariableSpec {
-    VariableSpec {
-        group,
-        name,
-        field,
-        publication: VariablePublication::Always,
-        dev_setup_input: Some(ProviderInputNormalization::Lowercase),
-    }
-}
-
-const fn dev_setup_lowercase_optional(
-    group: &'static str,
-    name: &'static str,
-    field: &'static str,
-) -> VariableSpec {
-    VariableSpec {
-        group,
-        name,
-        field,
-        publication: VariablePublication::NonEmpty,
-        dev_setup_input: Some(ProviderInputNormalization::Lowercase),
     }
 }
 
@@ -253,11 +204,11 @@ impl EntryProfileRecord {
         VARIABLE_SPECS
             .iter()
             .filter_map(|spec| {
-                let normalization = spec.dev_setup_input?;
+                let normalization = provider_input_normalization(spec.name)?;
                 let value = values[spec.name].clone();
                 let value = match normalization {
-                    ProviderInputNormalization::Exact => value,
-                    ProviderInputNormalization::Lowercase => value.to_lowercase(),
+                    InputNormalization::Exact => value,
+                    InputNormalization::Lowercase => value.to_lowercase(),
                 };
                 Some((spec.name, value))
             })
@@ -271,11 +222,7 @@ impl EntryProfileRecord {
 
     #[cfg(test)]
     pub(crate) fn dev_setup_input_variable_names() -> Vec<&'static str> {
-        VARIABLE_SPECS
-            .iter()
-            .filter(|spec| spec.dev_setup_input.is_some())
-            .map(|spec| spec.name)
-            .collect()
+        provider_input_names()
     }
 }
 

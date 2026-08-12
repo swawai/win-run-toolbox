@@ -139,6 +139,62 @@ try {
         ) `
         -Message ".dev.status did not report upstream trust: $($StatusResult.Output)"
 
+    $MetadataPath = Get-ProjDevInstallMetadataPath -InstallRoot $InstallRoot
+    [byte[]]$OriginalMetadata = [IO.File]::ReadAllBytes($MetadataPath)
+    try {
+        $InvalidMetadata = [Text.Encoding]::UTF8.GetString(
+            $OriginalMetadata
+        ) | ConvertFrom-Json
+        $InvalidMetadata.sourceUrl = ''
+        [IO.File]::WriteAllText(
+            $MetadataPath,
+            (ConvertTo-ProjDevJsonText -Value $InvalidMetadata),
+            [Text.UTF8Encoding]::new($false)
+        )
+        $MissingSourceUrlStatus = Invoke-ProjStatusToolchainFixture `
+            -Executable $ResolvedToolchainPath
+        Assert-ProjBunTest `
+            -Condition (
+                $MissingSourceUrlStatus.ExitCode -eq 0 -and
+                $MissingSourceUrlStatus.Output -cmatch
+                    '(?m)^\[MISSING\] bun 1\.2\.15\s+unpinned\s+' -and
+                $MissingSourceUrlStatus.Output -cnotmatch
+                    '(?m)^\[READY\] bun 1\.2\.15 ' -and
+                $MissingSourceUrlStatus.Output -cnotmatch
+                    '(?m)^\[MISSING\] bun 1\.2\.15\s+upstream\s+'
+            ) `
+            -Message (
+                '.dev.status trusted metadata without sourceUrl: ' +
+                $MissingSourceUrlStatus.Output
+            )
+    } finally {
+        [IO.File]::WriteAllBytes($MetadataPath, $OriginalMetadata)
+    }
+
+    $BunxPath = Join-Path $InstallRoot 'bunx.cmd'
+    [byte[]]$OriginalBunx = [IO.File]::ReadAllBytes($BunxPath)
+    [byte[]]$TamperedBunx = $OriginalBunx.Clone()
+    $TamperedBunx[0] = $TamperedBunx[0] -bxor 1
+    try {
+        [IO.File]::WriteAllBytes($BunxPath, $TamperedBunx)
+        $TamperedStatus = Invoke-ProjStatusToolchainFixture `
+            -Executable $ResolvedToolchainPath
+        Assert-ProjBunTest `
+            -Condition (
+                $TamperedStatus.ExitCode -eq 0 -and
+                $TamperedStatus.Output -cmatch
+                    '(?m)^\[MISSING\] bun 1\.2\.15\s+upstream\s+' -and
+                $TamperedStatus.Output -cnotmatch
+                    '(?m)^\[READY\] bun 1\.2\.15 '
+            ) `
+            -Message (
+                '.dev.status accepted same-length Bun tampering or lost ' +
+                'the validated source trust: ' + $TamperedStatus.Output
+            )
+    } finally {
+        [IO.File]::WriteAllBytes($BunxPath, $OriginalBunx)
+    }
+
     $SetupResult = Invoke-ProjBunEntryFixture `
         -PowerShell $SystemPowerShell `
         -EntryPath (Join-Path $ProjRoot '.dev\setup\run.ps1') `

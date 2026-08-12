@@ -36,44 +36,6 @@ pub(super) fn directory_chain(
     Ok(path)
 }
 
-pub(super) fn optional_directory_chain(
-    root: &Path,
-    components: &[&str],
-    subject: &str,
-) -> Result<Option<PathBuf>, String> {
-    regular_directory(root, subject)?;
-    let mut path = root.to_path_buf();
-    for component in components {
-        if !matches!(
-            Path::new(component)
-                .components()
-                .collect::<Vec<_>>()
-                .as_slice(),
-            [Component::Normal(_)]
-        ) {
-            return Err(format!("unsafe {subject} path segment '{component}'"));
-        }
-        path.push(component);
-        match fs::symlink_metadata(&path) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => {
-                return Err(format!(
-                    "cannot inspect {subject} '{}': {error}",
-                    path.display()
-                ));
-            }
-            Ok(metadata) if metadata.is_dir() && !is_reparse(&metadata) => {}
-            Ok(_) => {
-                return Err(format!(
-                    "{subject} must be a regular directory: {}",
-                    path.display()
-                ));
-            }
-        }
-    }
-    Ok(Some(path))
-}
-
 pub(super) fn regular_directory(path: &Path, subject: &str) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|error| format!("cannot inspect {subject} '{}': {error}", path.display()))?;

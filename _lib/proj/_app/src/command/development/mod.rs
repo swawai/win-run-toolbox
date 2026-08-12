@@ -1,20 +1,20 @@
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use crate::development::BUN;
+use crate::development::archive_tool::{
+    ArchiveToolError, ArchiveToolErrorKind, ArchiveToolRequest, ArchiveToolStore,
+};
 
 use super::{CommandError, CommandExecutionContext, CommandResult};
-use filesystem::{child_file, directory_chain, is_lower_hex, read_json, verify_regular_file};
+use filesystem::{directory_chain, is_lower_hex, read_json};
 
 mod filesystem;
 
 const STATE_SCHEMA: &str = "swawkit.command-provider-state/v1";
 const PRODUCER_CONTRACT: &str = "swawkit.proj.dev-setup/v2";
-const INSTALL_SCHEMA: &str = "swawkit.proj-dev.install.v0";
 const MAX_STATE_BYTES: u64 = 16 * 1024;
-const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -26,45 +26,6 @@ struct ProviderState {
     producer_contract: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct BunSelection {
-    schema: String,
-    selector: String,
-    version: String,
-    source_sha256: String,
-    source_verification: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct InstallMetadata {
-    schema: String,
-    name: String,
-    version: String,
-    source_url: String,
-    source_sha256: String,
-    source_verification: String,
-    recipe_version: String,
-    definition_signature: String,
-    files: Vec<InstalledFile>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct InstalledFile {
-    path: String,
-    length: u64,
-    sha256: String,
-}
-
-struct ResolvedVersion {
-    version: String,
-    source_sha256: Option<String>,
-    source_verification: Option<String>,
-    project_sha256: String,
-}
-
 pub(crate) fn resolve_entry_bun(context: &CommandExecutionContext) -> CommandResult<PathBuf> {
     let declaration = &context.profile.development.bun;
     if declaration.mode != "managed" {
@@ -74,12 +35,8 @@ pub(crate) fn resolve_entry_bun(context: &CommandExecutionContext) -> CommandRes
             context.entry_name
         )));
     }
-    if declaration.version != "latest" && !BUN.accepts_exact_version(&declaration.version) {
-        return Err(repair_error(
-            context,
-            "the Entry Bun version is not a supported Bun version",
-        ));
-    }
+    let request = ArchiveToolRequest::new(&BUN, &declaration.version, &declaration.sha256)
+        .map_err(|error| map_request_error(context, error))?;
 
     let provider_root = directory_chain(
         &context.data_root,
@@ -91,28 +48,25 @@ pub(crate) fn resolve_entry_bun(context: &CommandExecutionContext) -> CommandRes
     })?;
     let state_path = provider_root.join("_state.json");
     let initial_state = read_ready_state(context, &state_path)?;
-    let bun_root = directory_chain(
-        &provider_root,
-        &["export", BUN.name],
-        "development environment export",
-    )
-    .map_err(|error| {
-        repair_with_cause(
+    let store = ArchiveToolStore::new(&context.data_root, &BUN);
+    store.require_export().map_err(|error| {
+        repair_with_archive_cause(
             context,
             "the development environment Export is unavailable",
             error,
         )
     })?;
-    let resolved = resolve_version(context, &bun_root, &declaration.version)?;
-    let install_root = directory_chain(
-        &bun_root,
-        &["installs", &resolved.version],
-        "Entry Bun installation",
-    )
-    .map_err(|error| {
-        repair_with_cause(context, "the Entry Bun installation is unavailable", error)
+    let resolved = store
+        .resolve(&request)
+        .map_err(|error| map_selection_error(context, error))?
+        .ok_or_else(|| repair_error(context, "the Bun latest selection is missing or invalid"))?;
+    let installation = store
+        .read_installation(&resolved)
+        .map_err(|error| map_installation_error(context, error))?;
+    store.verify_hashes(&installation).map_err(|error| {
+        repair_with_archive_cause(context, "the Entry Bun installation is invalid", error)
     })?;
-    let executable = validate_installation(context, &install_root, &resolved)?;
+    let executable = installation.executable().to_path_buf();
 
     let final_state = read_ready_state(context, &state_path)?;
     if final_state != initial_state {
@@ -153,131 +107,58 @@ fn read_ready_state(
     Ok(state)
 }
 
-fn resolve_version(
-    context: &CommandExecutionContext,
-    bun_root: &Path,
-    requested: &str,
-) -> CommandResult<ResolvedVersion> {
-    let project_sha256 = context.profile.development.bun.sha256.to_ascii_lowercase();
-    if requested != "latest" {
-        return Ok(ResolvedVersion {
-            version: requested.to_owned(),
-            source_sha256: (!project_sha256.is_empty()).then(|| project_sha256.clone()),
-            source_verification: (!project_sha256.is_empty()).then(|| "project".to_owned()),
-            project_sha256,
-        });
-    }
-    if !project_sha256.is_empty() {
-        return Err(repair_error(
+fn map_request_error(context: &CommandExecutionContext, error: ArchiveToolError) -> CommandError {
+    match error.kind() {
+        ArchiveToolErrorKind::InvalidVersion => repair_error(
+            context,
+            "the Entry Bun version is not a supported Bun version",
+        ),
+        ArchiveToolErrorKind::LatestWithProjectSha256 => repair_error(
             context,
             "Bun latest cannot be combined with a project SHA-256",
-        ));
+        ),
+        _ => repair_with_archive_cause(context, "the Entry Bun declaration is invalid", error),
     }
-    let path = bun_root.join(".swawkit-dev-selection.json");
-    let selection: BunSelection = read_json(&path, "Entry Bun selection", MAX_STATE_BYTES)
-        .map_err(|_| repair_error(context, "the Bun latest selection is missing or invalid"))?;
-    let valid = selection.schema == BUN.selection_schema
-        && selection.selector == "latest"
-        && crate::development::is_semantic_version(&selection.version)
-        && is_lower_hex(&selection.source_sha256, 64)
-        && matches!(
-            selection.source_verification.as_str(),
-            "github" | "unverified"
-        );
-    if !valid {
-        return Err(repair_error(context, "the Bun latest selection is invalid"));
-    }
-    Ok(ResolvedVersion {
-        version: selection.version,
-        source_sha256: Some(selection.source_sha256),
-        source_verification: Some(selection.source_verification),
-        project_sha256,
-    })
 }
 
-fn validate_installation(
+fn map_selection_error(context: &CommandExecutionContext, error: ArchiveToolError) -> CommandError {
+    match error.kind() {
+        ArchiveToolErrorKind::SelectionInvalid => {
+            repair_error(context, "the Bun latest selection is invalid")
+        }
+        _ => repair_error(context, "the Bun latest selection is missing or invalid"),
+    }
+}
+
+fn map_installation_error(
     context: &CommandExecutionContext,
-    install_root: &Path,
-    resolved: &ResolvedVersion,
-) -> CommandResult<PathBuf> {
-    let metadata: InstallMetadata = read_json(
-        &install_root.join(".swawkit-dev-install.json"),
-        "Entry Bun installation metadata",
-        MAX_METADATA_BYTES,
-    )
-    .map_err(|_| {
-        repair_error(
+    error: ArchiveToolError,
+) -> CommandError {
+    match error.kind() {
+        ArchiveToolErrorKind::InstallationUnavailable => {
+            repair_with_archive_cause(context, "the Entry Bun installation is unavailable", error)
+        }
+        ArchiveToolErrorKind::MetadataUnreadable => repair_error(
             context,
             "the Entry Bun installation metadata is missing or invalid",
-        )
-    })?;
-    let expected_signature = BUN.definition_signature(&resolved.version, &resolved.project_sha256);
-    let verification_valid = resolved.source_verification.as_ref().map_or_else(
-        || {
-            matches!(
-                metadata.source_verification.as_str(),
-                "github" | "unverified"
-            )
-        },
-        |expected| expected == &metadata.source_verification,
-    );
-    let metadata_valid = metadata.schema == INSTALL_SCHEMA
-        && metadata.name == BUN.name
-        && metadata.version == resolved.version
-        && !metadata.source_url.is_empty()
-        && metadata.source_url.trim() == metadata.source_url
-        && is_lower_hex(&metadata.source_sha256, 64)
-        && verification_valid
-        && metadata.recipe_version == BUN.recipe_version
-        && metadata.definition_signature == expected_signature
-        && resolved
-            .source_sha256
-            .as_ref()
-            .is_none_or(|expected| expected == &metadata.source_sha256)
-        && metadata.files.len() == BUN.required_paths.len();
-    if !metadata_valid {
-        return Err(repair_error(
-            context,
-            "the Entry Bun installation metadata is stale",
-        ));
-    }
-
-    let records: BTreeMap<_, _> = metadata
-        .files
-        .iter()
-        .map(|record| (record.path.as_str(), record))
-        .collect();
-    if records.len() != metadata.files.len() {
-        return Err(repair_error(
+        ),
+        ArchiveToolErrorKind::MetadataStale => {
+            repair_error(context, "the Entry Bun installation metadata is stale")
+        }
+        ArchiveToolErrorKind::DuplicateFileRecords => repair_error(
             context,
             "the Entry Bun installation has duplicate file records",
-        ));
+        ),
+        ArchiveToolErrorKind::MissingFileRecord => repair_error(
+            context,
+            "the Entry Bun installation is missing a required file record",
+        ),
+        ArchiveToolErrorKind::InvalidFileRecord => repair_error(
+            context,
+            "the Entry Bun installation has an invalid file record",
+        ),
+        _ => repair_with_archive_cause(context, "the Entry Bun installation is invalid", error),
     }
-    for relative in BUN.required_paths {
-        let record = records.get(relative).ok_or_else(|| {
-            repair_error(
-                context,
-                "the Entry Bun installation is missing a required file record",
-            )
-        })?;
-        if record.length == 0 || !is_lower_hex(&record.sha256, 64) {
-            return Err(repair_error(
-                context,
-                "the Entry Bun installation has an invalid file record",
-            ));
-        }
-        let path = child_file(install_root, relative, "Entry Bun installed file")?;
-        verify_regular_file(
-            &path,
-            "Entry Bun installed file",
-            record.length,
-            &record.sha256,
-        )
-        .map_err(|error| {
-            repair_with_cause(context, "the Entry Bun installation is invalid", error)
-        })?;
-    }
-    Ok(install_root.join(BUN.executable))
 }
 
 fn repair_error(context: &CommandExecutionContext, reason: &str) -> CommandError {
@@ -291,6 +172,18 @@ fn repair_with_cause(
     context: &CommandExecutionContext,
     reason: &str,
     cause: CommandError,
+) -> CommandError {
+    CommandError::new(format!(
+        "{reason}: {cause}. Run '{} .dev.setup' to publish the current Entry development \
+         environment",
+        context.entry_name
+    ))
+}
+
+fn repair_with_archive_cause(
+    context: &CommandExecutionContext,
+    reason: &str,
+    cause: ArchiveToolError,
 ) -> CommandError {
     CommandError::new(format!(
         "{reason}: {cause}. Run '{} .dev.setup' to publish the current Entry development \

@@ -1,4 +1,5 @@
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -6,7 +7,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+use super::CommandExecutor;
 use super::{CommandExecutionContext, CommandProcessMode, resolve_entry_bun};
+use crate::catalog::CatalogSnapshot;
 use crate::development::BUN;
 use crate::profile::EntryProfileRecord;
 
@@ -27,7 +30,15 @@ impl Fixture {
             .join("data/proj_cache/tests/entry-bun")
             .join(format!("{}-{sequence}", std::process::id()));
         let data_root = root.join("data");
-        fs::create_dir_all(&data_root).expect("create fixture DataRoot");
+        for directory in [
+            data_root.clone(),
+            root.join("_lib/proj"),
+            root.join("project/.swaw"),
+        ] {
+            fs::create_dir_all(directory).expect("create fixture directory");
+        }
+        fs::write(root.join("swawkit-proj-toolchain.exe"), "fixture")
+            .expect("write Toolchain fixture");
         let profile = EntryProfileRecord::default();
         let context = CommandExecutionContext {
             swawkit_home: root.clone(),
@@ -147,8 +158,8 @@ fn same_length_bun_tampering_is_rejected() {
     fs::write(&executable, b"changed").expect("tamper Bun executable");
 
     let error = resolve_entry_bun(&fixture.context).unwrap_err().to_string();
-    assert!(error.contains("SHA-256"));
-    assert!(error.contains("fixture .dev.setup"));
+    assert!(error.contains("SHA-256"), "{error}");
+    assert!(error.contains("fixture .dev.setup"), "{error}");
 }
 
 #[test]
@@ -204,6 +215,42 @@ fn latest_entry_bun_uses_the_published_selection() {
     );
 
     assert_eq!(resolve_entry_bun(&fixture.context).unwrap(), expected);
+}
+
+#[test]
+fn bun_is_resolved_after_guards_can_change_the_published_installation() {
+    let fixture = Fixture::new();
+    let executable = fixture.publish_exact(
+        &fixture.context.environment_input_revision,
+        &fixture.context.profile.development.bun.version,
+    );
+    let action = fixture.context.action_root.join("task");
+    fs::create_dir_all(&action).expect("create Action command");
+    fs::write(action.join("run.ts"), "console.log('must not run')").expect("write Action command");
+    let guard = fixture.context.kernel_root.join("_global");
+    fs::create_dir_all(&guard).expect("create global guard");
+    let escaped = executable.to_string_lossy().replace('\'', "''");
+    fs::write(
+        guard.join("run.ps1"),
+        format!(
+            "[IO.File]::WriteAllBytes('{escaped}', [Text.Encoding]::UTF8.GetBytes('changed'))\n"
+        ),
+    )
+    .expect("write mutating guard");
+    let catalog = CatalogSnapshot::discover_roots(
+        &fixture.context.kernel_root,
+        &fixture.context.action_root,
+        "fixture",
+    )
+    .expect("discover fixture Catalog");
+
+    let error = CommandExecutor::new(&fixture.context, &catalog)
+        .execute(&[OsString::from("task")])
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("SHA-256"), "{error}");
+    assert!(error.contains("fixture .dev.setup"), "{error}");
 }
 
 fn write_json(path: &Path, value: &serde_json::Value) {

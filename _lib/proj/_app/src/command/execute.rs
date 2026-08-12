@@ -72,16 +72,6 @@ impl<'a> CommandExecutor<'a> {
         journal: Option<&RunJournal>,
     ) -> CommandResult<i32> {
         validate_command_adapter(&invocation.command)?;
-        let adapter_launch = match invocation.command.adapter {
-            CommandAdapter::Bun => AdapterLaunch::Bun(resolve_entry_bun(self.context)?),
-            CommandAdapter::Toolchain => AdapterLaunch::Toolchain {
-                executable: self.context.toolchain_executable.clone(),
-                handler: invocation.command.handler.clone().ok_or_else(|| {
-                    CommandError::new("Catalog invariant failed: Toolchain command has no handler")
-                })?,
-            },
-            _ => AdapterLaunch::Direct,
-        };
         let guard_plan = GuardPlan::discover(&self.context.kernel_root, &invocation.command)?;
 
         for guard in guard_plan.guards {
@@ -110,6 +100,18 @@ impl<'a> CommandExecutor<'a> {
             }
         }
 
+        // Guards can repair or invalidate the managed runtime. Resolve mutable adapter
+        // resources only after every guard has completed, immediately before launch.
+        let adapter_launch = match invocation.command.adapter {
+            CommandAdapter::Bun => AdapterLaunch::Bun(resolve_entry_bun(self.context)?),
+            CommandAdapter::Toolchain => AdapterLaunch::Toolchain {
+                executable: self.context.toolchain_executable.clone(),
+                handler: invocation.command.handler.clone().ok_or_else(|| {
+                    CommandError::new("Catalog invariant failed: Toolchain command has no handler")
+                })?,
+            },
+            _ => AdapterLaunch::Direct,
+        };
         let mut environment = ProcessEnvironment::for_command(
             self.context,
             &invocation.command,
@@ -173,6 +175,11 @@ fn run(
 
 fn validate_command_adapter(command: &ResolvedCommand) -> CommandResult<()> {
     validate_adapter(command.adapter)?;
+    if command.adapter == CommandAdapter::Toolchain && command.handler.is_none() {
+        return Err(CommandError::new(
+            "Catalog invariant failed: Toolchain command has no handler",
+        ));
+    }
     if command.adapter == CommandAdapter::Bun && command.source != CommandSource::Action {
         return Err(CommandError::new(format!(
             "the run.ts adapter is only supported for Action commands; '{}' is product-owned \

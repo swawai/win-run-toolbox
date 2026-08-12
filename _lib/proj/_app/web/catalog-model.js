@@ -90,8 +90,11 @@ function normalizeCommand(value, index) {
   if ((entry === null) !== (adapter === null)) {
     throw contractError(`${field("adapter")} 必须与 entry 同时存在或同时为空。`);
   }
-  if ((adapter === "core") !== (handler !== null)) {
-    throw contractError(`${field("handler")} 必须且只能由 core adapter 声明。`);
+  const handlerAdapter = adapter === "core" || adapter === "toolchain";
+  if (handlerAdapter !== (handler !== null)) {
+    throw contractError(
+      `${field("handler")} 必须且只能由 core 或 toolchain adapter 声明。`,
+    );
   }
 
   const help = normalizeHelp(command.help, index);

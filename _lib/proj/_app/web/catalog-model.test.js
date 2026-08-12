@@ -138,6 +138,35 @@ describe("Catalog v3 model", () => {
     ]))).toThrow("source 只能是 control、kernel 或 action");
   });
 
+  test("accepts handlers owned by core and toolchain adapters only", () => {
+    const catalog = createCatalog(payload([
+      node(".dev.setup", {
+        runnable: true,
+        entry: "run.toolchain.json",
+        adapter: "toolchain",
+        handler: "dev.setup",
+      }),
+    ]));
+    expect(catalog.commandByAddress.get(".dev.setup").handler)
+      .toBe("dev.setup");
+
+    expect(() => createCatalog(payload([
+      node(".broken", {
+        runnable: true,
+        entry: "run.toolchain.json",
+        adapter: "toolchain",
+      }),
+    ]))).toThrow("handler");
+    expect(() => createCatalog(payload([
+      node(".broken", {
+        runnable: true,
+        entry: "run.ps1",
+        adapter: "powershell",
+        handler: "dev.setup",
+      }),
+    ]))).toThrow("handler");
+  });
+
   test("normalizes the parent-owned child column width", () => {
     const catalog = createCatalog(payload([
       node("..entry.env.rust", {

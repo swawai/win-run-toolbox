@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readReadyBuildReleaseSet } from "./provider-release.ts";
 import { publishBuildReleaseSet } from "./release-set.ts";
 import { acquireExclusiveFileLock } from "./windows-filesystem.ts";
 
@@ -35,6 +36,35 @@ test("publishes the PowerShell-compatible immutable Release Set identity", async
     producerContract: "swawkit.proj-build-app/v3",
   });
   expect(await publishBuildReleaseSet(commandDataRoot, candidates)).toBe(id);
+});
+
+test("reads one coherent Ready Provider snapshot and rejects tampering", async () => {
+  const root = await temporaryRoot();
+  const dataRoot = join(root, "data");
+  const commandDataRoot = join(dataRoot, "modules", "action", "proj", "build", "app");
+  const work = join(commandDataRoot, "work");
+  await mkdir(work, { recursive: true });
+  const candidates = {
+    "swawkit-proj.exe": await candidate(work, "swawkit-proj.exe", "core"),
+    "swawkit-proj-host.exe": await candidate(work, "swawkit-proj-host.exe", "host"),
+    "swawkit-proj-toolchain.exe": await candidate(
+      work,
+      "swawkit-proj-toolchain.exe",
+      "toolchain",
+    ),
+  };
+  const id = await publishBuildReleaseSet(commandDataRoot, candidates);
+
+  const release = await readReadyBuildReleaseSet(dataRoot, "fixture");
+  expect(release.releaseId).toBe(id);
+  expect(release.artifacts.map(({ name }) => name).sort()).toEqual(
+    ["swawkit-proj-host.exe", "swawkit-proj-toolchain.exe", "swawkit-proj.exe"],
+  );
+
+  await writeFile(join(release.root, "swawkit-proj-host.exe"), "evil");
+  expect(readReadyBuildReleaseSet(dataRoot, "fixture")).rejects.toThrow(
+    "run 'fixture proj.build.app'",
+  );
 });
 
 test("rejects corruption in an existing immutable release", async () => {

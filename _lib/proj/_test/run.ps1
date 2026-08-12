@@ -25,13 +25,14 @@ $CandidateArguments = @{
 & (Join-Path $PSScriptRoot 'provider-state.ps1')
 & (Join-Path $PSScriptRoot 'provider-activation.ps1')
 & (Join-Path $PSScriptRoot 'project-build-export.ps1')
-& $RepoRoot\swawkit.exe .dev.bun test (
-    Join-Path $RepoRoot '.swaw\proj\build\_lib\release-set.test.ts'
+$TypeScriptTests = @(
+    (Join-Path $RepoRoot '.swaw\proj\build\_lib\release-set.test.ts'),
+    (Join-Path $RepoRoot '.swaw\proj\publish\_lib\runtime-release.test.ts')
 )
+& $RepoRoot\swawkit.exe .dev.bun test @TypeScriptTests
 if ($LASTEXITCODE -ne 0) {
-    throw "Proj build TypeScript tests failed with exit code $LASTEXITCODE."
+    throw "Proj Action TypeScript contract tests failed with exit code $LASTEXITCODE."
 }
-& (Join-Path $PSScriptRoot 'release-set.ps1')
 & (Join-Path $PSScriptRoot 'app-build.ps1')
 & (Join-Path $PSScriptRoot 'app-publish.ps1')
 & (Join-Path $PSScriptRoot 'app-core.ps1')

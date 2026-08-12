@@ -16,6 +16,7 @@ const BUILD_SCHEMA = "swawkit.proj-build-release-set/v1";
 const RUNTIME_SCHEMA = "swawkit.proj-release-set/v1";
 const STATE_SCHEMA = "swawkit.command-provider-state/v1";
 const MAX_MANIFEST_BYTES = 1024 * 1024;
+export const PRODUCER_CONTRACT = "swawkit.proj-build-app/v3";
 export const RUNTIME_ARTIFACT_NAMES = [
   "swawkit-proj.exe",
   "swawkit-proj-host.exe",
@@ -28,6 +29,12 @@ export type Artifact = {
   path: string;
   length: number;
   sha256: string;
+};
+
+export type BuildReleaseSet = {
+  releaseId: string;
+  root: string;
+  artifacts: Artifact[];
 };
 
 function sha256(content: string | Buffer): string {
@@ -96,6 +103,24 @@ export async function ensureControlledDirectory(
   return current;
 }
 
+export async function requireControlledDirectory(
+  root: string,
+  segments: string[],
+  label: string,
+): Promise<string> {
+  if (!isAbsolute(root)) throw new Error(`${label} root must be absolute: ${root}`);
+  await regularDirectory(root, label);
+  let current = resolve(root);
+  for (const segment of segments) {
+    if (!segment || segment === "." || segment === ".." || /[\\/]/.test(segment)) {
+      throw new Error(`unsafe ${label} segment: '${segment}'`);
+    }
+    current = join(current, segment);
+    await regularDirectory(current, label);
+  }
+  return current;
+}
+
 export function controlledPath(root: string, path: string, label: string): string {
   const rootPath = resolve(root);
   const result = resolve(path);
@@ -133,11 +158,11 @@ function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2).replaceAll("\n", "\r\n")}\r\n`;
 }
 
-async function validateRelease(
+export async function readBuildReleaseDirectory(
   root: string,
   expectedId: string,
-  expectedNames: string[],
-): Promise<void> {
+  expectedNames: readonly string[],
+): Promise<Artifact[]> {
   await regularDirectory(root, "build Release Set");
   const manifestPath = join(root, "manifest.json");
   const manifestMetadata = await lstat(manifestPath);
@@ -182,6 +207,7 @@ async function validateRelease(
   if (names.join("\n") !== [...expectedNames].sort().join("\n") || releaseId(records) !== expectedId) {
     throw new Error(`build Release Set identity is invalid: ${root}`);
   }
+  return records;
 }
 
 export async function publishBuildReleaseSet(
@@ -217,7 +243,7 @@ export async function publishBuildReleaseSet(
   const releaseRoot = join(releasesRoot, id);
   try {
     await regularDirectory(releaseRoot, "build Release Set");
-    await validateRelease(releaseRoot, id, expectedNames);
+    await readBuildReleaseDirectory(releaseRoot, id, expectedNames);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     const stage = join(exportRoot, `.release.${token}.tmp`);
@@ -244,20 +270,20 @@ export async function publishBuildReleaseSet(
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code !== "EEXIST" && code !== "EPERM") throw error;
-        await validateRelease(releaseRoot, id, expectedNames);
+        await readBuildReleaseDirectory(releaseRoot, id, expectedNames);
       }
     } finally {
       if (!committed) await rm(stage, { recursive: true, force: true });
     }
   }
-  await validateRelease(releaseRoot, id, expectedNames);
+  await readBuildReleaseDirectory(releaseRoot, id, expectedNames);
   await writeAtomic(join(exportRoot, "current"), `${id}\r\n`);
   await writeAtomic(statePath, json({
     schema: STATE_SCHEMA,
     status: "ready",
     inputRevision,
     token,
-    producerContract: "swawkit.proj-build-app/v3",
+    producerContract: PRODUCER_CONTRACT,
   }));
   return id;
 }

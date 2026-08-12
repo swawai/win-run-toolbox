@@ -40,34 +40,31 @@ function Invoke-PsExecTestEntry {
 
 function Get-CapturedRemoteSource {
     $Captured = [IO.File]::ReadAllText($CapturePath).Trim()
-    $RemotePrefix = (
-        ' -- powershell.exe -NoLogo -NoProfile -NonInteractive ' +
-        '-OutputFormat Text -EncodedCommand '
-    )
-    if (-not $Captured.StartsWith('stdin -- ') -or
-        -not $Captured.Contains($RemotePrefix)) {
+    if (-not $Captured.StartsWith('-- powershell.exe ') -or
+        -not $Captured.Contains('-EncodedCommand ')) {
         throw "Unexpected SSH entry arguments: $Captured"
     }
     $BootstrapBase64 = ($Captured -split ' ')[-1]
-    if ($BootstrapBase64.EndsWith('=') -or $BootstrapBase64.Length -gt 1500) {
-        throw 'The fixed PsExec stdin bootstrap is unsafe for the SSH .cmd chain.'
+    if ($BootstrapBase64.EndsWith('=') -or
+        $BootstrapBase64.Length -gt 2048) {
+        throw 'The peer loader is unsafe for the SSH .cmd command chain.'
     }
     $Bootstrap = [Text.Encoding]::Unicode.GetString(
         [Convert]::FromBase64String($BootstrapBase64)
     )
-    if (-not $Bootstrap.Contains('RDP_CLIENT_PAYLOAD_V1:')) {
-        throw 'The PsExec stdin bootstrap does not validate its payload marker.'
+    foreach ($ExpectedLoaderSource in @(
+        'Start-Process',
+        'WaitForExit(',
+        'taskkill.exe /PID $x.Id /T /F',
+        'Remove-Item -LiteralPath $p -Force'
+    )) {
+        if (-not $Bootstrap.Contains($ExpectedLoaderSource)) {
+            throw "The bounded peer loader is missing: $ExpectedLoaderSource"
+        }
     }
-    $InputPayload = [IO.File]::ReadAllText(
+    return [IO.File]::ReadAllText(
         $SourcePath,
-        [Text.Encoding]::ASCII
-    )
-    if ($InputPayload -notmatch
-        'RDP_CLIENT_PAYLOAD_V1:(?<Payload>[A-Za-z0-9+/=]+)') {
-        throw 'The PsExec stdin payload marker was not captured.'
-    }
-    return [Text.Encoding]::UTF8.GetString(
-        [Convert]::FromBase64String($Matches.Payload)
+        [Text.Encoding]::UTF8
     )
 }
 
@@ -165,7 +162,6 @@ try {
 
 $FakeSshSource = @'
 @echo off
-if /i "%~1"=="copy" exit /b 0
 PowerShell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0capture-stdin.ps1" %*
 exit /b %ERRORLEVEL%
 '@
@@ -175,19 +171,23 @@ exit /b %ERRORLEVEL%
         $FakeSshSource,
         (New-Object Text.UTF8Encoding($false))
     )
-    $CaptureSource = @'
+$CaptureSource = @'
+if ($args[0] -eq 'copy') {
+    $remoteName = ([string]$args[2]).TrimStart(':')
+    if ($remoteName -match '^\.swaw-kit-rdp-peer-[A-Fa-f0-9]{32}\.ps1$') {
+        [IO.File]::Copy(
+            [IO.Path]::GetFullPath([string]$args[1]),
+            $env:RDP_PSEXEC_TEST_SOURCE,
+            $true
+        )
+    }
+    exit 0
+}
 [IO.File]::WriteAllText(
     $env:RDP_PSEXEC_TEST_CAPTURE,
     ($args -join ' '),
     [Text.Encoding]::ASCII
 )
-$inputStream = [Console]::OpenStandardInput()
-$outputStream = [IO.File]::Create($env:RDP_PSEXEC_TEST_SOURCE)
-try {
-    $inputStream.CopyTo($outputStream)
-} finally {
-    $outputStream.Dispose()
-}
 if ([string]::IsNullOrWhiteSpace($env:RDP_PSEXEC_FAKE_EXIT)) {
     exit 0
 }

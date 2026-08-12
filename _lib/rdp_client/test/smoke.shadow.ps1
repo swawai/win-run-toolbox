@@ -393,6 +393,14 @@ $ascii = [Text.Encoding]::ASCII
     ($args -join ' ') + [Environment]::NewLine,
     $ascii
 )
+if ($args[0] -ne 'copy') {
+    if (-not [string]::IsNullOrWhiteSpace($env:RDP_SHADOW_FAKE_MANAGE_STATE)) {
+        Write-Output $env:RDP_SHADOW_FAKE_MANAGE_STATE
+    }
+    Write-Output ' SESSIONNAME               USERNAME                 ID  STATE'
+    Write-Output ' console                   Administrator             2  Active'
+    exit 0
+}
 $outputStream = [IO.File]::Open(
     $env:RDP_SHADOW_TEST_SOURCE,
     [IO.FileMode]::Append,
@@ -402,17 +410,15 @@ $outputStream = [IO.File]::Open(
 try {
     $marker = $ascii.GetBytes("__RDP_CLIENT_SOURCE__`r`n")
     $outputStream.Write($marker, 0, $marker.Length)
-    [Console]::OpenStandardInput().CopyTo($outputStream)
+    $sourceBytes = [IO.File]::ReadAllBytes(
+        [IO.Path]::GetFullPath([string]$args[1])
+    )
+    $outputStream.Write($sourceBytes, 0, $sourceBytes.Length)
     $newline = $ascii.GetBytes("`r`n")
     $outputStream.Write($newline, 0, $newline.Length)
 } finally {
     $outputStream.Dispose()
 }
-if (-not [string]::IsNullOrWhiteSpace($env:RDP_SHADOW_FAKE_MANAGE_STATE)) {
-    Write-Output $env:RDP_SHADOW_FAKE_MANAGE_STATE
-}
-Write-Output ' SESSIONNAME               USERNAME                 ID  STATE'
-Write-Output ' console                   Administrator             2  Active'
 exit 0
 '@
     [IO.File]::WriteAllText(
@@ -532,15 +538,7 @@ exit 0
                 [Text.Encoding]::ASCII
             ) -split '(?m)^__RDP_CLIENT_SOURCE__\r?\n' |
                 Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-                ForEach-Object {
-                    if ($_ -notmatch
-                        'RDP_CLIENT_PAYLOAD_V1:(?<Payload>[A-Za-z0-9+/=]+)') {
-                        throw 'A Shadow stdin payload marker was not captured.'
-                    }
-                    [Text.Encoding]::UTF8.GetString(
-                        [Convert]::FromBase64String($Matches.Payload)
-                    )
-                }
+                ForEach-Object { $_ }
         )
         foreach ($TransportedSource in $TransportedManageSources) {
             $Tokens = $null

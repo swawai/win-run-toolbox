@@ -199,6 +199,13 @@ fn scan_node(pending: &PendingDirectory, entry_name: &str) -> CommandNode {
             );
             None
         }
+        Some(entry) if entry.adapter == CommandAdapter::Python => {
+            diagnostics.push(
+                "run.py is not runnable until managed Python is owned and verified by .dev.setup"
+                    .to_owned(),
+            );
+            None
+        }
         Some(entry)
             if !matches!(entry.adapter, CommandAdapter::Core)
                 && pending.source == CommandSource::Control =>

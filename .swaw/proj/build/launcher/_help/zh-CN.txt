@@ -1,4 +1,4 @@
-使用 Bootstrap 固定工具链构建 Proj 原生 Launcher 模板。
+使用当前 Entry 已验证的受管 MSVC 环境构建 Proj 原生 Launcher 模板。
 
 用法:
   {{INVOCATION}}
@@ -12,9 +12,10 @@
   export/manifest.json
   _state.json
 
-构建入口直接准备 Bootstrap 固定的 Rust/MSVC 工具链，不依赖根 swawkit.exe、
-现有 Launcher 模板、项目 Profile 或系统 PATH 中碰巧存在的编译器；
-Bootstrap 工具链仍由共享缓存管理，但 Action 的 work/export 不再写入共享缓存。
+日常 Action 只使用 Core 从 Entry Profile 与 `.dev.setup` Ready Export 解析并完整复验的
+MSVC/Windows SDK，不依赖系统 PATH 中碰巧存在的编译器。没有可用 Core 时，源码树入口
+`_lib/proj/build.ps1` 仍使用 Bootstrap 固定工具链恢复构建；两条路径共用同一份
+`_lib/proj/_launcher/build.json` 编译契约，但 Action 的 work/export 不写入共享缓存。
 它绝不修改 Favorites/template.proj1.exe 或根 swawkit.exe。
 
 模板可在 SWAWKIT_HOME 根目录或其一级目录（如 Favorites）内复制并改名。无参数

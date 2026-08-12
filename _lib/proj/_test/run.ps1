@@ -24,9 +24,10 @@ $CandidateArguments = @{
 & (Join-Path $PSScriptRoot 'command-export.ps1')
 & (Join-Path $PSScriptRoot 'provider-state.ps1')
 & (Join-Path $PSScriptRoot 'provider-activation.ps1')
-& (Join-Path $PSScriptRoot 'project-build-export.ps1')
 $TypeScriptTests = @(
     (Join-Path $RepoRoot '.swaw\proj\build\_lib\release-set.test.ts'),
+    (Join-Path $RepoRoot '.swaw\proj\build\launcher\_lib\artifact.test.ts'),
+    (Join-Path $RepoRoot '.swaw\proj\publish\launcher\_lib\template.test.ts'),
     (Join-Path $RepoRoot '.swaw\proj\publish\_lib\runtime-release.test.ts')
 )
 & $RepoRoot\swawkit.exe .dev.bun test @TypeScriptTests

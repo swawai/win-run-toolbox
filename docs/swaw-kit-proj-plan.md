@@ -69,6 +69,8 @@
 4. 当前执行器支持 `run.exe`、由当前 Entry 开发环境执行的 Action `run.ts`、Kernel 专用 `run.toolchain.json`、`run.ps1` 和受限的 `run.cmd`。Action `run.ts` 在 Guard 完成后严格解析 Entry Profile 与 `.dev.setup` Provider Export，复验受管 Bun、PowerShell、MSVC 与 Rust 的声明、安装元数据和完整文件哈希，并只把当次启用且验证通过的环境映射给 Action；它不依赖调用者碰巧继承的系统 PATH，也不会加载生成的 `env.ps1` 形成第二套解释器。`run.toolchain.json` 不执行目录脚本，而是固定调用同 Release Set 的 `swawkit-proj-toolchain.exe command-v1 <handler>`，Catalog 同时限制 handler 白名单与 Kernel 所有权。`.dev.status` 与 `.dev.setup` 已完成垂直迁移，原 PowerShell 入口均已删除。Bun/PowerShell 的 selection、安装元数据、文件清单、重解析点、完整 SHA-256 与信任分类收敛为一套 Archive Tool SSOT，其中 Core `run.ts` 消费 Bun，Toolchain 消费 Bun 与 PowerShell。MSVC 与 Rust 也分别形成原生领域闭环：受限来源、内容寻址缓存、严格解包或隔离安装、规范元数据、精确文件清单、完整 SHA-256、中断恢复、原子发布和环境映射共用各自读写契约；已就绪或可恢复的安装保持完全离线。四个默认领域由同一个原生总编排管理：共用 setup 锁和 Provider CAS，先完整预检所有启用声明，再按固定领域顺序离线优先解析或恢复安装，发布字节稳定的 `env.cmd` / `env.ps1` 后才完成 ready；CLI 与 Web Worker 的下载进度通过统一事件协议记录和渲染。只有 Toolchain 尚不存在时的冷 Bootstrap 继续保留系统原生 Shell 实现。
 5. `proj.build.app` 与 `proj.publish.app` 均已迁移为 `run.ts`，直接消费上述受信开发环境，不再依赖 `_toolchain` 私有 PowerShell。前者构建高频 CLI/Worker Core、常驻 Web/Tray Host 与低频原生 Toolchain，分别发布为 `swawkit-proj.exe`、`swawkit-proj-host.exe`、`swawkit-proj-toolchain.exe`，并组成不可变 Build Release Set；后者在构建 Provider 锁内复验 Ready State、selector、Manifest 与完整文件哈希，再写入 `_bin/releases/<release-id>/`，最后只原子切换 `_bin/current`。`_bin` 根目录不保留可执行 bridge，旧进程继续运行已映射版本。当前维护的 Entry Launcher 已原地迁移到 selector 协议并保持文件身份，`proj.publish.launcher` 继续只更新新建 Entry 模板。失败构建不会授予 Ready 状态。正式测试同时覆盖 Launcher/Core/Host/Toolchain 协议、模块 Export 与 Provider State、Entry 环境 Bun 与 Action `run.ts`、Entry Host 单实例、Entry Worker 输出和整棵进程树取消。
 
+`run.py` 当前只作为未来入口被 Catalog 识别并显示“受管 Python 尚未就绪”的诊断，不会向 CLI/Web 暴露虚假的可执行能力；其启用门槛是 `.dev.setup` 完整拥有 Python 的版本、来源、安装元数据和文件哈希。
+
 ## 六、Web 与执行边界
 
 1. Web 使用固定 Finder 式界面，目录命令模块通过 `_view/web.json` 提供展示提示。命令行只在自身成为路径末端时原位展开 UI 拥有的视图菜单；有真实子命令时默认选择“子命令”，普通叶子命令默认选择“概览”，Profile 变量叶子命令默认选择“设置”，“执行”永不自动触发且只对 Kernel/Action 开放。继续选择子命令后，父命令菜单收起并追加下一列。URL 路径编码可分享、可刷新和可前进后退的命令身份，非默认视图以 `?view=edit|overview|help|run|logs` 表达；默认视图、临时表单与运行状态不进入 URL。视图标签不属于 Catalog 地址，因此不会与英文命令名冲突。Profile 变量的 Finder 摘要、Web 帮助与 CLI 帮助共同读取叶子命令目录的 `_help/zh-CN.txt`，Web 不维护第二份领域文案。Web 提交 Catalog 中的命令地址和参数，解释器、磁盘路径、cwd 和环境变量由 Core 解析。Host 状态与退出使用受 Host 头约束、要求显式控制请求头的专用本地 API；单实例租约只负责互斥，不再兼任无法确认结果的激活通道。
@@ -81,7 +83,7 @@
 
 1. 以真实命令为驱动扩展 `_view/web.json` 的最小交互协议，逐步覆盖参数类型、确认提示和结果展示；不要把临时输入和输出塞进 URL。
 2. Run Journal V1 先通过 8 MiB 单次上限约束失控输出；积累真实使用量后，再定义跨进程安全的按模块保留数量、清理入口和“进程异常退出后未完成”的对账规则，不提前加入常驻日志服务或 OpenTelemetry SDK。确有跨进程 Trace 或外部采集需求时，再从当前事件协议映射到 OTLP。
-3. `.dev.setup` / `.dev.status` 已验证 `run.toolchain.json` 的完整垂直路径，`proj.build.app` → `proj.publish.app` 已验证完整开发环境驱动 Action `run.ts`、模块 Provider 消费和不可变运行时发布的日常垂直路径；下一批按真实收益迁移仍依赖 `_toolchain` 私有 PowerShell 的 Action，并为默认四领域补长期运行、取消和真实网络故障验收。冷 Bootstrap 的 Rust/MSVC 准备逻辑继续保留在系统原生 Shell。删除通用 `run.ps1` / `run.cmd` 适配器前，先决定 `run.py` 的运行时所有权并形成剩余入口迁移清单，避免长期兼容层。
-4. 继续收窄现有 Action 对 `_toolchain` 私有实现的直接依赖；等 Launcher 出现真实发布消费者时，再按 App 已验证的模式增加对应 publish 入口，不预先制造通用资产框架。
+3. `.dev.setup` / `.dev.status` 已验证 `run.toolchain.json` 的完整垂直路径；App 与 Launcher 的 build → publish 均已验证完整开发环境驱动 Action `run.ts`、模块 Provider 消费和原子发布的日常垂直路径。下一批为默认四领域补长期运行、取消和真实网络故障验收。冷 Bootstrap 的 Rust/MSVC 准备逻辑继续保留在系统原生 Shell。删除通用 `run.ps1` / `run.cmd` 适配器前，先为受管 Python 建立明确所有权，再启用目前只由 Catalog 诊断的 `run.py`，避免长期兼容层或系统 Python fallback。
+4. Launcher 的日常 Action 与冷 Bootstrap 构建器共用声明式 `build.json` 编译契约；前者消费 Entry 受管 MSVC，后者只在 Core 不存在时准备固定工具链。不要把 Bootstrap 恢复逻辑重新引入普通 Action，也不要为单一产品制品制造通用资产框架。
 5. 为不可变 Release Set 增加显式保留与清理命令：只删除不再由 `current` 指向、且未被旧 Host 映射的目录；不要把生命周期判断塞进每次发布。
 6. 长期目标是保持一个正式 Core、一套配置与命令协议，让 CLI、Web 和后续入口共享同一套行为语义，同时让每个目录化模块独立拥有自己的领域数据与演进节奏。

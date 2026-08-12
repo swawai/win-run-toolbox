@@ -1,0 +1,15 @@
+{
+  "schema": "swawkit.proj-launcher-build/v1",
+  "compileArguments": [
+    "/nologo", "/Brepro", "/W4", "/WX", "/TC", "/c", "/O1", "/Os",
+    "/Oi", "/Gy", "/Gw", "/Zl"
+  ],
+  "linkArguments": [
+    "/nologo", "/Brepro", "/ENTRY:launcher_entry", "/SUBSYSTEM:CONSOLE",
+    "/MACHINE:X64", "/NODEFAULTLIB", "/INCREMENTAL:NO", "/OPT:REF",
+    "/OPT:ICF", "/DEBUG:NONE", "/MANIFEST:NO", "/DYNAMICBASE",
+    "/HIGHENTROPYVA", "/NXCOMPAT"
+  ],
+  "libraries": ["kernel32.lib", "user32.lib"],
+  "maximumBytes": 65536
+}

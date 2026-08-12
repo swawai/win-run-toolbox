@@ -67,6 +67,20 @@ function Assert-ProjLauncherBuildPathInsideRoot {
     return $FullPath
 }
 
+function Assert-ProjLauncherBuildReplaceableFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    $Item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if ($null -ne $Item -and
+        ($Item.PSIsContainer -or
+            ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
+        throw "$Description is unsafe: $Path"
+    }
+}
+
 $CompilerPath = Resolve-ProjLauncherBuildExecutable `
     -Path $CompilerPath `
     -Description 'The injected C compiler'
@@ -92,21 +106,55 @@ $SourcePath = Join-Path $PSScriptRoot 'launcher.c'
 if (-not [IO.File]::Exists($SourcePath)) {
     throw "The Launcher source is missing: $SourcePath"
 }
+$ContractPath = Join-Path $PSScriptRoot 'build.json'
+try {
+    $Contract = [IO.File]::ReadAllText(
+        $ContractPath,
+        [Text.Encoding]::UTF8
+    ) | ConvertFrom-Json
+} catch {
+    throw "The Launcher build contract is invalid: $ContractPath"
+}
+[string[]]$ContractFields = @(
+    $Contract.PSObject.Properties | ForEach-Object { [string]$_.Name }
+)
+if ($ContractFields.Count -ne 5 -or
+    $ContractFields -cnotcontains 'schema' -or
+    $ContractFields -cnotcontains 'compileArguments' -or
+    $ContractFields -cnotcontains 'linkArguments' -or
+    $ContractFields -cnotcontains 'libraries' -or
+    $ContractFields -cnotcontains 'maximumBytes' -or
+    [string]$Contract.schema -cne 'swawkit.proj-launcher-build/v1' -or
+    $Contract.compileArguments -isnot [array] -or
+    $Contract.linkArguments -isnot [array] -or
+    $Contract.libraries -isnot [array] -or
+    @($Contract.compileArguments).Count -eq 0 -or
+    @($Contract.linkArguments).Count -eq 0 -or
+    @($Contract.libraries).Count -eq 0 -or
+    @($Contract.compileArguments | Where-Object {
+        $_ -isnot [string] -or [string]::IsNullOrEmpty([string]$_)
+    }).Count -ne 0 -or
+    @($Contract.linkArguments | Where-Object {
+        $_ -isnot [string] -or [string]::IsNullOrEmpty([string]$_)
+    }).Count -ne 0 -or
+    @($Contract.libraries | Where-Object {
+        $_ -isnot [string] -or [string]::IsNullOrEmpty([string]$_)
+    }).Count -ne 0 -or
+    ($Contract.maximumBytes -isnot [int] -and
+        $Contract.maximumBytes -isnot [long]) -or
+    [long]$Contract.maximumBytes -le 0) {
+    throw "The Launcher build contract is invalid: $ContractPath"
+}
 $ObjectPath = Join-Path $BuildRoot 'launcher.obj'
 $StagedPath = Join-Path $BuildRoot 'template.proj1.exe'
+Assert-ProjLauncherBuildReplaceableFile `
+    -Path $ObjectPath `
+    -Description 'The Launcher object target'
+Assert-ProjLauncherBuildReplaceableFile `
+    -Path $StagedPath `
+    -Description 'The Launcher staged executable target'
 [string[]]$CompileArguments = @(
-    '/nologo'
-    '/Brepro'
-    '/W4'
-    '/WX'
-    '/TC'
-    '/c'
-    '/O1'
-    '/Os'
-    '/Oi'
-    '/Gy'
-    '/Gw'
-    '/Zl'
+    [string[]]@($Contract.compileArguments)
     "/Fo$ObjectPath"
     $SourcePath
 )
@@ -116,24 +164,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 [string[]]$LinkArguments = @(
-    '/nologo'
-    '/Brepro'
+    [string[]]@($Contract.linkArguments)
     "/OUT:$StagedPath"
-    '/ENTRY:launcher_entry'
-    '/SUBSYSTEM:CONSOLE'
-    '/MACHINE:X64'
-    '/NODEFAULTLIB'
-    '/INCREMENTAL:NO'
-    '/OPT:REF'
-    '/OPT:ICF'
-    '/DEBUG:NONE'
-    '/MANIFEST:NO'
-    '/DYNAMICBASE'
-    '/HIGHENTROPYVA'
-    '/NXCOMPAT'
     $ObjectPath
-    'kernel32.lib'
-    'user32.lib'
+    [string[]]@($Contract.libraries)
 )
 & $LinkerPath @LinkArguments
 if ($LASTEXITCODE -ne 0) {
@@ -141,7 +175,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $StagedItem = Get-Item -LiteralPath $StagedPath
-if ($StagedItem.Length -le 0 -or $StagedItem.Length -gt 64KB) {
+if ($StagedItem.Length -le 0 -or
+    $StagedItem.Length -gt [long]$Contract.maximumBytes) {
     throw (
         "Unexpected launcher size $($StagedItem.Length) bytes; expected a " +
         'non-empty thin executable no larger than 64 KiB.'

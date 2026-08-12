@@ -82,6 +82,7 @@ fn discovers_control_kernel_and_action_hierarchies() {
     fixture.file("home/_lib/proj/...invalid/run.core.json", "{}");
 
     fixture.file("project/.swaw/build/host/run.exe", "");
+    fixture.file("project/.swaw/python/run.py", "");
     fixture.file(
         "project/.swaw/build/host/_help/zh-CN.txt",
         "Build at {{ADDRESS}}\n{{INVOCATION}}",
@@ -117,6 +118,7 @@ fn discovers_control_kernel_and_action_hierarchies() {
             (CommandSource::Kernel, ".info"),
             (CommandSource::Action, "build"),
             (CommandSource::Action, "build.host"),
+            (CommandSource::Action, "python"),
         ]
     );
 
@@ -176,6 +178,14 @@ fn discovers_control_kernel_and_action_hierarchies() {
     assert_eq!(
         host.help.as_ref().map(|help| help.summary.as_str()),
         Some("Build at build.host")
+    );
+    let python = node(&snapshot, CommandSource::Action, "python");
+    assert!(!python.runnable);
+    assert!(
+        python
+            .diagnostic
+            .as_deref()
+            .is_some_and(|message| message.contains("managed Python"))
     );
 }
 

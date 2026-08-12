@@ -82,7 +82,9 @@ Assert-ProjBootstrapContractTest `
     -Condition (
         -not $LauncherBuild.Contains('_toolchain') -and
         -not $LauncherBuild.Contains('bootstrap.ps1') -and
-        -not $LauncherBuild.Contains('launcher-runtime.ps1')
+        -not $LauncherBuild.Contains('launcher-runtime.ps1') -and
+        $LauncherBuild.Contains('build.json') -and
+        -not $LauncherBuild.Contains('/ENTRY:launcher_entry')
     ) `
     -Message 'the Launcher build primitive still owns orchestration'
 

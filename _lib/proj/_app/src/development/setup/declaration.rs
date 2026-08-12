@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use crate::development::ArchiveToolContract;
+use crate::development::archive_tool::ArchiveToolRequest;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputNormalization {
     Exact,
@@ -159,6 +162,42 @@ impl DeclarationSnapshot {
             )))
         }
     }
+
+    pub fn archive_request(
+        &self,
+        tool: &ArchiveToolContract,
+    ) -> Result<Option<ArchiveToolRequest>, DeclarationError> {
+        let mode = self.values.get(tool.mode_variable).ok_or_else(|| {
+            DeclarationError(format!(
+                "archive tool '{}' is absent from the setup declaration registry",
+                tool.name
+            ))
+        })?;
+        if mode == "disabled" {
+            return Ok(None);
+        }
+        if mode != "managed" {
+            return Err(DeclarationError(format!(
+                "unsupported {} value '{}'; expected 'managed' or 'disabled'",
+                tool.mode_variable, mode
+            )));
+        }
+        let version = self.values.get(tool.version_variable).ok_or_else(|| {
+            DeclarationError(format!(
+                "enabled {} must declare {}",
+                tool.display_name, tool.version_variable
+            ))
+        })?;
+        let project_sha256 = self.values.get(tool.hash_variable).ok_or_else(|| {
+            DeclarationError(format!(
+                "enabled {} must declare {} as an empty or pinned value",
+                tool.display_name, tool.hash_variable
+            ))
+        })?;
+        ArchiveToolRequest::new(tool, version, project_sha256)
+            .map(Some)
+            .map_err(|error| DeclarationError(error.to_string()))
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -271,5 +310,23 @@ mod tests {
             Some(InputNormalization::Lowercase)
         );
         assert_eq!(provider_input_normalization("SWAWKIT_PROJ_GO_MODE"), None);
+    }
+
+    #[test]
+    fn archive_requests_are_typed() {
+        let values = BTreeMap::from([
+            ("SWAWKIT_PROJ_BUN_MODE", "managed"),
+            ("SWAWKIT_PROJ_BUN_VERSION", "1.2.15"),
+            ("SWAWKIT_PROJ_BUN_SHA256", ""),
+        ]);
+        let snapshot = snapshot(|name| values.get(name).map(|value| (*value).to_owned()));
+        assert_eq!(
+            snapshot
+                .archive_request(&crate::development::BUN)
+                .unwrap()
+                .unwrap()
+                .requested(),
+            "1.2.15"
+        );
     }
 }

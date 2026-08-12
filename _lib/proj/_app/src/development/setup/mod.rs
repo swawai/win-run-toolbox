@@ -1,3 +1,4 @@
+pub mod archive;
 pub mod declaration;
 pub mod environment;
 pub mod provider;

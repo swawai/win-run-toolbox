@@ -108,8 +108,22 @@ function Test-PuttyFallbackCodeIsRemoved {
     }
 }
 
+function Test-WindowsProcessArgumentsPreserveEmptyAndEquals {
+    $commandLine = Join-RemoteKitProcessArguments @(
+        '-SshKeyPath',
+        '',
+        '-EncodedCommand',
+        'ABC=='
+    )
+
+    Assert-True `
+        ($commandLine -eq '-SshKeyPath "" -EncodedCommand ABC==') `
+        'child PowerShell arguments should preserve empty values and trailing equals.'
+}
+
 function Test-GenericStdinRunnerContract {
     $kit = [IO.File]::ReadAllText((Join-Path $script:KitRoot 'kit.cmd'))
+    $runtime = [IO.File]::ReadAllText((Join-Path $script:KitRoot 'kit.ps1'))
     $runner = [IO.File]::ReadAllText(
         (Join-Path $script:KitRoot 'stdin_runner.ps1')
     )
@@ -118,15 +132,21 @@ function Test-GenericStdinRunnerContract {
         [Text.Encoding]::UTF8
     )
 
-    Assert-Contains $kit 'if /i "%verb%"=="stdin" goto :StdinCommand' `
-        'kit.cmd should dispatch the stdin verb.'
+    Assert-Contains $kit '-File "%~dp0kit.ps1" %*' `
+        'kit.cmd should forward the complete CMD argument text once.'
     Assert-Contains $kit 'chcp 65001 >nul <nul' `
         'kit.cmd must keep chcp from consuming redirected standard input.'
-    Assert-Contains $kit 'REMOTE_KIT_STDIN_ARG_COUNT' `
-        'kit.cmd should forward stdin remote arguments explicitly.'
-    Assert-Contains $kit '-RemoteShell "%remoteShell%"' `
-        'kit.cmd should pass resolved shell metadata to the stdin runner.'
-    Assert-Contains $kit 'is recognized but not implemented for remote commands' `
+    Assert-True (-not ($kit -match '%~[5-9]')) `
+        'kit.cmd must not parse data-bearing arguments through CMD numbered parameters.'
+    Assert-True (-not ($kit -match '(?im)^\s*shift(?:\s|$)')) `
+        'kit.cmd must not mutate the forwarded argument vector with SHIFT.'
+    Assert-Contains $runtime "if (`$Verb -eq 'stdin')" `
+        'kit.ps1 should dispatch the stdin verb.'
+    Assert-Contains $runtime 'REMOTE_KIT_STDIN_ARG_COUNT' `
+        'kit.ps1 should forward stdin remote arguments explicitly.'
+    Assert-Contains $runtime '-RemoteShell $Runtime.RemoteShell' `
+        'kit.ps1 should pass resolved shell metadata to the stdin runner.'
+    Assert-Contains $runtime 'implemented for remote commands.' `
         'reserved remote-shell profiles should fail explicitly before SSH execution.'
     Assert-Contains $runner 'RedirectStandardInput = $false' `
         'stdin processes should inherit raw standard handles.'
@@ -172,34 +192,23 @@ function Test-GenericStdinKitDispatch {
         )
         $payloadBytes = [byte[]]@(0, 1, 2, 10, 13, 26, 128, 255)
         [IO.File]::WriteAllBytes($payload, $payloadBytes)
-        $fakeRunner = @'
-param(
-    [int]$Port,
-    [string]$RemoteHost,
-    [string]$RemoteUser,
-    [string]$SshKeyPath,
-    [int]$RemoteArgumentCount
-)
+        $fakeRuntime = @'
 $inputStream = [Console]::OpenStandardInput()
 $memory = New-Object IO.MemoryStream
 $inputStream.CopyTo($memory)
 $lines = @(
-    "Port=$Port",
-    "RemoteHost=$RemoteHost",
-    "RemoteUser=$RemoteUser",
     "PayloadBase64=$([Convert]::ToBase64String($memory.ToArray()))",
-    "Count=$RemoteArgumentCount"
+    "Count=$($args.Count)"
 )
-for ($i = 1; $i -le $RemoteArgumentCount; $i++) {
-    $name = 'REMOTE_KIT_STDIN_ARG_' + $i
-    $lines += "Arg${i}=$([Environment]::GetEnvironmentVariable($name))"
+for ($i = 0; $i -lt $args.Count; $i++) {
+    $lines += "Arg$($i + 1)=$($args[$i])"
 }
 [IO.File]::WriteAllLines($env:REMOTE_KIT_STDIN_TEST_CAPTURE, $lines)
 exit 0
 '@
         [IO.File]::WriteAllText(
-            (Join-Path $scratch 'stdin_runner.ps1'),
-            $fakeRunner,
+            (Join-Path $scratch 'kit.ps1'),
+            $fakeRuntime,
             (New-Object Text.UTF8Encoding($false))
         )
         $env:REMOTE_KIT_STDIN_TEST_CAPTURE = $capture
@@ -208,24 +217,50 @@ exit 0
         $dispatch = (
             'call "' + $kitPath + '" 22 example.invalid root ' +
             'C:\keys\id_test stdin -- powershell.exe -NoLogo ' +
-            '-EncodedCommand abc < "' + $payload + '"'
+            '-EncodedCommand ABC== name=value < "' + $payload + '"'
         )
         & $env:ComSpec /d /c $dispatch
-        Assert-True ($LASTEXITCODE -eq 0) 'kit.cmd stdin dispatch should succeed.'
+        Assert-True ($LASTEXITCODE -eq 0) 'kit.cmd argument bridge should succeed.'
         $state = @([IO.File]::ReadAllLines($capture))
         foreach ($expected in @(
-            'Port=22',
-            'RemoteHost=example.invalid',
-            'RemoteUser=root',
             "PayloadBase64=$([Convert]::ToBase64String($payloadBytes))",
-            'Count=4',
-            'Arg1=powershell.exe',
-            'Arg2=-NoLogo',
-            'Arg3=-EncodedCommand',
-            'Arg4=abc'
+            'Count=11',
+            'Arg1=22',
+            'Arg2=example.invalid',
+            'Arg3=root',
+            'Arg4=C:\keys\id_test',
+            'Arg5=stdin',
+            'Arg6=--',
+            'Arg7=powershell.exe',
+            'Arg8=-NoLogo',
+            'Arg9=-EncodedCommand',
+            'Arg10=ABC==',
+            'Arg11=name=value'
         )) {
             Assert-True ($state -contains $expected) `
-                "stdin dispatch is missing '$expected'."
+                "CMD bridge is missing '$expected'."
+        }
+
+        $emptyDispatch = (
+            'call "' + $kitPath + '" "0" "" "" "__ID__" ' +
+            '-- echo ABC== < nul'
+        )
+        & $env:ComSpec /d /c $emptyDispatch
+        Assert-True ($LASTEXITCODE -eq 0) `
+            'kit.cmd bridge should preserve empty fixed arguments.'
+        $emptyState = @([IO.File]::ReadAllLines($capture))
+        foreach ($expected in @(
+            'Count=7',
+            'Arg1=0',
+            'Arg2=',
+            'Arg3=',
+            'Arg4=__ID__',
+            'Arg5=--',
+            'Arg6=echo',
+            'Arg7=ABC=='
+        )) {
+            Assert-True ($emptyState -contains $expected) `
+                "CMD bridge empty-argument case is missing '$expected'."
         }
     } finally {
         [Environment]::SetEnvironmentVariable(
@@ -249,6 +284,7 @@ try {
     Test-ScriptRunnerArgsAllowOneConnectionPasswordFallback
     Test-ConfigHostArgsUseConfigAliasWithoutDirectOverrides
     Test-PuttyFallbackCodeIsRemoved
+    Test-WindowsProcessArgumentsPreserveEmptyAndEquals
     Test-GenericStdinRunnerContract
     Test-GenericStdinKitDispatch
     Write-Host "ssh remote kit script-runner smoke ok" -ForegroundColor Green

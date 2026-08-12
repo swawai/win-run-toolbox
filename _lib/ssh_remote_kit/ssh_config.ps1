@@ -78,7 +78,7 @@ function Get-RemoteKitEntryHostAlias {
 function Protect-RemoteKitSshConfigFile {
     param([Parameter(Mandatory=$true)] [string]$Path)
 
-    if (-not $IsWindows -and $null -ne $IsWindows) {
+    if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
         return
     }
 

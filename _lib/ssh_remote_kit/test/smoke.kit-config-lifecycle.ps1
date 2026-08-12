@@ -127,7 +127,7 @@ function Test-CmdShellInitializationIsAppliedOnce {
         Assert-Contains `
             $logText `
             '"chcp 65001>nul & qwinsta"' `
-            "win.cmd profile should initialize UTF-8 inside the SSH command."
+            "win.cmd profile should initialize UTF-8 inside the SSH command.`n$logText"
     } finally {
         [System.IO.File]::WriteAllText(
             $script:Entry,
@@ -159,12 +159,19 @@ function New-Scenario {
 function Test-DefaultCommandWritesGeneratedConfigOnly {
     $scenario = New-Scenario
     try {
-        Invoke-Entry $scenario.FakeBin $scenario.Profile $scenario.Log "-- echo OK"
+        Invoke-Entry `
+            $scenario.FakeBin `
+            $scenario.Profile `
+            $scenario.Log `
+            "-- echo ABC== name=value"
 
         Assert-True (Test-Path -LiteralPath $script:GeneratedConfig -PathType Leaf) "default command should generate repo-local ssh config."
         Assert-ManagedIncludeState $scenario.Profile $false "default command should not install user ssh Include."
         $logText = [System.IO.File]::ReadAllText($scenario.Log)
-        Assert-Contains $logText '"echo OK"' "posix shell metadata should preserve the remote command."
+        Assert-Contains `
+            $logText `
+            '"echo ABC== name=value"' `
+            "posix shell metadata should preserve '=' in the remote command."
         Assert-True `
             (-not $logText.Contains('chcp 65001')) `
             "posix shell metadata should not add Windows initialization."

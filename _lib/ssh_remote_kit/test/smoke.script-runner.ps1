@@ -129,21 +129,31 @@ function Test-GenericStdinRunnerContract {
     Assert-Contains $kit 'is recognized but not implemented for remote commands' `
         'reserved remote-shell profiles should fail explicitly before SSH execution.'
     Assert-Contains $runner 'RedirectStandardInput = $false' `
-        'stdin runner should let OpenSSH inherit the raw standard-input handle.'
+        'stdin processes should inherit raw standard handles.'
     Assert-Contains $runner "`$_ -ne '-n'" `
-        'stdin runner must remove the SSH option that closes stdin.'
+        'posix stdin must remove the SSH option that closes stdin.'
     Assert-Contains $runner '$RemoteArguments -join '' ''' `
         'stdin runner should build one explicit remote command.'
-    Assert-Contains $runner 'if ($RemoteShell -eq ''win.cmd'')' `
-        'stdin runner should apply cmd-specific initialization.'
+    Assert-Contains $runner 'Invoke-RemoteKitWindowsCmdStdinCommand' `
+        'Windows stdin should use its explicit staged transport.'
+    Assert-Contains $runner 'Copy-RemoteKitStandardInputToPayload' `
+        'Windows stdin should spool the raw local input before SSH execution.'
+    Assert-Contains $runner "-ExePath 'scp.exe'" `
+        'Windows stdin should upload the payload outside the SSH stdin channel.'
+    Assert-Contains $runner 'CreateNoWindow = $false' `
+        'Windows child commands must preserve inherited SSH output handles.'
+    Assert-Contains $runner 'Remove-Item -LiteralPath $payloadPath' `
+        'Windows stdin loader should remove its remote payload.'
+    Assert-Contains $runner 'Remove-RemoteKitTempPath $LocalPayloadPath' `
+        'Windows stdin should remove its local payload.'
+    Assert-Contains $runner 'chcp 65001>nul <nul &' `
+        'Windows stdin initialization must not consume the staged payload.'
     Assert-Contains $runner 'is recognized but not implemented for stdin commands' `
         'stdin runner should reject reserved profiles without an implementation.'
     Assert-Contains $help 'stdin -- command < file' `
         'SSH help should advertise the generic stdin command.'
-    Assert-True (-not $runner.Contains('PayloadPath')) `
-        'stdin runner should not expose a payload-file transport.'
     Assert-True (-not $runner.Contains('StandardInput.BaseStream')) `
-        'stdin runner must not insert a BOM-producing .NET input pump.'
+        'stdin runner must not pump bytes into the OpenSSH stdin channel.'
 }
 
 function Test-GenericStdinKitDispatch {
@@ -245,7 +255,10 @@ try {
 } finally {
     $ctx = $null
     try { $ctx = Get-RemoteKitContext } catch { }
-    if ($ctx -and (Test-Path -LiteralPath $ctx.TempWorkspaceRoot)) {
-        Remove-Item -LiteralPath $ctx.TempWorkspaceRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if ($ctx -and (Test-Path -LiteralPath $ctx.UploadTempRoot)) {
+        Remove-Item -LiteralPath $ctx.UploadTempRoot `
+            -Recurse `
+            -Force `
+            -ErrorAction SilentlyContinue
     }
 }

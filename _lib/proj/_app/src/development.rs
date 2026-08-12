@@ -13,6 +13,7 @@ pub struct ArchiveToolContract {
     pub executable: &'static str,
     pub required_paths: &'static [&'static str],
     pub archive_subdir: &'static str,
+    archive_name: fn(&str) -> String,
     source_identity: fn(&str) -> String,
     exact_version: fn(&str) -> bool,
 }
@@ -24,6 +25,10 @@ impl ArchiveToolContract {
 
     pub fn source_identity(&self, version: &str) -> String {
         (self.source_identity)(version)
+    }
+
+    pub fn archive_name(&self, version: &str) -> String {
+        (self.archive_name)(version)
     }
 
     pub fn definition_signature(&self, version: &str, project_sha256: &str) -> String {
@@ -55,6 +60,7 @@ pub const BUN: ArchiveToolContract = ArchiveToolContract {
     executable: "bun.exe",
     required_paths: &["bun.exe", "bunx.cmd"],
     archive_subdir: "bun-windows-x64",
+    archive_name: bun_archive_name,
     source_identity: bun_source_identity,
     exact_version: is_safe_segment,
 };
@@ -70,6 +76,7 @@ pub const PWSH: ArchiveToolContract = ArchiveToolContract {
     executable: "pwsh.exe",
     required_paths: &["pwsh.exe"],
     archive_subdir: "",
+    archive_name: pwsh_archive_name,
     source_identity: pwsh_source_identity,
     exact_version: is_semantic_version,
 };
@@ -104,8 +111,16 @@ fn bun_source_identity(version: &str) -> String {
     format!("github:oven-sh/bun@bun-v{version}#bun-windows-x64.zip")
 }
 
+fn bun_archive_name(_version: &str) -> String {
+    "bun-windows-x64.zip".to_owned()
+}
+
 fn pwsh_source_identity(version: &str) -> String {
     format!("github:PowerShell/PowerShell@v{version}#PowerShell-{version}-win-x64.zip")
+}
+
+fn pwsh_archive_name(version: &str) -> String {
+    format!("PowerShell-{version}-win-x64.zip")
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ use std::path::Path;
 use super::{ArchiveToolContract, is_semantic_version};
 
 mod filesystem;
+pub mod install;
 mod trust;
 mod types;
 
@@ -15,8 +16,8 @@ pub use types::{
 
 use filesystem::{
     MAX_METADATA_BYTES, MAX_SELECTION_BYTES, child_file, directory_chain, is_lower_hex,
-    optional_directory_chain, optional_regular_file, read_json, verify_regular_file,
-    verify_regular_file_length,
+    optional_directory_chain, optional_regular_file, read_json, regular_directory,
+    verify_regular_file, verify_regular_file_length,
 };
 
 const INSTALL_SCHEMA: &str = "swawkit.proj-dev.install.v0";
@@ -185,20 +186,30 @@ impl<'a> ArchiveToolStore<'a> {
             resolved.version.as_str(),
         ];
         let root = directory_chain(self.data_root, &components, "tool installation")
-            .map_err(|error| error.with_kind(ArchiveToolErrorKind::InstallationUnavailable))?;
+            .map_err(|error| content_error(error, ArchiveToolErrorKind::InstallationUnavailable))?;
+        self.read_installation_at(resolved, &root)
+    }
+
+    pub(super) fn read_installation_at(
+        &self,
+        resolved: &ResolvedDefinition,
+        root: &Path,
+    ) -> Result<Installation, ArchiveToolError> {
+        self.require_tool(&resolved.tool_name)?;
+        regular_directory(root, "tool installation")?;
         let metadata_path = root.join(".swawkit-dev-install.json");
         let metadata: InstallMetadata = read_json(
             &metadata_path,
             "tool installation metadata",
             MAX_METADATA_BYTES,
         )
-        .map_err(|error| error.with_kind(ArchiveToolErrorKind::MetadataUnreadable))?;
+        .map_err(|error| content_error(error, ArchiveToolErrorKind::MetadataUnreadable))?;
         self.validate_metadata(resolved, &metadata)?;
-        self.validate_records_and_lengths(&root, &metadata)?;
+        self.validate_records_and_lengths(root, &metadata)?;
         Ok(Installation {
             tool_name: self.tool.name.to_owned(),
             executable: root.join(self.tool.executable),
-            root,
+            root: root.to_path_buf(),
             metadata,
         })
     }
@@ -207,10 +218,12 @@ impl<'a> ArchiveToolStore<'a> {
     pub fn verify_hashes(&self, installation: &Installation) -> Result<(), ArchiveToolError> {
         self.require_tool(&installation.tool_name)?;
         for record in &installation.metadata.files {
-            let path = child_file(&installation.root, &record.path, "installed file")
-                .map_err(|error| error.with_kind(ArchiveToolErrorKind::InstalledFileInvalid))?;
-            verify_regular_file(&path, "installed file", record.length, &record.sha256)
-                .map_err(|error| error.with_kind(ArchiveToolErrorKind::InstalledFileInvalid))?;
+            let path = child_file(&installation.root, &record.path, "installed file").map_err(
+                |error| content_error(error, ArchiveToolErrorKind::InstalledFileInvalid),
+            )?;
+            verify_regular_file(&path, "installed file", record.length, &record.sha256).map_err(
+                |error| content_error(error, ArchiveToolErrorKind::InstalledFileInvalid),
+            )?;
         }
         Ok(())
     }
@@ -309,10 +322,12 @@ impl<'a> ArchiveToolStore<'a> {
                     "tool installation metadata has an invalid file record",
                 ));
             }
-            let path = child_file(root, relative, "installed file")
-                .map_err(|error| error.with_kind(ArchiveToolErrorKind::InstalledFileInvalid))?;
-            verify_regular_file_length(&path, "installed file", record.length)
-                .map_err(|error| error.with_kind(ArchiveToolErrorKind::InstalledFileInvalid))?;
+            let path = child_file(root, relative, "installed file").map_err(|error| {
+                content_error(error, ArchiveToolErrorKind::InstalledFileInvalid)
+            })?;
+            verify_regular_file_length(&path, "installed file", record.length).map_err(
+                |error| content_error(error, ArchiveToolErrorKind::InstalledFileInvalid),
+            )?;
         }
         Ok(())
     }
@@ -328,6 +343,13 @@ impl<'a> ArchiveToolStore<'a> {
                 self.tool.name
             ),
         ))
+    }
+}
+
+fn content_error(error: ArchiveToolError, kind: ArchiveToolErrorKind) -> ArchiveToolError {
+    match error.kind() {
+        ArchiveToolErrorKind::UnsafeStorage | ArchiveToolErrorKind::Storage => error,
+        _ => error.with_kind(kind),
     }
 }
 

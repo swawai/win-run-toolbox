@@ -52,6 +52,46 @@ pub(super) fn directory_chain(
     })
 }
 
+pub(super) fn ensure_directory_chain(
+    root: &Path,
+    components: &[&str],
+    subject: &str,
+) -> Result<PathBuf, ArchiveToolError> {
+    regular_directory(root, subject)?;
+    let mut path = root.to_path_buf();
+    for component in components {
+        validate_segment(component, subject)?;
+        path.push(component);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_dir() && !is_reparse(&metadata) => {}
+            Ok(_) => {
+                return Err(ArchiveToolError::new(
+                    ArchiveToolErrorKind::UnsafeStorage,
+                    format!("{subject} must be a regular directory: {}", path.display()),
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                create_or_validate_directory(&path, subject)?;
+            }
+            Err(error) => return Err(storage(subject, &path, "inspect", error)),
+        }
+    }
+    Ok(path)
+}
+
+fn create_or_validate_directory(path: &Path, subject: &str) -> Result<(), ArchiveToolError> {
+    match fs::create_dir(path) {
+        Ok(()) => regular_directory(path, subject),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            // Another process can create this component between the preceding
+            // metadata check and create_dir.  Revalidate the winner instead of
+            // turning a safe first-use race into a setup failure.
+            regular_directory(path, subject)
+        }
+        Err(error) => Err(storage(subject, path, "create", error)),
+    }
+}
+
 pub(super) fn optional_regular_file(path: &Path, subject: &str) -> Result<bool, ArchiveToolError> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -172,6 +212,28 @@ pub(super) fn verify_regular_file_length(
     Ok(())
 }
 
+pub(super) fn regular_file_digest(
+    path: &Path,
+    subject: &str,
+    max_bytes: u64,
+) -> Result<(u64, String), ArchiveToolError> {
+    let file = open_regular_at_most(path, subject, max_bytes)?;
+    let length = file
+        .metadata()
+        .map_err(|error| storage(subject, path, "inspect", error))?
+        .len();
+    if length == 0 {
+        return Err(ArchiveToolError::new(
+            ArchiveToolErrorKind::FileMismatch,
+            format!("{subject} cannot be empty: {}", path.display()),
+        ));
+    }
+    let mut digest = Sha256::new();
+    std::io::copy(&mut BufReader::new(file), &mut digest)
+        .map_err(|error| storage(subject, path, "hash", error))?;
+    Ok((length, format!("{:x}", digest.finalize())))
+}
+
 pub(super) fn is_lower_hex(value: &str, length: usize) -> bool {
     value.len() == length
         && value
@@ -195,7 +257,7 @@ fn validate_segment(component: &str, subject: &str) -> Result<(), ArchiveToolErr
     Ok(())
 }
 
-fn regular_directory(path: &Path, subject: &str) -> Result<(), ArchiveToolError> {
+pub(super) fn regular_directory(path: &Path, subject: &str) -> Result<(), ArchiveToolError> {
     let metadata =
         fs::symlink_metadata(path).map_err(|error| storage(subject, path, "inspect", error))?;
     if !metadata.is_dir() || is_reparse(&metadata) {
@@ -244,6 +306,32 @@ fn storage(subject: &str, path: &Path, action: &str, error: std::io::Error) -> A
     )
 }
 
-fn is_reparse(metadata: &fs::Metadata) -> bool {
+pub(super) fn is_reparse(metadata: &fs::Metadata) -> bool {
     metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::*;
+
+    static NEXT_ROOT: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn a_concurrent_directory_winner_is_revalidated() {
+        let root = std::env::temp_dir().join(format!(
+            "swawkit-archive-directory-{}-{}",
+            std::process::id(),
+            NEXT_ROOT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir(&root).unwrap();
+        let path = root.join("winner");
+        fs::create_dir(&path).unwrap();
+
+        create_or_validate_directory(&path, "test directory").unwrap();
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }

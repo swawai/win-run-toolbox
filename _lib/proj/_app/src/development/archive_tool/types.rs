@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArchiveToolErrorKind {
@@ -24,6 +24,13 @@ pub enum ArchiveToolErrorKind {
     Storage,
     InvalidDocument,
     FileMismatch,
+    InvalidInstallRequest,
+    LockUnavailable,
+    DownloadFailed,
+    ArchiveInvalid,
+    InstallationFailed,
+    RecoveryFailed,
+    ProbeFailed,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -75,7 +82,7 @@ impl ArchiveToolRequest {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceVerification {
     Github,
@@ -99,7 +106,7 @@ pub enum ResolvedVerification {
     Unresolved,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Selection {
     pub(super) schema: String,
@@ -134,6 +141,10 @@ pub struct ResolvedDefinition {
 }
 
 impl ResolvedDefinition {
+    pub fn tool_name(&self) -> &str {
+        &self.tool_name
+    }
+
     pub fn requested_latest(&self) -> bool {
         self.requested_latest
     }
@@ -155,7 +166,7 @@ impl ResolvedDefinition {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InstallMetadata {
     pub(super) schema: String,
@@ -170,6 +181,29 @@ pub struct InstallMetadata {
 }
 
 impl InstallMetadata {
+    pub(super) fn new(
+        name: String,
+        version: String,
+        source_url: String,
+        source_sha256: String,
+        source_verification: SourceVerification,
+        recipe_version: String,
+        definition_signature: String,
+        files: Vec<InstalledFile>,
+    ) -> Self {
+        Self {
+            schema: "swawkit.proj-dev.install.v0".to_owned(),
+            name,
+            version,
+            source_url,
+            source_sha256,
+            source_verification,
+            recipe_version,
+            definition_signature,
+            files,
+        }
+    }
+
     pub fn source_url(&self) -> &str {
         &self.source_url
     }
@@ -187,7 +221,7 @@ impl InstallMetadata {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InstalledFile {
     pub(super) path: String,
@@ -196,6 +230,14 @@ pub struct InstalledFile {
 }
 
 impl InstalledFile {
+    pub(super) fn new(path: String, length: u64, sha256: String) -> Self {
+        Self {
+            path,
+            length,
+            sha256,
+        }
+    }
+
     pub fn path(&self) -> &str {
         &self.path
     }

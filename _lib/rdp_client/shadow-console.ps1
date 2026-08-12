@@ -180,6 +180,7 @@ function Enable-RdpClientConsoleDisplay {
         return $ConsoleSession
     } catch {
         $Failure = $_.Exception.Message
+        $CleanupFailures = New-Object 'Collections.Generic.List[string]'
         if (-not $MovedToConsole -and $null -ne $Landing) {
             try {
                 $null = Disconnect-RdpClientSessionDestination `
@@ -187,11 +188,22 @@ function Enable-RdpClientConsoleDisplay {
                     -EntryUserName $EntryUserName `
                     -LandingSession $Landing
             } catch {
+                $CleanupFailures.Add($_.Exception.Message)
             }
         }
         if ($null -ne $MstscProcess) {
-            Stop-RdpClientStartedMstsc -MstscProcess $MstscProcess
+            try {
+                Stop-RdpClientStartedMstsc -MstscProcess $MstscProcess
+            } catch {
+                $CleanupFailures.Add($_.Exception.Message)
+            }
         }
-        throw "Could not establish a console display for Shadow: $Failure"
+        $CleanupSuffix = if ($CleanupFailures.Count -eq 0) {
+            ''
+        } else {
+            [Environment]::NewLine +
+                'Cleanup: ' + ($CleanupFailures -join '; ')
+        }
+        throw "Could not establish a console display for Shadow: $Failure$CleanupSuffix"
     }
 }

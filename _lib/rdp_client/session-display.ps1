@@ -242,10 +242,18 @@ function Open-RdpClientSessionDisplayLease {
             MstscProcess = $MstscProcess
         }
     } catch {
+        $Failure = $_.Exception.Message
         if ($null -ne $MstscProcess) {
-            Stop-RdpClientStartedMstsc -MstscProcess $MstscProcess
+            try {
+                Stop-RdpClientStartedMstsc -MstscProcess $MstscProcess
+            } catch {
+                throw (
+                    "$Failure" + [Environment]::NewLine +
+                    "Temporary RDP cleanup failed: $($_.Exception.Message)"
+                )
+            }
         }
-        throw
+        throw $Failure
     }
 }
 

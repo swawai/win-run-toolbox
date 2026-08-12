@@ -191,6 +191,32 @@ if (-not $RemoteRoute.Contains('tscon.exe') -or
     throw 'The peer route script must support exact connect and rollback disconnect.'
 }
 
+$OwnedProcess = New-Object Diagnostics.Process
+try {
+    $OwnedProcess.StartInfo.FileName = Join-Path $PSHOME 'powershell.exe'
+    $OwnedProcess.StartInfo.Arguments = (
+        '-NoLogo -NoProfile -NonInteractive -Command ' +
+        'Start-Sleep -Seconds 30'
+    )
+    $OwnedProcess.StartInfo.UseShellExecute = $false
+    $OwnedProcess.StartInfo.CreateNoWindow = $true
+    $OwnedProcess.Start() | Out-Null
+    Stop-RdpClientStartedMstsc -MstscProcess $OwnedProcess
+    $OwnedProcess.Refresh()
+    if (-not $OwnedProcess.HasExited) {
+        throw 'Owned mstsc cleanup must verify process exit before returning.'
+    }
+} finally {
+    try {
+        if (-not $OwnedProcess.HasExited) {
+            $OwnedProcess.Kill()
+            [void]$OwnedProcess.WaitForExit(5000)
+        }
+    } catch {
+    }
+    $OwnedProcess.Dispose()
+}
+
 $RouteCalls = New-Object 'Collections.Generic.List[string]'
 $RollbackDisconnected = $false
 $MstscStopped = $false

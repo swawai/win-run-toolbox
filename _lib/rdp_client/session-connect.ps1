@@ -359,7 +359,20 @@ function Stop-RdpClientStartedMstsc {
             }
         }
         $MstscProcess.Kill()
+        if (-not $MstscProcess.WaitForExit(5000)) {
+            throw 'mstsc did not exit within 5 seconds after termination.'
+        }
+    } catch [InvalidOperationException] {
+        try {
+            $MstscProcess.Refresh()
+            if ($MstscProcess.HasExited) {
+                return
+            }
+        } catch {
+        }
+        throw 'The mstsc process is no longer available for verified cleanup.'
     } catch {
+        throw "Could not stop the mstsc process started by this command: $($_.Exception.Message)"
     }
 }
 
@@ -443,8 +456,12 @@ function Connect-RdpClientSessionById {
                 $Rollback.Add("peer disconnect failed: $($_.Exception.Message)")
             }
         }
-        Stop-RdpClientStartedMstsc -MstscProcess $MstscProcess
-        $Rollback.Add('closed the mstsc process started by this command')
+        try {
+            Stop-RdpClientStartedMstsc -MstscProcess $MstscProcess
+            $Rollback.Add('closed the mstsc process started by this command')
+        } catch {
+            $Rollback.Add("mstsc cleanup failed: $($_.Exception.Message)")
+        }
         throw (
             "Exact session connection failed: $Failure" +
             [Environment]::NewLine +

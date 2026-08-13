@@ -41,6 +41,47 @@ function Invoke-ProjSetupEntry {
     }
 }
 
+function New-ProjCancellationAction {
+    param([Parameter(Mandatory = $true)][string]$OutputAssembly)
+
+    $OutputAssembly = [IO.Path]::GetFullPath($OutputAssembly)
+    [void][IO.Directory]::CreateDirectory(
+        [IO.Path]::GetDirectoryName($OutputAssembly)
+    )
+    Add-Type -OutputType ConsoleApplication -OutputAssembly $OutputAssembly `
+        -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.IO;
+
+public static class ProjCancellationAction
+{
+    public static int Main()
+    {
+        string root = Environment.GetEnvironmentVariable(
+            "SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT"
+        );
+        if (String.IsNullOrWhiteSpace(root)) return 64;
+        Directory.CreateDirectory(root);
+        ProcessStartInfo start = new ProcessStartInfo();
+        start.FileName = Environment.GetEnvironmentVariable("ComSpec");
+        start.Arguments = "/d /s /c \"ping -t 127.0.0.1 >nul\"";
+        start.UseShellExecute = false;
+        start.CreateNoWindow = true;
+        using (Process child = Process.Start(start))
+        {
+            File.WriteAllText(
+                Path.Combine(root, "descendant.pid"),
+                child.Id.ToString()
+            );
+            child.WaitForExit();
+            return child.ExitCode;
+        }
+    }
+}
+'@
+}
+
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 . (Join-Path $PSScriptRoot '_lib\runtime-fixture.ps1')
 . (Join-Path $PSScriptRoot '_lib\console-cancel-fixture.ps1')
@@ -66,6 +107,8 @@ try {
         -Runtime $Runtime `
         -RelativePath "Favorites\$EntryName.exe"
     $DataRoot = Join-Path $Runtime.Home "data\proj.$EntryName"
+    $CancellationAction = Join-Path $Runtime.Home '.swaw\cancel-tree\run.exe'
+    New-ProjCancellationAction -OutputAssembly $CancellationAction
 
     $Bound = Invoke-ProjSetupEntry `
         -EntryPath $EntryPath `
@@ -180,6 +223,43 @@ try {
             [IO.File]::Exists((Join-Path $SetupRoot 'export\env.cmd'))
         ) `
         -Message "setup did not recover after console cancellation: $($Retry.Text)"
+
+    $TreeResultPath = Join-Path $TemporaryRoot 'console-cancel-tree.json'
+    & $DriverPath $EntryPath $Runtime.Home $TreeResultPath 'cancel-tree' '4'
+    $TreeDriverExitCode = $LASTEXITCODE
+    Assert-ProjSetupInterruption `
+        -Condition ([IO.File]::Exists($TreeResultPath)) `
+        -Message "process-tree cancel driver produced no result (exit $TreeDriverExitCode)"
+    $TreeResult = Get-Content -LiteralPath $TreeResultPath -Raw |
+        ConvertFrom-Json
+    $ActionDataRoot = Join-Path $DataRoot 'modules\action\cancel-tree'
+    $ActionStates = @(
+        Get-ChildItem -LiteralPath (Join-Path $ActionDataRoot '_runs') `
+            -Filter '_state.json' -File -Recurse |
+            ForEach-Object {
+                Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+            }
+    )
+    Assert-ProjSetupInterruption `
+        -Condition (
+            $TreeDriverExitCode -eq 0 -and
+            [bool]$TreeResult.exited -and
+            [bool]$TreeResult.treeDrained -and
+            [uint32]$TreeResult.observedProcesses -ge 4 -and
+            $null -eq $TreeResult.error
+        ) `
+        -Message (
+            'Core did not terminate the canceled Action process tree: ' +
+            (Get-Content -LiteralPath $TreeResultPath -Raw)
+        )
+    Assert-ProjSetupInterruption `
+        -Condition (
+            $ActionStates.Count -eq 1 -and
+            $ActionStates[0].source -ceq 'cli' -and
+            $ActionStates[0].status -ceq 'canceled' -and
+            $null -ne $ActionStates[0].finishedAtUnixMs
+        ) `
+        -Message 'the canceled Action process tree left a non-terminal journal'
 } finally {
     if ($null -ne $Lock) {
         $Lock.Dispose()
@@ -189,5 +269,5 @@ try {
     }
 }
 
-Write-Host '[PASS] Proj .dev.setup console cancellation lifecycle' -ForegroundColor Green
+Write-Host '[PASS] Proj CLI cancellation and process-tree lifecycle' -ForegroundColor Green
 $global:LASTEXITCODE = 0

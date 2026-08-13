@@ -10,8 +10,8 @@ static TERMINATION_FAILED: AtomicBool = AtomicBool::new(false);
 /// Owns the process-global Windows console cancellation handler for one CLI run.
 ///
 /// The handler itself only records the signal. The journaled process monitor then
-/// terminates its directly owned command child and lets Core durably finish the
-/// run journal as canceled instead of disappearing with a permanently `running`
+/// terminates its owned command Job Object and lets Core durably finish the run
+/// journal as canceled instead of disappearing with a permanently `running`
 /// record. Existing thin Launchers need no cancellation-specific behavior.
 pub struct ConsoleCancellation {
     installed: bool,

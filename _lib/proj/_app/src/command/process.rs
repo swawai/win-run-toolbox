@@ -1,3 +1,4 @@
+mod job;
 mod journaled;
 
 use std::env;
@@ -129,7 +130,7 @@ fn prepare_command(
     Ok(command)
 }
 
-fn process_creation_flags(process_mode: CommandProcessMode) -> u32 {
+pub(super) fn process_creation_flags(process_mode: CommandProcessMode) -> u32 {
     match process_mode {
         CommandProcessMode::InheritConsole => 0,
         CommandProcessMode::NoWindow => CREATE_NO_WINDOW,

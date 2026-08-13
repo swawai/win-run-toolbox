@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Stdio};
 use std::thread::{self, JoinHandle};
@@ -16,7 +17,7 @@ use crate::run_journal::{
 };
 use crate::utf8_output::Utf8LossyDecoder;
 
-use super::{AdapterLaunch, prepare_command};
+use super::{AdapterLaunch, job::OwnedProcessJob, prepare_command, process_creation_flags};
 use crate::command::{CommandError, CommandProcessMode, CommandResult, ProcessEnvironment};
 
 const OUTPUT_READ_BUFFER_SIZE: usize = 8192;
@@ -41,34 +42,54 @@ pub(crate) fn run_process_journaled(
         environment,
         process_mode,
     )?;
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .creation_flags(
+            process_creation_flags(process_mode)
+                | windows_sys::Win32::System::Threading::CREATE_SUSPENDED,
+        );
+    let job = OwnedProcessJob::create()?;
     let mut child = command.spawn().map_err(|error| {
         CommandError::new(format!(
             "cannot start command entry '{}': {error}",
             entry_path.display()
         ))
     })?;
-    monitor_child(&mut child, journal, phase)
+    if let Err(error) = job.assign_and_resume(&mut child) {
+        // Assignment can fail before the Job owns the still-suspended process.
+        // It has never executed and therefore has no descendants, so terminate
+        // and reap precisely this root before returning the launch error.
+        let cleanup = child.kill().and_then(|()| child.wait()).map(|_| ());
+        return match cleanup {
+            Ok(()) => Err(error),
+            Err(cleanup) => Err(CommandError::new(format!(
+                "{error}; additionally, cannot clean up the suspended command entry: {cleanup}"
+            ))),
+        };
+    }
+    monitor_child(&mut child, &job, journal, phase)
 }
 
 fn monitor_child(
     child: &mut Child,
+    job: &OwnedProcessJob,
     journal: &RunJournal,
     phase: RunJournalPhase,
 ) -> CommandResult<i32> {
     let Some(stdout) = child.stdout.take() else {
-        stop_unmonitored_child(child);
+        stop_unmonitored_child(child, job);
         return Err(CommandError::new("command stdout pipe is unavailable"));
     };
     let Some(stderr) = child.stderr.take() else {
-        stop_unmonitored_child(child);
+        stop_unmonitored_child(child, job);
         return Err(CommandError::new("command stderr pipe is unavailable"));
     };
     let stdout_thread = match spawn_reader(stdout, RunJournalStream::Stdout, journal.clone(), phase)
     {
         Ok(thread) => thread,
         Err(error) => {
-            stop_unmonitored_child(child);
+            stop_unmonitored_child(child, job);
             return Err(CommandError::new(format!(
                 "cannot start stdout reader: {error}"
             )));
@@ -78,7 +99,7 @@ fn monitor_child(
     {
         Ok(thread) => thread,
         Err(error) => {
-            let _ = child.kill();
+            let _ = job.terminate();
             let _ = child.wait();
             let _ = join_reader(stdout_thread, "stdout");
             return Err(CommandError::new(format!(
@@ -87,7 +108,7 @@ fn monitor_child(
         }
     };
 
-    let wait_result = wait_for_child_or_cancellation(child);
+    let wait_result = wait_for_child_or_cancellation(child, job);
     let stdout = join_reader(stdout_thread, "stdout");
     let stderr = join_reader(stderr_thread, "stderr");
     let status = wait_result?;
@@ -96,10 +117,13 @@ fn monitor_child(
     Ok(status.code().unwrap_or(1))
 }
 
-fn wait_for_child_or_cancellation(child: &mut Child) -> CommandResult<std::process::ExitStatus> {
+fn wait_for_child_or_cancellation(
+    child: &mut Child,
+    job: &OwnedProcessJob,
+) -> CommandResult<std::process::ExitStatus> {
     loop {
         if console_cancel::requested() {
-            if let Err(error) = child.kill() {
+            if let Err(error) = job.terminate() {
                 match child.try_wait() {
                     Ok(Some(status)) => return Ok(status),
                     _ => {
@@ -116,7 +140,14 @@ fn wait_for_child_or_cancellation(child: &mut Child) -> CommandResult<std::proce
             });
         }
         match child.try_wait() {
-            Ok(Some(status)) => return Ok(status),
+            Ok(Some(status)) => {
+                job.terminate().map_err(|error| {
+                    CommandError::new(format!(
+                        "cannot terminate background processes left by the command entry: {error}"
+                    ))
+                })?;
+                return Ok(status);
+            }
             Ok(None) => thread::sleep(Duration::from_millis(20)),
             Err(error) => {
                 return Err(CommandError::new(format!(
@@ -127,8 +158,8 @@ fn wait_for_child_or_cancellation(child: &mut Child) -> CommandResult<std::proce
     }
 }
 
-fn stop_unmonitored_child(child: &mut Child) {
-    let _ = child.kill();
+fn stop_unmonitored_child(child: &mut Child, job: &OwnedProcessJob) {
+    let _ = job.terminate();
     let _ = child.wait();
 }
 

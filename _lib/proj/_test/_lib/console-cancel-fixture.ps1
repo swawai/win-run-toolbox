@@ -34,10 +34,16 @@ public static class ProjConsoleCancelDriver
 
     public static int Main(string[] arguments)
     {
-        if (arguments.Length != 3) return 64;
+        if (arguments.Length != 3 && arguments.Length != 5) return 64;
         string entry = Path.GetFullPath(arguments[0]);
         string workingDirectory = Path.GetFullPath(arguments[1]);
         string resultPath = Path.GetFullPath(arguments[2]);
+        string commandAddress = arguments.Length == 5
+            ? arguments[3]
+            : ".dev.setup";
+        uint expectedProcesses = arguments.Length == 5
+            ? UInt32.Parse(arguments[4])
+            : 3;
         IntPtr job = IntPtr.Zero;
         PROCESS_INFORMATION child = new PROCESS_INFORMATION();
         try
@@ -61,7 +67,7 @@ public static class ProjConsoleCancelDriver
             startup.dwFlags = STARTF_USESHOWWINDOW;
             startup.wShowWindow = SW_HIDE;
             StringBuilder commandLine = new StringBuilder(
-                "\"" + entry + "\" .dev.setup"
+                "\"" + entry + "\" " + commandAddress
             );
             if (!CreateProcessW(
                 entry,
@@ -82,7 +88,12 @@ public static class ProjConsoleCancelDriver
             CloseHandle(child.hThread);
             child.hThread = IntPtr.Zero;
 
-            uint observed = WaitForCommandTree(job, child.hProcess, 15000);
+            uint observed = WaitForCommandTree(
+                job,
+                child.hProcess,
+                expectedProcesses,
+                15000
+            );
             uint consoleProcesses = SendConsoleCancellation();
             bool exited = WaitForSingleObject(child.hProcess, 15000) == WAIT_OBJECT_0;
             bool treeDrained = WaitForTreeDrain(job, 15000);
@@ -121,7 +132,11 @@ public static class ProjConsoleCancelDriver
         }
     }
 
-    static uint WaitForCommandTree(IntPtr job, IntPtr process, int milliseconds)
+    static uint WaitForCommandTree(
+        IntPtr job,
+        IntPtr process,
+        uint expectedProcesses,
+        int milliseconds)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(milliseconds);
         uint observed = 0;
@@ -137,7 +152,7 @@ public static class ProjConsoleCancelDriver
                 out returned))
                 throw LastError("inspect Entry Job");
             observed = Math.Max(observed, accounting.ActiveProcesses);
-            if (observed >= 3) return observed;
+            if (observed >= expectedProcesses) return observed;
             if (WaitForSingleObject(process, 0) == WAIT_OBJECT_0)
                 throw new InvalidOperationException(
                     "Entry exited before Launcher, Core, and Toolchain were active"
@@ -145,7 +160,7 @@ public static class ProjConsoleCancelDriver
             Thread.Sleep(25);
         }
         throw new TimeoutException(
-            "Launcher, Core, and Toolchain did not become active"
+            "the expected command process tree did not become active"
         );
     }
 

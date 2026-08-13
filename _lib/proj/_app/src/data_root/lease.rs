@@ -25,6 +25,7 @@ impl DataRootBindingLease {
     pub(crate) fn acquire(
         plan: &DataRootPlan,
         entry_file: Arc<EntryIdentityLease>,
+        data_root: EntryIdentityLease,
     ) -> Result<Self, DataRootBindingLeaseError> {
         let target = plan.target();
         let expected_data_root_identity = expected_data_root_identity(plan);
@@ -35,8 +36,6 @@ impl DataRootBindingLease {
             )));
         }
 
-        let data_root = EntryIdentityLease::acquire_directory(&target.data_root)
-            .map_err(|error| binding_error("pin project DataRoot", &target.data_root, error))?;
         if let Some(expected) = expected_data_root_identity
             && data_root.identity() != expected
         {

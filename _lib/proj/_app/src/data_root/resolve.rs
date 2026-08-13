@@ -142,10 +142,11 @@ fn complete_locked(
     request: &OwnedRequest,
 ) -> Result<ResolvedDataRoot, ResolveDataRootError> {
     let target = plan.target().clone();
-    execute_plan(&plan)?;
+    let data_root_lease = execute_plan(&plan)?;
     let lease = Arc::new(DataRootBindingLease::acquire(
         &plan,
         Arc::clone(&request.entry_file_lease),
+        data_root_lease,
     )?);
     let resolved = ResolvedDataRoot {
         path: target.data_root,

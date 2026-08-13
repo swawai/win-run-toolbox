@@ -14,6 +14,7 @@ use std::time::Duration;
 use swawkit_proj::{
     context::EntryContext,
     data_root::{DataRootSession, ResolveDataRootRequest},
+    host_restart::HostRestartRequest,
     host_runtime::HostRuntimeLocator,
     launch::{LaunchMode, LaunchRequest, clear_inherited_swawkit_environment},
 };
@@ -22,9 +23,13 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBo
 use crate::host_instance::{HostInstance, HostInstanceAcquisition};
 
 fn main() {
-    let result = LaunchRequest::from_process()
+    let result = HostRestartRequest::from_process()
         .map_err(Into::into)
-        .and_then(run);
+        .and_then(|restart| {
+            LaunchRequest::from_process()
+                .map_err(Into::into)
+                .and_then(|request| run(request, restart))
+        });
     if let Err(error) = result {
         eprintln!("[ERROR] {error}");
         show_host_error(&error.to_string());
@@ -32,7 +37,7 @@ fn main() {
     }
 }
 
-fn run(request: LaunchRequest) -> Result<(), Box<dyn Error>> {
+fn run(request: LaunchRequest, restart: Option<HostRestartRequest>) -> Result<(), Box<dyn Error>> {
     if request.mode != LaunchMode::InternalHost || !request.argv.is_empty() {
         return Err(format!(
             "the Host accepts only the '{}' launch mode without arguments",
@@ -43,6 +48,9 @@ fn run(request: LaunchRequest) -> Result<(), Box<dyn Error>> {
     // SAFETY: this is the Host composition root and no thread exists yet.
     unsafe { clear_inherited_swawkit_environment() };
     let context = EntryContext::from_host_launch(&request)?;
+    if let Some(restart) = restart {
+        return restart.complete(&context).map_err(Into::into);
+    }
     let data_root = DataRootSession::new(ResolveDataRootRequest {
         swawkit_home: &context.swawkit_home,
         entry_file: &context.entry_file,

@@ -185,6 +185,10 @@ fn router_with_runs(
             axum::routing::post(host_control::post_shutdown),
         )
         .route(
+            "/api/v2/host/restart",
+            axum::routing::post(host_control::post_restart),
+        )
+        .route(
             "/api/v2/command-runs",
             axum::routing::post(command_run::post_command_run),
         )

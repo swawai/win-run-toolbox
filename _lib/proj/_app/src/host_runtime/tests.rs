@@ -25,6 +25,7 @@ impl Fixture {
                 entry_name: "swawkit".to_owned(),
                 invocation_directory: root.clone(),
                 product_executable: root.join("swawkit-proj-host.exe"),
+                release_id: "0".repeat(64),
             },
             identity: EntryIdentity::from_parts(
                 r"\\?\volume{00000000-0000-0000-0000-000000000001}",

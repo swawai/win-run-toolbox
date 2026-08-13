@@ -45,7 +45,11 @@ impl Fixture {
             fs::create_dir_all(directory).expect("create fixture directory");
         }
         fs::write(&entry_file, "fixture").expect("write entry file");
-        let product_executable = root.join("_lib/proj/_bin/releases/fixture/swawkit-proj.exe");
+        let release_id = "f".repeat(64);
+        let product_executable = root
+            .join("_lib/proj/_bin/releases")
+            .join(&release_id)
+            .join("swawkit-proj.exe");
         fs::create_dir_all(product_executable.parent().unwrap())
             .expect("create Runtime Release fixture");
         fs::write(
@@ -59,6 +63,7 @@ impl Fixture {
             entry_name: "fixture".to_owned(),
             invocation_directory: project_root.clone(),
             product_executable,
+            release_id,
         };
         Self {
             root,

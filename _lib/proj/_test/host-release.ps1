@@ -154,15 +154,97 @@ try {
     $SecondTree.Dispose()
     [void]$OwnedTrees.Remove($SecondTree)
 
+    $RunningReleaseId = 'a' * 64
+    $SelectedReleaseId = 'c' * 64
+    $SelectedRelease = Join-Path (
+        Join-Path $Runtime.RuntimeBin 'releases'
+    ) $SelectedReleaseId
+    Copy-ProjFixtureHardLinkTree `
+        -Source $Runtime.RuntimeRelease `
+        -Destination $SelectedRelease
+    [IO.File]::WriteAllText(
+        (Join-Path $Runtime.RuntimeBin 'current'),
+        ($SelectedReleaseId + "`n"),
+        [Text.UTF8Encoding]::new($false)
+    )
+    $HostStatus = Invoke-WebRequest `
+        -UseBasicParsing `
+        -Uri ([string]$Document.url + 'api/v2/host') `
+        -TimeoutSec 5 |
+        Select-Object -ExpandProperty Content |
+        ConvertFrom-Json
+    Assert-ProjHostReleaseTest `
+        -Condition (
+            [string]$HostStatus.protocol -ceq 'swawkit.host-status/v1' -and
+            [string]$HostStatus.runningReleaseId -ceq $RunningReleaseId -and
+            [string]$HostStatus.selectedReleaseId -ceq $SelectedReleaseId -and
+            [bool]$HostStatus.updateAvailable
+        ) `
+        -Message 'the Host did not report the pending Runtime Release update'
+
     Invoke-WebRequest `
         -UseBasicParsing `
         -Method Post `
-        -Uri ([string]$Document.url + 'api/v2/host/shutdown') `
+        -Uri ([string]$Document.url + 'api/v2/host/restart') `
+        -Headers @{ 'x-swawkit-control' = 'restart' } |
+        Out-Null
+    Assert-ProjHostReleaseTest `
+        -Condition $HostProcess.WaitForExit(10000) `
+        -Message 'the old Host did not retire after preparing its coordinator'
+    $HostProcess.Dispose()
+    $HostProcess = $null
+
+    $RestartDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    $RestartedDocument = $null
+    while ([DateTime]::UtcNow -lt $RestartDeadline) {
+        try {
+            $CandidateDocument = [IO.File]::ReadAllText(
+                $DocumentPath,
+                [Text.Encoding]::UTF8
+            ) | ConvertFrom-Json
+            if ([int]$CandidateDocument.pid -ne [int]$Document.pid -and
+                [string]$CandidateDocument.bootId -cne [string]$Document.bootId) {
+                $RestartedDocument = $CandidateDocument
+                break
+            }
+        } catch {
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    Assert-ProjHostReleaseTest `
+        -Condition ($null -ne $RestartedDocument) `
+        -Message 'the restart coordinator did not publish a new Host runtime'
+    $HostProcess = Get-Process -Id ([int]$RestartedDocument.pid) -ErrorAction Stop
+    $ExpectedRestartedHost = Join-Path $SelectedRelease 'swawkit-proj-host.exe'
+    Assert-ProjHostReleaseTest `
+        -Condition ([IO.Path]::GetFullPath($HostProcess.Path).Equals(
+            [IO.Path]::GetFullPath($ExpectedRestartedHost),
+            [StringComparison]::OrdinalIgnoreCase
+        )) `
+        -Message 'the restarted Host did not use the selected Runtime Release'
+    $RestartedStatus = Invoke-WebRequest `
+        -UseBasicParsing `
+        -Uri ([string]$RestartedDocument.url + 'api/v2/host') `
+        -TimeoutSec 5 |
+        Select-Object -ExpandProperty Content |
+        ConvertFrom-Json
+    Assert-ProjHostReleaseTest `
+        -Condition (
+            [string]$RestartedStatus.runningReleaseId -ceq $SelectedReleaseId -and
+            [string]$RestartedStatus.selectedReleaseId -ceq $SelectedReleaseId -and
+            -not [bool]$RestartedStatus.updateAvailable
+        ) `
+        -Message 'the restarted Host did not converge its Release status'
+
+    Invoke-WebRequest `
+        -UseBasicParsing `
+        -Method Post `
+        -Uri ([string]$RestartedDocument.url + 'api/v2/host/shutdown') `
         -Headers @{ 'x-swawkit-control' = 'shutdown' } |
         Out-Null
     Assert-ProjHostReleaseTest `
         -Condition $HostProcess.WaitForExit(10000) `
-        -Message 'the Host did not honor its product shutdown path'
+        -Message 'the restarted Host did not honor its product shutdown path'
     $HostProcess.Dispose()
     $HostProcess = $null
 } finally {

@@ -46,7 +46,13 @@ impl Fixture {
         let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
         let root =
             std::env::temp_dir().join(format!("swawkit-server-{}-{sequence}", std::process::id()));
-        fs::create_dir_all(root.join("home")).expect("create fixture root");
+        let runtime_root = root.join("home/_lib/proj/_bin");
+        fs::create_dir_all(runtime_root.join("releases")).expect("create fixture root");
+        fs::write(
+            runtime_root.join("current"),
+            format!("{}\n", "1".repeat(64)),
+        )
+        .expect("write Runtime selector");
         fs::write(root.join("swawkit.exe"), b"fixture").expect("create fixture entry");
         let fixture = Self { root };
         let context = fixture.context();
@@ -76,12 +82,18 @@ impl Fixture {
     }
 
     fn context(&self) -> EntryContext {
+        let release_id = "1".repeat(64);
         EntryContext {
             swawkit_home: self.root.join("home"),
             entry_file: self.root.join("swawkit.exe"),
             entry_name: "swawkit".to_owned(),
             invocation_directory: self.root.clone(),
-            product_executable: self.root.join("swawkit-proj-host.exe"),
+            product_executable: self
+                .root
+                .join("home/_lib/proj/_bin/releases")
+                .join(&release_id)
+                .join("swawkit-proj-host.exe"),
+            release_id,
         }
     }
 
@@ -154,9 +166,12 @@ async fn exposes_status_and_requires_explicit_authority_for_shutdown() {
     let document: Value = serde_json::from_slice(&body).expect("Host status JSON");
     assert_eq!(
         document["protocol"],
-        crate::host_runtime::HOST_RUNTIME_PROTOCOL
+        crate::server::host_control::HOST_STATUS_PROTOCOL
     );
     assert_eq!(document["pid"], std::process::id());
+    assert_eq!(document["runningReleaseId"], "1".repeat(64));
+    assert_eq!(document["selectedReleaseId"], "1".repeat(64));
+    assert_eq!(document["updateAvailable"], false);
 
     let unauthorized = send(
         app.clone(),
@@ -180,6 +195,35 @@ async fn exposes_status_and_requires_explicit_authority_for_shutdown() {
         .await
         .expect("Host shutdown response");
     assert_eq!(accepted.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
+async fn restart_requires_explicit_authority_and_a_new_selected_release() {
+    let fixture = Fixture::new();
+    let app = fixture.app();
+
+    let unauthorized = send(
+        app.clone(),
+        Method::POST,
+        "/api/v2/host/restart",
+        Some(AUTHORITY),
+    )
+    .await;
+    assert_eq!(unauthorized.status(), StatusCode::FORBIDDEN);
+
+    let current = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v2/host/restart")
+                .header(HOST, AUTHORITY)
+                .header("x-swawkit-control", "restart")
+                .body(Body::empty())
+                .expect("valid Host restart request"),
+        )
+        .await
+        .expect("Host restart response");
+    assert_eq!(current.status(), StatusCode::CONFLICT);
 }
 
 #[tokio::test]
@@ -367,6 +411,7 @@ async fn rescans_the_catalog_on_each_request() {
 #[tokio::test]
 async fn returns_a_safe_error_when_catalog_discovery_fails() {
     let fixture = Fixture::new();
+    fs::remove_dir_all(fixture.context().kernel_root()).expect("remove fixture command root");
     let response = send(
         fixture.app(),
         Method::GET,

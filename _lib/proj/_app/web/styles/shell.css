@@ -70,7 +70,7 @@
   background: #bd3b3b;
 }
 
-.host-quit {
+.host-action {
   min-height: 28px;
   padding: 0 10px;
   border: 1px solid var(--ui-border-strong);
@@ -81,11 +81,11 @@
   cursor: pointer;
 }
 
-.host-quit:hover:not(:disabled) {
+.host-action:hover:not(:disabled) {
   background: var(--ui-surface-muted);
 }
 
-.host-quit:disabled {
+.host-action:disabled {
   cursor: wait;
   opacity: 0.6;
 }

@@ -14,6 +14,7 @@ pub struct EntryContext {
     pub entry_name: String,
     pub invocation_directory: PathBuf,
     pub product_executable: PathBuf,
+    pub release_id: String,
 }
 
 impl EntryContext {
@@ -48,7 +49,7 @@ impl EntryContext {
         executable: &Path,
         executable_name: &str,
     ) -> Result<Self, ContextError> {
-        let swawkit_home = derive_swawkit_home(executable, executable_name)?;
+        let (swawkit_home, release_id) = derive_swawkit_home(executable, executable_name)?;
 
         let entry_file = absolute_path(&request.entry_file, "project entry file")?;
         if !entry_file.is_file() {
@@ -83,11 +84,15 @@ impl EntryContext {
             entry_name,
             invocation_directory,
             product_executable: executable.to_path_buf(),
+            release_id,
         })
     }
 }
 
-fn derive_swawkit_home(executable: &Path, executable_name: &str) -> Result<PathBuf, ContextError> {
+fn derive_swawkit_home(
+    executable: &Path,
+    executable_name: &str,
+) -> Result<(PathBuf, String), ContextError> {
     let executable = absolute_path(executable, "shared Proj executable")?;
     if executable.file_name() != Some(OsStr::new(executable_name)) {
         return Err(invalid_layout(&executable, executable_name));
@@ -114,7 +119,7 @@ fn derive_swawkit_home(executable: &Path, executable_name: &str) -> Result<PathB
             swawkit_home.display()
         )));
     }
-    Ok(swawkit_home.to_path_buf())
+    Ok((swawkit_home.to_path_buf(), release_id.to_owned()))
 }
 
 fn expected_parent<'a>(
@@ -247,6 +252,7 @@ mod tests {
         assert_eq!(context.entry_name, "project-one");
         assert_eq!(context.entry_file, fixture.entry_file);
         assert_eq!(context.invocation_directory, fixture.invocation_dir);
+        assert_eq!(context.release_id, "a".repeat(64));
     }
 
     #[test]

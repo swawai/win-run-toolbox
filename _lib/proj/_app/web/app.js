@@ -77,6 +77,7 @@ const elements = {
   explorerFlow: document.querySelector("#explorer-flow"),
   finderColumns: document.querySelector("#finder-columns"),
   hostQuit: document.querySelector("#host-quit"),
+  hostRestart: document.querySelector("#host-restart"),
   hostIndicator: document.querySelector("#host-indicator"),
   hostStatus: document.querySelector("#host-status"),
   invocationSection: document.querySelector("#invocation-section"),

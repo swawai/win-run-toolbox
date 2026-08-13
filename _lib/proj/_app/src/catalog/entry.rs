@@ -10,7 +10,7 @@ const ENTRY_PROTOCOL: [(&str, CommandAdapter); 7] = [
     ("run.exe", CommandAdapter::Exe),
     ("run.ts", CommandAdapter::Bun),
     ("run.py", CommandAdapter::Python),
-    ("run.ps1", CommandAdapter::PowerShell),
+    ("run.ps1", CommandAdapter::Pwsh),
     ("run.cmd", CommandAdapter::Cmd),
 ];
 const CORE_HANDLERS: [&str; 5] = [
@@ -110,7 +110,7 @@ pub(crate) enum CommandAdapter {
     Exe,
     Bun,
     Python,
-    PowerShell,
+    Pwsh,
     Cmd,
 }
 
@@ -122,7 +122,7 @@ impl CommandAdapter {
             "exe" => Some(Self::Exe),
             "bun" => Some(Self::Bun),
             "python" => Some(Self::Python),
-            "powershell" => Some(Self::PowerShell),
+            "pwsh" => Some(Self::Pwsh),
             "cmd" => Some(Self::Cmd),
             _ => None,
         }
@@ -135,13 +135,13 @@ impl CommandAdapter {
             Self::Exe => "exe",
             Self::Bun => "bun",
             Self::Python => "python",
-            Self::PowerShell => "powershell",
+            Self::Pwsh => "pwsh",
             Self::Cmd => "cmd",
         }
     }
 
     pub(crate) fn is_bootstrap_safe(self) -> bool {
-        matches!(self, Self::Exe | Self::PowerShell | Self::Cmd)
+        matches!(self, Self::Exe | Self::Cmd)
     }
 }
 

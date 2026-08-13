@@ -347,6 +347,10 @@ async fn serves_only_the_declared_local_surface() {
 async fn rescans_the_catalog_on_each_request() {
     let fixture = Fixture::new();
     fixture.directory("home/_lib/proj");
+    fixture
+        .profile_store()
+        .save(crate::profile::EntryProfileRecord::default())
+        .expect("ready profile");
     let app = fixture.app();
 
     let before = catalog_document(app.clone()).await;

@@ -27,6 +27,25 @@ function Assert-ProjCandidateRuntimeFixtureRoot {
     return $Path
 }
 
+function Copy-ProjFixtureHardLinkTree {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    [void][IO.Directory]::CreateDirectory($Destination)
+    foreach ($Item in Get-ChildItem -LiteralPath $Source -Recurse -Force) {
+        $Relative = $Item.FullName.Substring($Source.TrimEnd('\').Length + 1)
+        $Target = Join-Path $Destination $Relative
+        if ($Item.PSIsContainer) {
+            [void][IO.Directory]::CreateDirectory($Target)
+        } else {
+            [void][IO.Directory]::CreateDirectory((Split-Path $Target -Parent))
+            [void](New-Item -ItemType HardLink -Path $Target -Value $Item.FullName)
+        }
+    }
+}
+
 function Resolve-ProjCandidateRuntimeArtifacts {
     param(
         [string]$LauncherPath = '',

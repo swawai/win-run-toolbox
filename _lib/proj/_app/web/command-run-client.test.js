@@ -126,7 +126,7 @@ describe("command run protocol client", () => {
     let request;
     const created = snapshot();
     const result = await startCommandRun(
-      ".dev.ps",
+      ".dev.pwsh",
       ["-Command", "Write-Host 'A B'", ""],
       async (url, options) => {
         request = { url, options };
@@ -137,7 +137,7 @@ describe("command run protocol client", () => {
     expect(request.url).toBe("/api/v2/command-runs");
     expect(request.options.method).toBe("POST");
     expect(JSON.parse(request.options.body)).toEqual({
-      address: ".dev.ps",
+      address: ".dev.pwsh",
       arguments: ["-Command", "Write-Host 'A B'", ""],
     });
     expect(result).toEqual(created);

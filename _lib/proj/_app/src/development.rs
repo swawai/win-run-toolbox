@@ -2,6 +2,8 @@ use sha2::{Digest, Sha256};
 
 pub mod archive_tool;
 pub mod msvc;
+pub(crate) mod process_probe;
+pub mod pwsh;
 pub mod rust;
 pub mod setup;
 

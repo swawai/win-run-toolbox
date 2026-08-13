@@ -75,8 +75,7 @@ fn resolve_optional(
     };
     if !entry.adapter.is_bootstrap_safe() {
         return Err(CommandError::new(format!(
-            "the {} guard entry '{}' is not bootstrap-safe; V0 guards support run.exe, \
-             run.ps1, or run.cmd",
+            "the {} guard entry '{}' is not bootstrap-safe; V0 guards support run.exe or run.cmd",
             scope.as_str(),
             entry.name
         )));

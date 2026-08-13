@@ -61,8 +61,8 @@ $PoisonedEnvironment = [ordered]@{
     SWAWKIT_PROJ_ENTRY_COMMAND = 'foreign-entry'
     SWAWKIT_PROJ_ENTRY_FILE = 'C:\foreign-entry.cmd'
     SWAWKIT_PROJ_LAUNCH_MODE = 'internal-host'
-    SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_COUNT = '99'
-    SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_47 = 'foreign-argument'
+    SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ARG_COUNT = '99'
+    SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ARG_47 = 'foreign-argument'
     SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_CMD_ENTRY_PATH = 'C:\foreign-run.cmd'
 }
 $SavedEnvironment = @{}
@@ -159,7 +159,6 @@ try {
 
     foreach ($Setting in @(
         @('bun', 'SWAWKIT_PROJ_BUN_MODE'),
-        @('pwsh', 'SWAWKIT_PROJ_PWSH_MODE'),
         @('msvc', 'SWAWKIT_PROJ_MSVC_MODE'),
         @('rust', 'SWAWKIT_PROJ_RUST_MODE')
     )) {
@@ -173,6 +172,23 @@ try {
             -Condition ($Disabled.ExitCode -eq 0) `
             -Message "failed to disable $($Setting[0]): $($Disabled.Text)"
     }
+    $PwshVersion = Invoke-ProjEntrySmoke `
+        -EntryPath $EntryPath `
+        -Arguments @(
+            '..entry.env.pwsh.SWAWKIT_PROJ_PWSH_VERSION',
+            '7.6.4'
+        )
+    Assert-ProjEntrySmoke `
+        -Condition ($PwshVersion.ExitCode -eq 0) `
+        -Message "failed to select managed PowerShell 7: $($PwshVersion.Text)"
+    $ManagedPwshSource = Join-Path $RepoRoot (
+        'data\proj.swawkit\modules\kernel\.dev\setup\export\pwsh\installs\7.6.4'
+    )
+    Copy-ProjFixtureHardLinkTree `
+        -Source $ManagedPwshSource `
+        -Destination (Join-Path $DataRoot (
+            'modules\kernel\.dev\setup\export\pwsh\installs\7.6.4'
+        ))
     $DevelopmentSetup = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `
         -Arguments @('.dev.setup')
@@ -180,9 +196,7 @@ try {
     Assert-ProjEntrySmoke `
         -Condition (
             $DevelopmentSetup.ExitCode -eq 0 -and
-            $DevelopmentSetup.Text.Contains(
-                '[OK] The base development environment is ready.'
-            ) -and
+            $DevelopmentSetup.Text.Contains('[OK] PowerShell 7.6.4 is ready.') -and
             [IO.File]::Exists((Join-Path $SetupRoot 'export\env.cmd')) -and
             [IO.File]::Exists((Join-Path $SetupRoot 'export\env.ps1'))
         ) `

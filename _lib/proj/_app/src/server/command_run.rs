@@ -241,13 +241,12 @@ pub(super) async fn prepare_run(
                 ));
             }
         };
-        let catalog =
-            CatalogSnapshot::discover(&context, Some(profile.binding())).map_err(|_| {
-                api_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "catalog discovery failed",
-                )
-            })?;
+        let catalog = CatalogSnapshot::discover(&context, Some(profile)).map_err(|_| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "catalog discovery failed",
+            )
+        })?;
         if !catalog
             .commands
             .iter()

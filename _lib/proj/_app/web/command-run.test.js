@@ -44,7 +44,7 @@ describe("command run view", () => {
       },
     });
 
-    view.select({ address: ".dev.ps", runnable: true, source: "kernel" });
+    view.select({ address: ".dev.pwsh", runnable: true, source: "kernel" });
     ui.commandRunAdd.dispatch("click");
     ui.commandRunAdd.dispatch("click");
     const inputs = ui.commandRunArguments.querySelectorAll(".command-run-argument");
@@ -112,7 +112,7 @@ describe("command run view", () => {
     });
 
     const restoring = view.restore();
-    view.select({ address: ".dev.ps", runnable: true, source: "kernel" });
+    view.select({ address: ".dev.pwsh", runnable: true, source: "kernel" });
     expect(ui.commandRunSubmit.disabled).toBe(true);
     expect(ui.commandRunAdd.disabled).toBe(true);
     await view.execute();
@@ -149,7 +149,7 @@ describe("command run view", () => {
       },
     });
 
-    view.select({ address: ".dev.ps", runnable: true, source: "kernel" });
+    view.select({ address: ".dev.pwsh", runnable: true, source: "kernel" });
     await view.restore();
     await view.execute();
 
@@ -184,7 +184,7 @@ describe("command run view", () => {
       },
     });
 
-    view.select({ address: ".dev.ps", runnable: true, source: "kernel" });
+    view.select({ address: ".dev.pwsh", runnable: true, source: "kernel" });
     await view.restore();
     await view.execute();
 
@@ -212,7 +212,7 @@ describe("command run view", () => {
       },
     });
 
-    view.select({ address: ".dev.ps", runnable: true, source: "kernel" });
+    view.select({ address: ".dev.pwsh", runnable: true, source: "kernel" });
     await view.execute();
     timers.take().callback();
     await settle();
@@ -237,7 +237,7 @@ describe("command run view", () => {
       },
     });
 
-    view.select({ address: ".dev.ps", runnable: true, source: "kernel" });
+    view.select({ address: ".dev.pwsh", runnable: true, source: "kernel" });
     ui.commandRunAdd.dispatch("click");
     ui.commandRunArguments.querySelectorAll(".command-run-argument")[0].value = "old";
     await view.execute();
@@ -266,7 +266,7 @@ describe("command run view", () => {
           : response(204);
       },
     });
-    view.select({ address: ".dev.ps", runnable: true, source: "kernel" });
+    view.select({ address: ".dev.pwsh", runnable: true, source: "kernel" });
     await view.execute();
     await view.cancel();
 
@@ -302,7 +302,7 @@ describe("command run view", () => {
       },
     });
 
-    view.select({ address: ".dev.ps", runnable: true, source: "kernel" });
+    view.select({ address: ".dev.pwsh", runnable: true, source: "kernel" });
     await view.execute();
     timers.take().callback();
     await view.cancel();

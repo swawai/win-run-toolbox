@@ -1,0 +1,12 @@
+使用当前 Entry Profile 选择并验证的 PowerShell 7 执行脚本。
+
+用法：
+  {{INVOCATION}} -File <path.ps1> [arguments...]
+  {{INVOCATION}} -Command <script...>
+
+SWAWKIT_PROJ_PWSH_MODE=managed 时使用 .dev.setup 管理的 pwsh；system 时使用经探测确认
+为 PowerShell 7+ 的系统 pwsh；disabled 时，本命令和所有 run.ps1 均不可执行。
+
+该适配器不回退到 Windows PowerShell 5.1，也不加载用户 Profile 或接受交互式输入。
+相对脚本路径从当前 Entry 的目标项目根目录解析。命令继承 Core 已验证的 Entry Profile、
+开发工具环境和统一运行日志；内部 Provider Export 元数据不会作为公共协议暴露。

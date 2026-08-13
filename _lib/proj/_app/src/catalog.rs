@@ -1,4 +1,4 @@
-use crate::{binding::ProjectBinding, context::EntryContext};
+use crate::{context::EntryContext, profile::EntryProfile};
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::fs;
@@ -19,7 +19,7 @@ pub(crate) use filesystem::{NamedDirectory, named_directories};
 use view::read_local_web_view;
 pub use view::{ChildrenColumnView, ColumnWidth, CommandView};
 
-pub const CATALOG_PROTOCOL: &str = "swawkit.command-catalog/v3";
+pub const CATALOG_PROTOCOL: &str = "swawkit.command-catalog/v4";
 
 pub const HELP_ADDRESS: &str = ".help";
 pub const HELP_MARKERS: [&str; 4] = [HELP_ADDRESS, ".h", "-h", "--help"];
@@ -37,12 +37,20 @@ pub struct CatalogSnapshot {
 }
 
 impl CatalogSnapshot {
-    pub fn discover(context: &EntryContext, binding: Option<&ProjectBinding>) -> io::Result<Self> {
-        let action_root = binding.map(ProjectBinding::action_root);
+    pub fn discover(context: &EntryContext, profile: Option<&EntryProfile>) -> io::Result<Self> {
+        let action_root = profile.map(|profile| profile.binding().action_root());
+        let pwsh = match profile {
+            Some(profile) if profile.record().development.pwsh.mode == "disabled" => {
+                PwshAvailability::Disabled
+            }
+            Some(_) => PwshAvailability::Enabled,
+            None => PwshAvailability::ProfileUnavailable,
+        };
         Self::discover_optional_roots(
             &context.kernel_root(),
             action_root.as_deref(),
             &context.entry_name,
+            pwsh,
         )
     }
 
@@ -51,13 +59,19 @@ impl CatalogSnapshot {
         action_root: &Path,
         entry_name: &str,
     ) -> io::Result<Self> {
-        Self::discover_optional_roots(kernel_root, Some(action_root), entry_name)
+        Self::discover_optional_roots(
+            kernel_root,
+            Some(action_root),
+            entry_name,
+            PwshAvailability::Enabled,
+        )
     }
 
     fn discover_optional_roots(
         kernel_root: &Path,
         action_root: Option<&Path>,
         entry_name: &str,
+        pwsh: PwshAvailability,
     ) -> io::Result<Self> {
         assert_command_root(kernel_root)?;
 
@@ -81,7 +95,7 @@ impl CatalogSnapshot {
         let mut commands = Vec::new();
         while let Some(current) = pending.pop_front() {
             if current.source == CommandSource::Kernel || !current.is_root {
-                commands.push(scan_node(&current, entry_name));
+                commands.push(scan_node(&current, entry_name, pwsh));
             }
 
             for child in child_directories(&current.path)? {
@@ -160,7 +174,14 @@ struct ChildCommand {
     source: CommandSource,
 }
 
-fn scan_node(pending: &PendingDirectory, entry_name: &str) -> CommandNode {
+#[derive(Clone, Copy)]
+enum PwshAvailability {
+    Enabled,
+    Disabled,
+    ProfileUnavailable,
+}
+
+fn scan_node(pending: &PendingDirectory, entry_name: &str, pwsh: PwshAvailability) -> CommandNode {
     let mut diagnostics = Vec::new();
     let entry = match resolve_entry(&pending.path) {
         Ok(entry) => entry,
@@ -203,6 +224,25 @@ fn scan_node(pending: &PendingDirectory, entry_name: &str) -> CommandNode {
             diagnostics.push(
                 "run.py is not runnable until managed Python is owned and verified by .dev.setup"
                     .to_owned(),
+            );
+            None
+        }
+        Some(entry)
+            if entry.adapter == CommandAdapter::Pwsh
+                && matches!(pwsh, PwshAvailability::Disabled) =>
+        {
+            diagnostics.push(
+                "run.ps1 is disabled by the current Entry Profile; set SWAWKIT_PROJ_PWSH_MODE to managed or system and run .dev.setup"
+                    .to_owned(),
+            );
+            None
+        }
+        Some(entry)
+            if entry.adapter == CommandAdapter::Pwsh
+                && matches!(pwsh, PwshAvailability::ProfileUnavailable) =>
+        {
+            diagnostics.push(
+                "run.ps1 requires a ready Entry Profile with PowerShell 7 enabled".to_owned(),
             );
             None
         }

@@ -13,14 +13,17 @@ use crate::profile::VersionedTool;
 use super::{CommandError, CommandExecutionContext, CommandResult};
 
 pub(crate) struct ResolvedEntryDevelopment {
-    pub(crate) bun_executable: PathBuf,
+    pub(crate) bun_executable: Option<PathBuf>,
+    pub(crate) pwsh_executable: Option<PathBuf>,
     pub(crate) environment: EnvironmentPlan,
 }
 
 pub(crate) fn resolve_entry_development(
     context: &CommandExecutionContext,
 ) -> CommandResult<ResolvedEntryDevelopment> {
-    let bun_request = archive_request(context, &BUN, &context.profile.development.bun)?;
+    let bun_request = (context.profile.development.bun.mode == "managed")
+        .then(|| archive_request(context, &BUN, &context.profile.development.bun))
+        .transpose()?;
     let pwsh_request = (context.profile.development.pwsh.mode == "managed")
         .then(|| archive_request(context, &PWSH, &context.profile.development.pwsh))
         .transpose()?;
@@ -50,15 +53,31 @@ pub(crate) fn resolve_entry_development(
     }
     let initial_state = read_ready_state(context)?;
     let mut environment = EnvironmentPlan::default();
-    let bun = resolve_archive_tool(context, &BUN, &bun_request)?;
-    environment
-        .prepend_path(bun.root())
-        .map_err(CommandError::new)?;
+    let bun = bun_request
+        .as_ref()
+        .map(|request| resolve_archive_tool(context, &BUN, request))
+        .transpose()?;
+    if let Some(bun) = bun.as_ref() {
+        environment
+            .prepend_path(bun.root())
+            .map_err(CommandError::new)?;
+    }
+    let mut pwsh_executable = None;
     if let Some(request) = pwsh_request.as_ref() {
         let pwsh = resolve_archive_tool(context, &PWSH, request)?;
         environment
             .prepend_path(pwsh.root())
             .map_err(CommandError::new)?;
+        pwsh_executable = Some(pwsh.executable().to_path_buf());
+    } else if context.profile.development.pwsh.mode == "system" {
+        let pwsh = crate::development::pwsh::resolve_system().map_err(|error| {
+            repair_with_cause(context, "the system PowerShell 7 runtime is invalid", error)
+        })?;
+        let root = pwsh.executable().parent().ok_or_else(|| {
+            repair_error(context, "the system PowerShell 7 executable has no parent")
+        })?;
+        environment.prepend_path(root).map_err(CommandError::new)?;
+        pwsh_executable = Some(pwsh.executable().to_path_buf());
     }
     if let Some(definition) = msvc_definition.as_ref() {
         let installation = MsvcStore::new(&context.data_root, definition)
@@ -92,7 +111,8 @@ pub(crate) fn resolve_entry_development(
         ));
     }
     Ok(ResolvedEntryDevelopment {
-        bun_executable: bun.executable().to_path_buf(),
+        bun_executable: bun.map(|installation| installation.executable().to_path_buf()),
+        pwsh_executable,
         environment,
     })
 }
@@ -176,7 +196,11 @@ fn archive_request(
 
 #[cfg(test)]
 pub(crate) fn resolve_entry_bun(context: &CommandExecutionContext) -> CommandResult<PathBuf> {
-    resolve_entry_development(context).map(|resolved| resolved.bun_executable)
+    resolve_entry_development(context).and_then(|resolved| {
+        resolved
+            .bun_executable
+            .ok_or_else(|| repair_error(context, "Bun is disabled for this Entry"))
+    })
 }
 
 fn read_ready_state(context: &CommandExecutionContext) -> CommandResult<ReadyProviderState> {

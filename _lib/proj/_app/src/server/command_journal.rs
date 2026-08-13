@@ -121,8 +121,7 @@ async fn prepare_journal(
     let data_root_path = data_root.path().to_path_buf();
     tokio::task::spawn_blocking(move || {
         let profile_state = profile_store.read();
-        let binding = profile_state.ready().map(|profile| profile.binding());
-        let catalog = CatalogSnapshot::discover(&context, binding).map_err(|_| {
+        let catalog = CatalogSnapshot::discover(&context, profile_state.ready()).map_err(|_| {
             api_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "catalog discovery failed",

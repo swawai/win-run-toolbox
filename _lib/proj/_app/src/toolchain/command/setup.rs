@@ -121,6 +121,13 @@ fn render(result: &NativeSetupResult, context: &CommandContext) {
             eprintln!("WARNING: {warning}");
         }
     }
+    if let Some(pwsh) = result.system_pwsh() {
+        println!(
+            "[OK] PowerShell {} system runtime is ready: {}",
+            pwsh.version(),
+            pwsh.executable().display()
+        );
+    }
     if let Some(msvc) = result.msvc() {
         let state = if msvc.outcome() == MsvcInstallOutcome::Installed {
             "installed and configured"
@@ -139,7 +146,11 @@ fn render(result: &NativeSetupResult, context: &CommandContext) {
         println!("[OK] Rust {} {state}.", rust.toolchain());
         render_warnings(rust.warnings());
     }
-    if result.archive_tools().is_empty() && result.msvc().is_none() && result.rust().is_none() {
+    if result.archive_tools().is_empty()
+        && result.system_pwsh().is_none()
+        && result.msvc().is_none()
+        && result.rust().is_none()
+    {
         println!("[OK] The base development environment is ready.");
     }
     if result.environment_changed() {

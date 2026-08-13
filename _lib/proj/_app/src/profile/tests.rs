@@ -272,6 +272,20 @@ fn rejects_invalid_conditional_fields_without_overwriting() {
 }
 
 #[test]
+fn powershell_uses_one_explicit_three_mode_contract() {
+    let mut profile = EntryProfileRecord::default();
+    profile.development.pwsh.mode = "system".to_owned();
+    profile.validate().expect("system PowerShell 7 mode");
+
+    profile.development.pwsh.mode = "disabled".to_owned();
+    profile.validate().expect("disabled PowerShell mode");
+
+    profile.development.pwsh.mode = "windows-powershell".to_owned();
+    let error = profile.validate().unwrap_err().to_string();
+    assert!(error.contains("managed, system, disabled"), "{error}");
+}
+
+#[test]
 fn preserves_a_valid_document_when_its_target_moves() {
     let fixture = Fixture::new();
     let external = fixture.root.join("movable-project");

@@ -20,6 +20,7 @@ function Assert-ProjLauncherRuntimeTest {
 }
 
 . (Join-Path $PSScriptRoot '_lib\windows-job-fixture.ps1')
+. (Join-Path $PSScriptRoot '_lib\runtime-fixture.ps1')
 
 function Invoke-ProjLauncherRuntimeProcess {
     param(
@@ -171,7 +172,7 @@ $PoisonedVariables = @(
     'SwAwKiT_PrOj_UnKnOwN',
     'swawkit_proj_module_kernel_dev_setup_inherited_test',
     'SwAwKiT_PrOj_CoRe_AdApTeR_PoWeRsHeLl_ArG_47',
-    'sWaWkIt_pRoJ_CoRe_cOmMaNd_aDaPtEr_pOwErShElL_ArG_47'
+    'sWaWkIt_pRoJ_CoRe_cOmMaNd_aDaPtEr_pWsH_ArG_47'
 )
 $SavedEnvironment = @{}
 foreach ($Name in $PoisonedVariables) {
@@ -212,6 +213,11 @@ try {
         (Join-Path $RuntimeKernelRoot '_help\zh-CN.txt'),
         $false
     )
+    Copy-Item `
+        -LiteralPath (Join-Path $RepoRoot '_lib\proj\.dev') `
+        -Destination $RuntimeKernelRoot `
+        -Recurse `
+        -Force
     [IO.File]::Copy($LauncherPath, $EntryPath, $false)
     [IO.File]::Copy($LauncherPath, $RootEntryPath, $false)
     [IO.File]::Copy($LauncherPath, $NestedEntry, $false)
@@ -307,14 +313,14 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
         }
         development = [ordered]@{
             bun = [ordered]@{
-                mode = 'managed'; version = '1.2.15'; sha256 = ''
+                mode = 'disabled'; version = '1.2.15'; sha256 = ''
             }
             pwsh = [ordered]@{
-                mode = 'managed'; version = 'latest'; sha256 = ''
+                mode = 'managed'; version = '7.6.4'; sha256 = ''
             }
-            msvc = [ordered]@{ mode = 'managed'; channel = '17' }
+            msvc = [ordered]@{ mode = 'disabled'; channel = '17' }
             rust = [ordered]@{
-                mode = 'rustup'
+                mode = 'disabled'
                 toolchain = 'stable'
                 profile = 'minimal'
                 host = 'x86_64-pc-windows-msvc'
@@ -371,7 +377,7 @@ $Payload = [ordered]@{
     unknownState = [string]$env:SWAWKIT_PROJ_UNKNOWN
     moduleState = [string]$env:SWAWKIT_PROJ_MODULE_KERNEL_DEV_SETUP_INHERITED_TEST
     legacyAdapterState = [string]$env:SWAWKIT_PROJ_CORE_ADAPTER_POWERSHELL_ARG_47
-    commandAdapterState = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_47
+    commandAdapterState = [string]$env:SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ARG_47
 }
 $CapturePath = Join-Path $env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT 'capture.json'
 [void][IO.Directory]::CreateDirectory((Split-Path -Path $CapturePath -Parent))
@@ -402,6 +408,22 @@ Start-Sleep -Seconds 60
         [Text.UTF8Encoding]::new($false)
     )
 
+    $ManagedPwshSource = Join-Path $RepoRoot (
+        'data\proj.swawkit\modules\kernel\.dev\setup\export\pwsh\installs\7.6.4'
+    )
+    Copy-ProjFixtureHardLinkTree `
+        -Source $ManagedPwshSource `
+        -Destination (Join-Path $DataRoot (
+            'modules\kernel\.dev\setup\export\pwsh\installs\7.6.4'
+        ))
+    $DevelopmentSetup = Invoke-ProjLauncherRuntimeProcess `
+        -Executable $EntryPath `
+        -Arguments '.dev.setup' `
+        -WorkingDirectory $InvocationRoot
+    Assert-ProjLauncherRuntimeTest `
+        -Condition ($DevelopmentSetup.ExitCode -eq 0) `
+        -Message "native development setup failed: $($DevelopmentSetup.StandardError)"
+
     $env:SWAWKIT_HOME = 'C:\foreign-home'
     $env:SWAWKIT_PROJ_PROTOCOL = 'foreign'
     $env:SWAWKIT_PROJ_TARGET_PROJECT_ROOT = 'C:\foreign-project'
@@ -423,7 +445,7 @@ Start-Sleep -Seconds 60
     $env:SwAwKiT_PrOj_UnKnOwN = 'foreign-unknown'
     $env:swawkit_proj_module_kernel_dev_setup_inherited_test = 'foreign-module'
     $env:SwAwKiT_PrOj_CoRe_AdApTeR_PoWeRsHeLl_ArG_47 = 'foreign-legacy-adapter'
-    $env:sWaWkIt_pRoJ_CoRe_cOmMaNd_aDaPtEr_pOwErShElL_ArG_47 = 'foreign-command-adapter'
+    $env:sWaWkIt_pRoJ_CoRe_cOmMaNd_aDaPtEr_pWsH_ArG_47 = 'foreign-command-adapter'
 
     $Run = Invoke-ProjLauncherRuntimeProcess `
         -Executable $EntryPath `

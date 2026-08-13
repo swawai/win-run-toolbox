@@ -38,7 +38,7 @@ impl EntryProfileRecord {
         optional_trimmed("preferences.helpLanguage", &self.preferences.help_language)?;
 
         validate_versioned_tool("development.bun", &self.development.bun, "managed")?;
-        validate_versioned_tool("development.pwsh", &self.development.pwsh, "managed")?;
+        validate_pwsh(&self.development.pwsh)?;
         validate_channel_tool("development.msvc", &self.development.msvc)?;
         validate_rust(&self.development.rust)?;
         validate_declared_only_tool("development.uv", &self.development.uv)?;
@@ -265,6 +265,20 @@ fn validate_versioned_tool(
         optional_trimmed(&format!("{path}.version"), &tool.version)?;
     }
     validate_sha256(&format!("{path}.sha256"), &tool.sha256)
+}
+
+fn validate_pwsh(tool: &VersionedTool) -> Result<(), ProfileError> {
+    allowed_mode(
+        "development.pwsh",
+        &tool.mode,
+        &["managed", "system", "disabled"],
+    )?;
+    if tool.mode == "managed" {
+        require_trimmed("development.pwsh.version", &tool.version)?;
+    } else {
+        optional_trimmed("development.pwsh.version", &tool.version)?;
+    }
+    validate_sha256("development.pwsh.sha256", &tool.sha256)
 }
 
 fn validate_channel_tool(path: &str, tool: &ChannelTool) -> Result<(), ProfileError> {

@@ -21,7 +21,7 @@ impl CatalogReader {
         let profile_store = self.profile_store.clone();
         tokio::task::spawn_blocking(move || {
             let state = profile_store.read();
-            CatalogSnapshot::discover(&context, state.ready().map(|profile| profile.binding()))
+            CatalogSnapshot::discover(&context, state.ready())
         })
         .await
         .map_err(|error| io::Error::other(format!("catalog worker failed: {error}")))?

@@ -94,11 +94,8 @@ fn run_with_dependencies(
 
     let profile_store = EntryProfileStore::new(&context.swawkit_home, resolved.path());
     let profile_state = profile_store.read();
-    let snapshot = CatalogSnapshot::discover(
-        context,
-        profile_state.ready().map(|profile| profile.binding()),
-    )
-    .map_err(|error| CliError::new(format!("catalog discovery failed: {error}")))?;
+    let snapshot = CatalogSnapshot::discover(context, profile_state.ready())
+        .map_err(|error| CliError::new(format!("catalog discovery failed: {error}")))?;
     if let Some(output) = protocol_help(&snapshot, argv)? {
         write_output(&output)
             .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;

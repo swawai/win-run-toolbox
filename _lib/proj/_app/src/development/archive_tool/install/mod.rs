@@ -469,7 +469,7 @@ pub(crate) fn extract_vsix_contents(
     archive::extract_contents_file(archive, destination)
 }
 
-pub(crate) use recipe::CapturedProcess;
+pub(crate) use crate::development::process_probe::CapturedProcess;
 
 pub(crate) fn run_bounded_process(
     command: std::process::Command,

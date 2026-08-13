@@ -1,4 +1,4 @@
-const CATALOG_PROTOCOL = "swawkit.command-catalog/v3";
+const CATALOG_PROTOCOL = "swawkit.command-catalog/v4";
 
 const collator = new Intl.Collator("zh-CN", {
   numeric: true,

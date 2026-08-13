@@ -5,6 +5,10 @@ use super::CommandContext;
 
 pub(super) enum ArchiveReport {
     Off,
+    System {
+        version: String,
+        executable: std::path::PathBuf,
+    },
     LatestUnresolved {
         repair: String,
     },
@@ -19,6 +23,14 @@ impl ArchiveReport {
     pub(super) fn render(&self, tool: &ArchiveTool) {
         match self {
             Self::Off => println!("[OFF] {} is disabled.", tool.name),
+            Self::System {
+                version,
+                executable,
+            } => println!(
+                "[READY] {} {version}  system  {}",
+                tool.name,
+                executable.display()
+            ),
             Self::LatestUnresolved { repair } => {
                 println!("[MISSING] {} latest unresolved; run '{repair}'", tool.name)
             }
@@ -50,10 +62,22 @@ pub(super) fn inspect(
     if mode.is_empty() || mode == "disabled" {
         return Ok(ArchiveReport::Off);
     }
+    if tool.name == "pwsh" && mode == "system" {
+        let pwsh = swawkit_proj::development::pwsh::resolve_system()?;
+        return Ok(ArchiveReport::System {
+            version: pwsh.version().to_owned(),
+            executable: pwsh.executable().to_path_buf(),
+        });
+    }
     if mode != "managed" {
+        let expected = if tool.name == "pwsh" {
+            "'managed', 'system', or 'disabled'"
+        } else {
+            "'managed' or 'disabled'"
+        };
         return Err(format!(
-            "Unsupported {} value '{mode}'. Expected 'managed' or 'disabled'.",
-            tool.mode_variable
+            "Unsupported {} value '{mode}'. Expected {expected}.",
+            tool.mode_variable,
         ));
     }
 

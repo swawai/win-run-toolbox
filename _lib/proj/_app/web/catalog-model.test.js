@@ -5,7 +5,7 @@ import {
   isGroup,
 } from "./catalog-model.js";
 
-const protocol = "swawkit.command-catalog/v3";
+const protocol = "swawkit.command-catalog/v4";
 
 function node(address, overrides = {}) {
   return {
@@ -33,7 +33,7 @@ function payload(commands, overrides = {}) {
   };
 }
 
-describe("Catalog v3 model", () => {
+describe("Catalog v4 model", () => {
   test("derives a non-runnable group only from its children", () => {
     const catalog = createCatalog(payload([
       node(".dev"),
@@ -41,7 +41,7 @@ describe("Catalog v3 model", () => {
         parent: ".dev",
         runnable: true,
         entry: "run.ps1",
-        adapter: "powershell",
+        adapter: "pwsh",
       }),
     ]));
     const group = catalog.commandByAddress.get(".dev");
@@ -63,7 +63,7 @@ describe("Catalog v3 model", () => {
         parent: ".tool",
         runnable: true,
         entry: "run.ps1",
-        adapter: "powershell",
+        adapter: "pwsh",
       }),
     ]));
     const group = catalog.commandByAddress.get(".tool");
@@ -88,7 +88,7 @@ describe("Catalog v3 model", () => {
       node(".documented", {
         runnable: true,
         entry: "run.ps1",
-        adapter: "powershell",
+        adapter: "pwsh",
         diagnostic: "help file is empty",
       }),
     ]));
@@ -100,7 +100,7 @@ describe("Catalog v3 model", () => {
 
   test("rejects an unknown protocol version", () => {
     expect(() => createCatalog(payload([], { protocol: "catalog/v2" })))
-      .toThrow("protocol 必须是 swawkit.command-catalog/v3");
+      .toThrow("protocol 必须是 swawkit.command-catalog/v4");
   });
 
   test("rejects a missing entry name", () => {
@@ -116,7 +116,7 @@ describe("Catalog v3 model", () => {
     ]))).toThrow("runnable 必须与 entry 是否存在一致");
 
     expect(() => createCatalog(payload([
-      node(".broken", { adapter: "powershell" }),
+      node(".broken", { adapter: "pwsh" }),
     ]))).toThrow("adapter 必须与 entry 同时存在或同时为空");
   });
 
@@ -161,7 +161,7 @@ describe("Catalog v3 model", () => {
       node(".broken", {
         runnable: true,
         entry: "run.ps1",
-        adapter: "powershell",
+        adapter: "pwsh",
         handler: "dev.setup",
       }),
     ]))).toThrow("handler");

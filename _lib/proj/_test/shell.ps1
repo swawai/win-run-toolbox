@@ -79,10 +79,16 @@ $TemporaryRoot = Join-Path $TestRoot (
 )
 $UserPathBefore = [Environment]::GetEnvironmentVariable('PATH', 'User')
 $MachinePathBefore = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+$ManagedPwshSource = Join-Path $RepoRoot (
+    'data\proj.swawkit\modules\kernel\.dev\setup\export\pwsh\installs\7.6.4'
+)
+Assert-ProjShellTest `
+    -Condition ([IO.File]::Exists((Join-Path $ManagedPwshSource 'pwsh.exe'))) `
+    -Message "PowerShell 7 fixture is unavailable: $ManagedPwshSource"
 $PoisonedAdapterEnvironment = [ordered]@{
-    swawkit_proj_core_adapter_powershell_arg_4095 = 'foreign-core-argument'
+    swawkit_proj_core_adapter_pwsh_arg_4095 = 'foreign-core-argument'
     SwAwKiT_PrOj_CoRe_AdApTeR_CmD_EnTrY_PaTh = 'C:\foreign-run.cmd'
-    SwAwKiT_PrOj_MoDuLe_KeRnEl_DeV_Ps_ArG_4095 = 'foreign-module-argument'
+    SwAwKiT_PrOj_MoDuLe_KeRnEl_DeV_PwSh_ArG_4095 = 'foreign-module-argument'
 }
 $SavedAdapterEnvironment = @{}
 try {
@@ -121,7 +127,6 @@ try {
         -Message "Entry Profile setup failed: $SetupOutput"
     $ModeVariables = [ordered]@{
         bun = 'SWAWKIT_PROJ_BUN_MODE'
-        pwsh = 'SWAWKIT_PROJ_PWSH_MODE'
         msvc = 'SWAWKIT_PROJ_MSVC_MODE'
         rust = 'SWAWKIT_PROJ_RUST_MODE'
     }
@@ -137,6 +142,15 @@ try {
             -Condition ($LASTEXITCODE -eq 0) `
             -Message "Entry Profile setup failed for $ModeVariable`: $ModeOutput"
     }
+    $PwshVersionOutput = @(
+        & $script:ProjShellEntry `
+            '..entry.env.pwsh.SWAWKIT_PROJ_PWSH_VERSION' `
+            '7.6.4' `
+            2>&1
+    )
+    Assert-ProjShellTest `
+        -Condition ($LASTEXITCODE -eq 0) `
+        -Message "Entry Profile setup failed for managed PowerShell: $PwshVersionOutput"
     $IdentityOutput = @(
         & $script:ProjShellEntry `
             '..entry.env.git.SWAWKIT_PROJ_GIT_ID_NAME' `
@@ -146,6 +160,18 @@ try {
     Assert-ProjShellTest `
         -Condition ($LASTEXITCODE -eq 0) `
         -Message "Entry identity setup failed: $IdentityOutput"
+    $ManagedPwshRoot = Join-Path $DataRoot (
+        'modules\kernel\.dev\setup\export\pwsh\installs\7.6.4'
+    )
+    Copy-ProjFixtureHardLinkTree `
+        -Source $ManagedPwshSource `
+        -Destination $ManagedPwshRoot
+    $DevelopmentSetup = Invoke-ProjShellTest `
+        -Address '.dev.setup' `
+        -Arguments ([string[]]@())
+    Assert-ProjShellTest `
+        -Condition ($DevelopmentSetup.ExitCode -eq 0) `
+        -Message "Native development setup failed: $($DevelopmentSetup.Text)"
 
     $CmdCommand = [string]::Join(' & ', @(
         'echo SHELL_KIND=cmd'
@@ -209,27 +235,23 @@ try {
         'exit 32'
     ))
     $PowerShell = Invoke-ProjShellTest `
-        -Address '.dev.ps' `
+        -Address '.dev.pwsh' `
         -Arguments @('-Command', $PowerShellCommand)
-    $ExpectedPsHome = Join-Path $env:SystemRoot (
-        'System32\WindowsPowerShell\v1.0'
-    )
     Assert-ProjShellTest `
         -Condition ($PowerShell.ExitCode -eq 32) `
-        -Message ".dev.ps -Command lost its exit code: $($PowerShell.Text)"
+        -Message ".dev.pwsh -Command lost its exit code: $($PowerShell.Text)"
     foreach ($Expected in @(
         'SHELL_KIND=ps-command',
-        'PS_MAJOR=5',
-        "PS_HOME=$ExpectedPsHome",
+        'PS_MAJOR=7',
+        "PS_HOME=$ManagedPwshRoot",
         'POLICY=Bypass',
         "ENTRY_NAME=$EntryName",
         'COMMAND_PROTOCOL=1',
-        'COMMAND_ADDRESS=.dev.ps',
-        "COMMAND_DATA_ROOT=$DataRoot\modules\kernel\.dev\ps",
+        'COMMAND_ADDRESS=.dev.pwsh',
+        "COMMAND_DATA_ROOT=$DataRoot\modules\kernel\.dev\pwsh",
         'GIT_ID_NAME=Shell Fixture',
         "PROJ_HOME=$($Runtime.Home)",
         "DATA_ROOT=$DataRoot",
-        "PATH_VALUE=$RuntimeBin;",
         "WORKING_DIR=$($Runtime.Home)",
         'COMMAND_TEXT=ampersand&pipe|percent%'
     )) {
@@ -238,7 +260,7 @@ try {
                 $Expected,
                 [StringComparison]::OrdinalIgnoreCase
             ) -ge 0) `
-            -Message ".dev.ps -Command did not preserve '$Expected': $($PowerShell.Text)"
+            -Message ".dev.pwsh -Command did not preserve '$Expected': $($PowerShell.Text)"
     }
 
     $ScriptPath = Join-Path $Runtime.Home 'fixture\script with spaces.ps1'
@@ -267,7 +289,7 @@ $CoreCommandAdapterNames = @(
 $ModuleNames = @(
     $ProcessEnvironmentNames | Where-Object {
         $_.StartsWith(
-            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_PS_',
+            'SWAWKIT_PROJ_MODULE_KERNEL_DEV_PWSH_',
             [StringComparison]::OrdinalIgnoreCase
         )
     }
@@ -291,7 +313,7 @@ exit 33
         $Runtime.Home.TrimEnd('\').Length + 1
     )
     $PowerShellFile = Invoke-ProjShellTest `
-        -Address '.dev.ps' `
+        -Address '.dev.pwsh' `
         -Arguments @(
             '-File',
             $RelativeScriptPath,
@@ -301,11 +323,11 @@ exit 33
         )
     Assert-ProjShellTest `
         -Condition ($PowerShellFile.ExitCode -eq 33) `
-        -Message ".dev.ps -File lost its exit code: $($PowerShellFile.Text)"
+        -Message ".dev.pwsh -File lost its exit code: $($PowerShellFile.Text)"
     foreach ($Expected in @(
         'SHELL_KIND=ps-file',
         'FILE_ARGS=hello world|ampersand&value|pipe|percent%',
-        'PS_MAJOR=5',
+        'PS_MAJOR=7',
         'POLICY=Bypass',
         "WORKING_DIR=$($Runtime.Home)",
         'CORE_COMMAND_ADAPTER_INTERNAL_COUNT=0',
@@ -317,7 +339,7 @@ exit 33
                 $Expected,
                 [StringComparison]::OrdinalIgnoreCase
             ) -ge 0) `
-            -Message ".dev.ps -File did not preserve '$Expected': $($PowerShellFile.Text)"
+            -Message ".dev.pwsh -File did not preserve '$Expected': $($PowerShellFile.Text)"
     }
 
     $NestedCmd = Invoke-ProjShellTest `
@@ -332,7 +354,7 @@ exit 33
 
     $NestedEntryLiteral = $script:ProjShellEntry.Replace("'", "''")
     $NestedPowerShell = Invoke-ProjShellTest `
-        -Address '.dev.ps' `
+        -Address '.dev.pwsh' `
         -Arguments @(
             '-Command',
             "& '$NestedEntryLiteral' --help; exit `$LASTEXITCODE"
@@ -342,27 +364,27 @@ exit 33
             $NestedPowerShell.ExitCode -eq 1 -and
             $NestedPowerShell.Text.Contains('inside another Entry command')
         ) `
-        -Message ".dev.ps allowed a nested Entry: $($NestedPowerShell.Text)"
+        -Message ".dev.pwsh allowed a nested Entry: $($NestedPowerShell.Text)"
 
     $InvalidInvocations = @(
         @{ Address = '.dev.cmd'; Arguments = [string[]]@(); Name = 'no command' },
         @{ Address = '.dev.cmd'; Arguments = @(' '); Name = 'blank command' },
-        @{ Address = '.dev.ps'; Arguments = [string[]]@(); Name = 'no mode' },
-        @{ Address = '.dev.ps'; Arguments = @('-Command'); Name = 'missing command' },
-        @{ Address = '.dev.ps'; Arguments = @('-Command', ' '); Name = 'blank command' },
-        @{ Address = '.dev.ps'; Arguments = @('-File'); Name = 'missing file' },
+        @{ Address = '.dev.pwsh'; Arguments = [string[]]@(); Name = 'no mode' },
+        @{ Address = '.dev.pwsh'; Arguments = @('-Command'); Name = 'missing command' },
+        @{ Address = '.dev.pwsh'; Arguments = @('-Command', ' '); Name = 'blank command' },
+        @{ Address = '.dev.pwsh'; Arguments = @('-File'); Name = 'missing file' },
         @{
-            Address = '.dev.ps'
+            Address = '.dev.pwsh'
             Arguments = @('-File', 'missing.ps1')
             Name = 'absent file'
         },
         @{
-            Address = '.dev.ps'
+            Address = '.dev.pwsh'
             Arguments = @('-File', 'not-a-script.txt')
             Name = 'non-ps1 file'
         },
         @{
-            Address = '.dev.ps'
+            Address = '.dev.pwsh'
             Arguments = @('-Unknown', 'value')
             Name = 'unknown mode'
         }
@@ -374,15 +396,6 @@ exit 33
         Assert-ProjShellTest `
             -Condition ($Rejected.ExitCode -eq 1) `
             -Message "$($Invocation.Address) accepted $($Invocation.Name)"
-    }
-
-    $PowerShellEntrySource = [IO.File]::ReadAllText(
-        (Join-Path $RepoRoot '_lib\proj\.dev\ps\run.ps1')
-    )
-    foreach ($Option in @('-NoProfile', '-NonInteractive', 'Bypass')) {
-        Assert-ProjShellTest `
-            -Condition ($PowerShellEntrySource.Contains($Option)) `
-            -Message ".dev.ps does not fix the $Option process contract"
     }
 
     Assert-ProjShellTest `

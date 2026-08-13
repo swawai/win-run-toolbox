@@ -159,7 +159,7 @@ fn protocol_help_initializes_the_entry_without_requiring_an_entry_profile() {
 }
 
 #[test]
-fn local_help_is_read_only_but_command_owned_help_executes() {
+fn local_help_is_read_only_but_command_owned_help_obeys_adapter_readiness() {
     let fixture = Fixture::new();
     let local = fixture.command(".local", "run.ps1", "exit 99");
     fs::create_dir_all(local.join("_help")).unwrap();
@@ -182,14 +182,16 @@ fn local_help_is_read_only_but_command_owned_help_executes() {
         0
     );
     fixture.bind();
-    assert_eq!(
-        run_with_approver(
-            &fixture.context,
-            &argv(&[".local", "--help"]),
-            &mut unexpected,
-        )
-        .unwrap(),
-        99
+    let profile_gated = run_with_approver(
+        &fixture.context,
+        &argv(&[".local", "--help"]),
+        &mut unexpected,
+    )
+    .unwrap_err();
+    assert!(
+        profile_gated
+            .to_string()
+            .contains("development environment is not ready")
     );
     assert_eq!(
         run_with_approver(

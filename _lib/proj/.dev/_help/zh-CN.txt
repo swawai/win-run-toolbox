@@ -8,6 +8,6 @@
   {{COMMAND}} .dev.rustc              执行项目受管 Rustc
   {{COMMAND}} .dev.cl                 执行项目受管 MSVC 编译器
   {{COMMAND}} .dev.cmd                执行一条项目环境中的 CMD 命令
-  {{COMMAND}} .dev.ps                 执行项目环境中的 PowerShell 脚本
+  {{COMMAND}} .dev.pwsh               执行项目环境中的 PowerShell 7 脚本
 
 开发环境只写入 SWAWKIT_PROJ_DATA_ROOT，不修改用户或系统 PATH。

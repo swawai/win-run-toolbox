@@ -194,8 +194,13 @@ fn entry_env_directory_modules_match_the_profile_variable_registry() {
     let kernel = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("Proj kernel root");
-    let snapshot = CatalogSnapshot::discover_optional_roots(kernel, None, "swawkit")
-        .expect("source-tree Catalog");
+    let snapshot = CatalogSnapshot::discover_optional_roots(
+        kernel,
+        None,
+        "swawkit",
+        PwshAvailability::ProfileUnavailable,
+    )
+    .expect("source-tree Catalog");
     let setters = snapshot
         .commands
         .iter()
@@ -356,6 +361,33 @@ fn reports_multiple_and_non_canonical_run_entries_without_stopping_discovery() {
     );
 
     assert!(node(&snapshot, CommandSource::Kernel, ".ok").runnable);
+}
+
+#[test]
+fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
+    let fixture = Fixture::new();
+    let directory = fixture.directory("home/_lib/proj/.script");
+    fixture.file("home/_lib/proj/.script/run.ps1", "");
+    let pending = PendingDirectory {
+        path: directory,
+        address: ".script".to_owned(),
+        source: CommandSource::Kernel,
+        is_root: false,
+    };
+
+    let disabled = scan_node(&pending, "fixture", PwshAvailability::Disabled);
+    assert!(!disabled.runnable);
+    assert!(disabled.entry.is_none());
+    assert!(
+        disabled
+            .diagnostic
+            .as_deref()
+            .is_some_and(|message| message.contains("SWAWKIT_PROJ_PWSH_MODE"))
+    );
+
+    let enabled = scan_node(&pending, "fixture", PwshAvailability::Enabled);
+    assert!(enabled.runnable);
+    assert_eq!(enabled.adapter.as_deref(), Some("pwsh"));
 }
 
 #[test]

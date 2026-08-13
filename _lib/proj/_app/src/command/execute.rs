@@ -107,7 +107,22 @@ impl<'a> CommandExecutor<'a> {
             CommandAdapter::Bun => {
                 let resolved = resolve_entry_development(self.context)?;
                 development_environment = Some(resolved.environment);
-                AdapterLaunch::Bun(resolved.bun_executable)
+                AdapterLaunch::Bun(resolved.bun_executable.ok_or_else(|| {
+                    CommandError::new(format!(
+                        "Bun is disabled for this Entry. Enable SWAWKIT_PROJ_BUN_MODE and run '{} .dev.setup'",
+                        self.context.entry_name
+                    ))
+                })?)
+            }
+            CommandAdapter::Pwsh => {
+                let resolved = resolve_entry_development(self.context)?;
+                development_environment = Some(resolved.environment);
+                AdapterLaunch::Pwsh(resolved.pwsh_executable.ok_or_else(|| {
+                    CommandError::new(format!(
+                        "PowerShell 7 is disabled for this Entry. Set SWAWKIT_PROJ_PWSH_MODE to managed or system and run '{} .dev.setup'",
+                        self.context.entry_name
+                    ))
+                })?)
             }
             CommandAdapter::Toolchain => AdapterLaunch::Toolchain {
                 executable: self.context.toolchain_executable.clone(),
@@ -192,6 +207,12 @@ fn validate_command_adapter(command: &ResolvedCommand) -> CommandResult<()> {
         return Err(CommandError::new(format!(
             "the run.ts adapter is only supported for Action commands; '{}' is product-owned \
              and must use a Rust-native entry",
+            command.address
+        )));
+    }
+    if command.adapter == CommandAdapter::Pwsh && command.source == CommandSource::Control {
+        return Err(CommandError::new(format!(
+            "the run.ps1 adapter is not supported for Control Plane command '{}'",
             command.address
         )));
     }

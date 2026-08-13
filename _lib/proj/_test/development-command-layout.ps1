@@ -20,7 +20,7 @@ Assert-ProjDevelopmentCommandLayout `
     -Condition (-not [IO.Directory]::Exists((Join-Path $ProjRoot '_global'))) `
     -Message 'the removed no-op global guard directory still exists'
 
-foreach ($Name in @('bun', 'cargo', 'cl', 'rustc', 'cmd', 'ps')) {
+foreach ($Name in @('bun', 'cargo', 'cl', 'rustc', 'cmd', 'pwsh')) {
     $LegacyPath = Join-Path $ProjRoot ".$Name"
     $EntryPath = Join-Path $ProjRoot ".dev\$Name\run.ps1"
 
@@ -76,20 +76,6 @@ $DependencyContracts = @(
         Relative = '..\..\_shell\runtime.ps1'
         SourceMarker = '_shell\runtime.ps1'
         PathType = 'Leaf'
-    },
-    @{
-        Name = '.dev.ps shell runtime'
-        Script = '.dev\ps\run.ps1'
-        Relative = '..\..\_shell\runtime.ps1'
-        SourceMarker = '_shell\runtime.ps1'
-        PathType = 'Leaf'
-    },
-    @{
-        Name = '.dev.ps isolated runner'
-        Script = '.dev\ps\run.ps1'
-        Relative = '..\..\_shell\powershell-command.ps1'
-        SourceMarker = '_shell\powershell-command.ps1'
-        PathType = 'Leaf'
     }
 )
 foreach ($Contract in $DependencyContracts) {
@@ -114,6 +100,14 @@ foreach ($Contract in $DependencyContracts) {
             -PathType $Contract.PathType) `
         -Message "$($Contract.Name) resolves to a missing target"
 }
+
+$PwshEntry = Join-Path $ProjRoot '.dev\pwsh\run.ps1'
+$PwshSource = [IO.File]::ReadAllText($PwshEntry)
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ($PwshSource.Contains('PSEdition') -and
+        $PwshSource.Contains('PSVersionTable') -and
+        -not [IO.File]::Exists((Join-Path $ProjRoot '.dev\ps\run.ps1'))) `
+    -Message '.dev.pwsh does not own the PowerShell 7-only shell contract'
 
 Write-Host '[PASS] Proj development command layout test' `
     -ForegroundColor Green

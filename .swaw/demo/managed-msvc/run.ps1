@@ -6,16 +6,7 @@ if ($args.Count -ne 0) {
     throw 'demo.managed-msvc does not accept dynamic arguments.'
 }
 
-$KernelRoot = [IO.Path]::GetFullPath(
-    (Join-Path ([string]$env:SWAWKIT_HOME) '_lib\proj')
-)
-. (Join-Path $KernelRoot '_toolchain\_modules\msvc\runtime.ps1')
-$Requirement = Import-ProjDevMsvcCommandEnvironment
-
-# Command-owned precondition policy:
-# This module requires project-managed MSVC. A different module may
-# intentionally accept an ambient tool instead; Core does not decide for it.
-if ([string]$Requirement.Definition.Mode -cne 'managed') {
+if ([string]$env:SWAWKIT_PROJ_MSVC_MODE -cne 'managed') {
     throw (
         'demo.managed-msvc requires the project-managed MSVC environment. ' +
         "Enable it and run " +
@@ -23,10 +14,12 @@ if ([string]$Requirement.Definition.Mode -cne 'managed') {
     )
 }
 
-$ManagedRoot = Get-ProjDevMsvcInstallRoot `
-    -Context $Requirement.Context `
-    -Definition $Requirement.Definition
-$ManagedRoot = [IO.Path]::GetFullPath($ManagedRoot).TrimEnd('\', '/') +
+if ([string]::IsNullOrWhiteSpace([string]$env:VCToolsInstallDir)) {
+    throw 'Core did not publish the managed MSVC installation environment.'
+}
+$ManagedRoot = [IO.Path]::GetFullPath(
+    [string]$env:VCToolsInstallDir
+).TrimEnd('\', '/') +
     [IO.Path]::DirectorySeparatorChar
 $ResolvedTools = foreach ($Name in @('cl.exe', 'link.exe')) {
     $Command = Get-Command $Name `

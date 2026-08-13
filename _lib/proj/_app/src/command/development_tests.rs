@@ -232,11 +232,14 @@ fn bun_is_resolved_after_guards_can_change_the_published_installation() {
     fs::write(action.join("run.ts"), "console.log('must not run')").expect("write Action command");
     let guard = fixture.context.kernel_root.join("_global");
     fs::create_dir_all(&guard).expect("create global guard");
-    let escaped = executable.to_string_lossy().replace('\'', "''");
+    let changed = fixture.root.join("changed-bun.exe");
+    fs::write(&changed, b"changed").expect("write changed Bun fixture");
     fs::write(
-        guard.join("run.ps1"),
+        guard.join("run.cmd"),
         format!(
-            "[IO.File]::WriteAllBytes('{escaped}', [Text.Encoding]::UTF8.GetBytes('changed'))\n"
+            "@copy /y \"{}\" \"{}\" >nul\r\n@exit /b 0\r\n",
+            changed.display(),
+            executable.display()
         ),
     )
     .expect("write mutating guard");
@@ -266,7 +269,7 @@ fn action_environment_contains_only_validated_enabled_domains() {
 
     let resolved = super::resolve_entry_development(&fixture.context).unwrap();
 
-    assert_eq!(resolved.bun_executable, expected);
+    assert_eq!(resolved.bun_executable, Some(expected.clone()));
     assert_eq!(resolved.environment.paths(), [expected.parent().unwrap()]);
     assert!(resolved.environment.variables().is_empty());
 }

@@ -12,6 +12,7 @@ use crate::development::msvc::{
     MsvcDefinition, MsvcInstallContext, MsvcInstallOutcome,
     ensure_installed as ensure_msvc_installed,
 };
+use crate::development::pwsh::SystemPwsh;
 use crate::development::rust::{
     RustDefinition, RustInstallContext, RustInstallOutcome,
     ensure_installed as ensure_rust_installed,
@@ -132,6 +133,7 @@ impl MsvcSetupResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeSetupResult {
     archive_tools: Vec<ArchiveToolSetupResult>,
+    system_pwsh: Option<SystemPwsh>,
     msvc: Option<MsvcSetupResult>,
     rust: Option<RustSetupResult>,
     environment_changed: bool,
@@ -140,6 +142,10 @@ pub struct NativeSetupResult {
 impl NativeSetupResult {
     pub fn archive_tools(&self) -> &[ArchiveToolSetupResult] {
         &self.archive_tools
+    }
+
+    pub fn system_pwsh(&self) -> Option<&SystemPwsh> {
+        self.system_pwsh.as_ref()
     }
 
     pub fn msvc(&self) -> Option<&MsvcSetupResult> {
@@ -216,6 +222,9 @@ pub fn run_native(
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
+    let system_pwsh = (declarations.mode(PWSH.mode_variable) == Some("system"))
+        .then(crate::development::pwsh::resolve_system)
+        .transpose()?;
     let msvc_definition = declarations
         .msvc_definition()
         .map_err(|error| error.to_string())?;
@@ -235,6 +244,15 @@ pub fn run_native(
         plan.prepend_path(installed.root.clone())?;
         archive_tools.push(installed);
     }
+    if let Some(pwsh) = system_pwsh.as_ref() {
+        let root = pwsh.executable().parent().ok_or_else(|| {
+            format!(
+                "system PowerShell executable has no parent: {}",
+                pwsh.executable().display()
+            )
+        })?;
+        plan.prepend_path(root)?;
+    }
     let msvc = setup_msvc(context, msvc_definition.as_ref(), &mut plan, progress)?;
     let rust = setup_rust(context, rust_definition.as_ref(), &mut plan, progress)?;
     plan.set(PUBLICATION_TOKEN_VARIABLE, Some(publication.token()))?;
@@ -242,6 +260,7 @@ pub fn run_native(
     provider.complete(&publication)?;
     Ok(NativeSetupResult {
         archive_tools,
+        system_pwsh,
         msvc,
         rust,
         environment_changed,

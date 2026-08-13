@@ -178,10 +178,18 @@ impl DeclarationSnapshot {
         if mode == "disabled" {
             return Ok(None);
         }
+        if tool.name == "pwsh" && mode == "system" {
+            return Ok(None);
+        }
         if mode != "managed" {
+            let expected = if tool.name == "pwsh" {
+                "'managed', 'system', or 'disabled'"
+            } else {
+                "'managed' or 'disabled'"
+            };
             return Err(DeclarationError(format!(
-                "unsupported {} value '{}'; expected 'managed' or 'disabled'",
-                tool.mode_variable, mode
+                "unsupported {} value '{}'; expected {expected}",
+                tool.mode_variable, mode,
             )));
         }
         let version = self.values.get(tool.version_variable).ok_or_else(|| {
@@ -199,6 +207,10 @@ impl DeclarationSnapshot {
         ArchiveToolRequest::new(tool, version, project_sha256)
             .map(Some)
             .map_err(|error| DeclarationError(error.to_string()))
+    }
+
+    pub fn mode(&self, variable: &str) -> Option<&str> {
+        self.values.get(variable).map(String::as_str)
     }
 
     pub fn msvc_definition(&self) -> Result<Option<MsvcDefinition>, DeclarationError> {
@@ -382,6 +394,20 @@ mod tests {
                 .unwrap()
                 .requested(),
             "1.2.15"
+        );
+    }
+
+    #[test]
+    fn system_powershell_is_enabled_without_an_archive_request() {
+        let values = BTreeMap::from([("SWAWKIT_PROJ_PWSH_MODE", "system")]);
+        let snapshot = snapshot(|name| values.get(name).map(|value| (*value).to_owned()));
+
+        assert_eq!(snapshot.enabled_modules(), ["pwsh"]);
+        assert!(
+            snapshot
+                .archive_request(&crate::development::PWSH)
+                .unwrap()
+                .is_none()
         );
     }
 

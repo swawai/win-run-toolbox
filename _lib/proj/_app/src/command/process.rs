@@ -17,6 +17,7 @@ pub(crate) enum AdapterLaunch {
     #[default]
     Direct,
     Bun(PathBuf),
+    Pwsh(PathBuf),
     Toolchain {
         executable: PathBuf,
         handler: String,
@@ -24,19 +25,19 @@ pub(crate) enum AdapterLaunch {
 }
 
 const ADAPTER_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_";
-const POWERSHELL_ARGUMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_";
-const POWERSHELL_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ENTRY_PATH";
-const POWERSHELL_COUNT_ENV: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_COUNT";
+const PWSH_ARGUMENT_PREFIX: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ARG_";
+const PWSH_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ENTRY_PATH";
+const PWSH_COUNT_ENV: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ARG_COUNT";
 const CMD_ENTRY_ENV: &str = "SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_CMD_ENTRY_PATH";
 
-const POWERSHELL_RUNNER: &str = r#"
+const PWSH_RUNNER: &str = r#"
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 try {
-    $entryPathName = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ENTRY_PATH'
-    $countName = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_COUNT'
-    $argumentPrefix = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_POWERSHELL_ARG_'
+    $entryPathName = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ENTRY_PATH'
+    $countName = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ARG_COUNT'
+    $argumentPrefix = 'SWAWKIT_PROJ_CORE_COMMAND_ADAPTER_PWSH_ARG_'
     $entryPath = [Environment]::GetEnvironmentVariable($entryPathName, 'Process')
     $countText = [Environment]::GetEnvironmentVariable($countName, 'Process')
     $count = [int]::Parse($countText, [Globalization.CultureInfo]::InvariantCulture)
@@ -54,7 +55,7 @@ try {
         if ($name.Equals($entryPathName, [StringComparison]::OrdinalIgnoreCase) -or
             $name.Equals($countName, [StringComparison]::OrdinalIgnoreCase) -or
             $name.StartsWith($argumentPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-            [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+            Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
         }
     }
     $global:LASTEXITCODE = 0
@@ -67,7 +68,7 @@ try {
     exit $entryExitCode
 } catch {
     [Console]::Error.WriteLine(
-        ('PowerShell entry failed: entry={0}; data={1}; error={2}; at={3}' -f
+        ('PowerShell 7 entry failed: entry={0}; data={1}; error={2}; at={3}' -f
             $entryPath,
             $env:SWAWKIT_PROJ_DATA_ROOT,
             $_.Exception.Message,
@@ -118,7 +119,7 @@ fn prepare_command(
         CommandAdapter::Exe => executable_command(entry_path, arguments),
         CommandAdapter::Bun => bun_command(adapter_launch, entry_path, arguments)?,
         CommandAdapter::Toolchain => toolchain_command(adapter_launch, arguments)?,
-        CommandAdapter::PowerShell => powershell_command(entry_path, arguments)?,
+        CommandAdapter::Pwsh => pwsh_command(adapter_launch, entry_path, arguments)?,
         CommandAdapter::Cmd => cmd_command(entry_path, arguments)?,
         CommandAdapter::Core | CommandAdapter::Python => unreachable!(),
     };
@@ -141,7 +142,7 @@ pub(crate) fn validate_adapter(adapter: CommandAdapter) -> CommandResult<()> {
         CommandAdapter::Exe
             | CommandAdapter::Bun
             | CommandAdapter::Toolchain
-            | CommandAdapter::PowerShell
+            | CommandAdapter::Pwsh
             | CommandAdapter::Cmd
     ) {
         return Ok(());
@@ -194,36 +195,31 @@ fn executable_command(entry_path: &Path, arguments: &[OsString]) -> Command {
     command
 }
 
-fn powershell_command(entry_path: &Path, arguments: &[OsString]) -> CommandResult<Command> {
-    let system_root = env::var_os("SystemRoot")
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| CommandError::new("SystemRoot is unavailable"))?;
-    let executable = Path::new(&system_root)
-        .join("System32")
-        .join("WindowsPowerShell")
-        .join("v1.0")
-        .join("powershell.exe");
-    if !executable.is_file() {
-        return Err(CommandError::new(format!(
-            "Windows PowerShell is unavailable: {}",
-            executable.display()
-        )));
-    }
-
+fn pwsh_command(
+    adapter_launch: &AdapterLaunch,
+    entry_path: &Path,
+    arguments: &[OsString],
+) -> CommandResult<Command> {
+    let AdapterLaunch::Pwsh(executable) = adapter_launch else {
+        return Err(CommandError::new(
+            "the run.ps1 adapter requires a resolved PowerShell 7 executable",
+        ));
+    };
     let mut command = Command::new(executable);
     remove_inherited_adapter_environment(&mut command);
     command.args([
         OsStr::new("-NoLogo"),
         OsStr::new("-NoProfile"),
+        OsStr::new("-NonInteractive"),
         OsStr::new("-ExecutionPolicy"),
         OsStr::new("Bypass"),
         OsStr::new("-Command"),
-        OsStr::new(POWERSHELL_RUNNER),
+        OsStr::new(PWSH_RUNNER),
     ]);
-    command.env(POWERSHELL_ENTRY_ENV, entry_path);
-    command.env(POWERSHELL_COUNT_ENV, arguments.len().to_string());
+    command.env(PWSH_ENTRY_ENV, entry_path);
+    command.env(PWSH_COUNT_ENV, arguments.len().to_string());
     for (index, argument) in arguments.iter().enumerate() {
-        command.env(format!("{POWERSHELL_ARGUMENT_PREFIX}{index}"), argument);
+        command.env(format!("{PWSH_ARGUMENT_PREFIX}{index}"), argument);
     }
     Ok(command)
 }

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::{
     catalog::{CatalogSnapshot, CommandAdapter},
@@ -19,6 +20,29 @@ use super::{
 };
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+
+fn write_json(path: &Path, value: &serde_json::Value) {
+    fs::create_dir_all(path.parent().expect("JSON parent")).expect("create JSON parent");
+    fs::write(path, serde_json::to_vec(value).expect("serialize JSON")).expect("write JSON");
+}
+
+fn link_directory(source: &Path, target: &Path) {
+    fs::create_dir_all(target).expect("create linked fixture directory");
+    for entry in fs::read_dir(source).expect("read fixture source directory") {
+        let entry = entry.expect("fixture source entry");
+        let name = entry.file_name();
+        if name == ".swawkit-dev-install.json" {
+            continue;
+        }
+        let source = entry.path();
+        let target = target.join(name);
+        if entry.file_type().expect("fixture source type").is_dir() {
+            link_directory(&source, &target);
+        } else {
+            fs::hard_link(&source, &target).expect("link managed PowerShell fixture file");
+        }
+    }
+}
 
 struct Fixture {
     root: PathBuf,
@@ -66,7 +90,7 @@ impl Fixture {
     fn guard(&self, root: &Path, name: &str, script: &str) {
         let directory = root.join(name);
         fs::create_dir_all(&directory).expect("create guard directory");
-        fs::write(directory.join("run.ps1"), script).expect("write guard entry");
+        fs::write(directory.join("run.cmd"), script).expect("write guard entry");
     }
 
     fn catalog(&self) -> CatalogSnapshot {
@@ -75,6 +99,55 @@ impl Fixture {
     }
 
     fn context(&self) -> CommandExecutionContext {
+        let mut profile = EntryProfileRecord::default();
+        profile.development.bun.mode = "disabled".to_owned();
+        profile.development.pwsh.mode = "managed".to_owned();
+        profile.development.pwsh.version = "7.6.4".to_owned();
+        profile.development.msvc.mode = "disabled".to_owned();
+        profile.development.rust.mode = "disabled".to_owned();
+        let environment_input_revision = profile.environment_input_revision();
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .join(
+                "data/proj.swawkit/modules/kernel/.dev/setup/export/pwsh/installs/7.6.4/pwsh.exe",
+            );
+        let install = self
+            .data_root
+            .join("modules/kernel/.dev/setup/export/pwsh/installs/7.6.4");
+        link_directory(source.parent().expect("PowerShell fixture root"), &install);
+        let executable = install.join("pwsh.exe");
+        let content = fs::read(&executable).expect("read managed PowerShell fixture");
+        let digest = format!("{:x}", Sha256::digest(&content));
+        write_json(
+            &install.join(".swawkit-dev-install.json"),
+            &serde_json::json!({
+                "schema": "swawkit.proj-dev.install.v0",
+                "name": "pwsh",
+                "version": "7.6.4",
+                "sourceUrl": "https://example.invalid/pwsh.zip",
+                "sourceSha256": "a".repeat(64),
+                "sourceVerification": "unverified",
+                "recipeVersion": crate::development::PWSH.recipe_version,
+                "definitionSignature": crate::development::PWSH.definition_signature("7.6.4", ""),
+                "files": [{
+                    "path": "pwsh.exe",
+                    "length": content.len(),
+                    "sha256": digest
+                }]
+            }),
+        );
+        write_json(
+            &self.data_root.join("modules/kernel/.dev/setup/_state.json"),
+            &serde_json::json!({
+                "schema": "swawkit.command-provider-state/v1",
+                "status": "ready",
+                "inputRevision": environment_input_revision,
+                "token": "d".repeat(32),
+                "producerContract": "swawkit.proj.dev-setup/v2"
+            }),
+        );
         CommandExecutionContext {
             swawkit_home: self.root.clone(),
             kernel_root: self.kernel_root.clone(),
@@ -85,8 +158,8 @@ impl Fixture {
             entry_file: self.root.join("fixture.exe"),
             invocation_directory: self.target_project_root.clone(),
             toolchain_executable: self.root.join("swawkit-proj-toolchain.exe"),
-            profile: EntryProfileRecord::default(),
-            environment_input_revision: EntryProfileRecord::default().environment_input_revision(),
+            profile,
+            environment_input_revision,
             profile_revision: format!("sha256-{}", "0".repeat(64)),
             process_mode: CommandProcessMode::InheritConsole,
         }
@@ -121,8 +194,8 @@ fn invocation_preserves_help_markers_for_the_cli_protocol_boundary() {
 fn guard_plan_is_global_then_command_and_rejects_unsafe_entries() {
     let fixture = Fixture::new();
     let command_directory = fixture.command(".tool", "exit 0");
-    fixture.guard(&fixture.kernel_root, "_global", "exit 0");
-    fixture.guard(&command_directory, "_guard", "exit 0");
+    fixture.guard(&fixture.kernel_root, "_global", "@exit /b 0\r\n");
+    fixture.guard(&command_directory, "_guard", "@exit /b 0\r\n");
     let command = ResolvedCommand::from_catalog(&fixture.catalog(), ".tool").unwrap();
 
     let plan = GuardPlan::discover(&fixture.kernel_root, &command).unwrap();
@@ -134,8 +207,8 @@ fn guard_plan_is_global_then_command_and_rejects_unsafe_entries() {
         vec![GuardScope::Global, GuardScope::Command]
     );
 
-    fs::remove_file(command_directory.join("_guard/run.ps1")).unwrap();
-    fs::write(command_directory.join("_guard/run.ts"), "").unwrap();
+    fs::remove_file(command_directory.join("_guard/run.cmd")).unwrap();
+    fs::write(command_directory.join("_guard/run.ps1"), "").unwrap();
     assert!(
         GuardPlan::discover(&fixture.kernel_root, &command)
             .unwrap_err()
@@ -281,9 +354,9 @@ fn command_data_roots_are_isolated_by_catalog_source() {
 }
 
 #[test]
-fn powershell_pipeline_preserves_arguments_environment_order_and_exit_code() {
+fn pwsh_pipeline_preserves_arguments_environment_order_and_exit_code() {
     let fixture = Fixture::new();
-    let trace = r#"
+    let target = r#"
 $adapterNames = @([Environment]::GetEnvironmentVariables().Keys |
     Where-Object {
         ([string]$_).StartsWith(
@@ -299,32 +372,23 @@ if ($adapterNames.Count -ne 0) {
 $encoded = @($args | ForEach-Object {
     [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$_))
 }) -join ','
-$line = '__LABEL__|' + $env:SWAWKIT_PROJ_CORE_COMMAND_PHASE + '|' +
+$line = 'target|' + $env:SWAWKIT_PROJ_CORE_COMMAND_PHASE + '|' +
     $env:SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE + '|' +
     $env:SWAWKIT_PROJ_CORE_COMMAND_ADDRESS + '|' + $encoded
 $tracePath = Join-Path $env:SWAWKIT_PROJ_DATA_ROOT 'trace.txt'
 [IO.File]::AppendAllText($tracePath, $line + [Environment]::NewLine)
-__EXIT__
+exit 23
 "#;
-    let command_directory = fixture.command(
-        ".tool",
-        &trace
-            .replace("__LABEL__", "target")
-            .replace("__EXIT__", "exit 23"),
-    );
+    let command_directory = fixture.command(".tool", target);
     fixture.guard(
         &fixture.kernel_root,
         "_global",
-        &trace
-            .replace("__LABEL__", "global")
-            .replace("__EXIT__", "exit 0"),
+        "@echo global^|%SWAWKIT_PROJ_CORE_COMMAND_PHASE%^|%SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE%^|%SWAWKIT_PROJ_CORE_COMMAND_ADDRESS%^|>>\"%SWAWKIT_PROJ_DATA_ROOT%\\trace.txt\"\r\n@exit /b 0\r\n",
     );
     fixture.guard(
         &command_directory,
         "_guard",
-        &trace
-            .replace("__LABEL__", "command")
-            .replace("__EXIT__", "exit 0"),
+        "@echo command^|%SWAWKIT_PROJ_CORE_COMMAND_PHASE%^|%SWAWKIT_PROJ_CORE_COMMAND_GUARD_SCOPE%^|%SWAWKIT_PROJ_CORE_COMMAND_ADDRESS%^|>>\"%SWAWKIT_PROJ_DATA_ROOT%\\trace.txt\"\r\n@exit /b 0\r\n",
     );
     let catalog = fixture.catalog();
     let context = fixture.context();
@@ -353,7 +417,7 @@ fn journaled_execution_persists_guard_and_target_output_in_the_module_data_root(
     fixture.guard(
         &fixture.kernel_root,
         "_global",
-        "[Console]::Out.WriteLine('guard out'); exit 0",
+        "@echo guard out\r\n@exit /b 0\r\n",
     );
     let catalog = fixture.catalog();
 
@@ -394,7 +458,7 @@ fn a_failing_guard_stops_the_pipeline() {
         ".tool",
         "Set-Content (Join-Path $env:SWAWKIT_PROJ_DATA_ROOT 'target.txt') 'ran'; exit 0",
     );
-    fixture.guard(&fixture.kernel_root, "_global", "exit 17");
+    fixture.guard(&fixture.kernel_root, "_global", "@exit /b 17\r\n");
     let catalog = fixture.catalog();
 
     let exit_code = CommandExecutor::new(&fixture.context(), &catalog)
@@ -437,7 +501,7 @@ fn cmd_adapter_allows_only_one_standalone_help_selector() {
 }
 
 #[test]
-fn powershell_adapter_propagates_a_native_child_exit_code() {
+fn pwsh_adapter_propagates_a_native_child_exit_code() {
     let fixture = Fixture::new();
     fixture.command(".native", "& $env:ComSpec /d /c exit 12");
     let catalog = fixture.catalog();

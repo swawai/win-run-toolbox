@@ -17,6 +17,63 @@ import {
 } from "./command-run-test-support.js";
 
 describe("command run view", () => {
+  test("renders declared operations and confirms destructive argv before execution", async () => {
+    const ui = elements();
+    const bodies = [];
+    const view = createCommandRunView(ui, {
+      document: documentObject(),
+      storage: storage(),
+      async fetchRun(_url, options) {
+        bodies.push(JSON.parse(options.body));
+        const id = `run-${bodies.length}`;
+        return response(201, snapshot({
+          id,
+          address: ".runtime.cleanup",
+          state: "exited",
+          exitCode: 0,
+        }), `/api/v2/command-runs/${id}`);
+      },
+    });
+    view.select({
+      address: ".runtime.cleanup",
+      runnable: true,
+      source: "kernel",
+      runOperations: [
+        { id: "preview", label: "预览", arguments: [], confirmation: null },
+        {
+          id: "apply",
+          label: "清理",
+          arguments: ["--apply"],
+          confirmation: "确认清理？",
+        },
+      ],
+    });
+
+    const buttons = ui.commandRunOperationList
+      .querySelectorAll(".command-run-operation");
+    expect(buttons.map((button) => button.textContent)).toEqual(["预览", "清理"]);
+    expect(ui.commandRunEditor.hidden).toBe(true);
+    expect(ui.commandRunOperations.hidden).toBe(false);
+    expect(ui.commandRunSubmit.hidden).toBe(true);
+    expect(ui.commandRunActions.hidden).toBe(true);
+
+    buttons[0].dispatch("click");
+    await settle();
+    expect(bodies[0].arguments).toEqual([]);
+
+    buttons[1].dispatch("click");
+    expect(bodies).toHaveLength(1);
+    expect(ui.commandRunConfirmation.hidden).toBe(false);
+    expect(ui.commandRunConfirmationText.textContent).toBe("确认清理？");
+    ui.commandRunConfirmDismiss.dispatch("click");
+    expect(ui.commandRunConfirmation.hidden).toBe(true);
+
+    buttons[1].dispatch("click");
+    ui.commandRunConfirm.dispatch("click");
+    await settle();
+    expect(bodies[1].arguments).toEqual(["--apply"]);
+  });
+
   test("preserves argv rows, polls recursively, and renders both streams", async () => {
     const ui = elements();
     const saved = storage();

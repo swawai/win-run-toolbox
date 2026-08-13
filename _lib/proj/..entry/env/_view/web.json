@@ -1,5 +1,5 @@
 {
-  "schema": "swawkit.command-view/web/v1",
+  "schema": "swawkit.command-view/web/v2",
   "childrenColumn": {
     "width": "normal"
   }

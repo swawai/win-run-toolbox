@@ -6,12 +6,18 @@ use super::{
     invalid_data,
 };
 
-const WEB_VIEW_SCHEMA: &str = "swawkit.command-view/web/v1";
+const WEB_VIEW_SCHEMA: &str = "swawkit.command-view/web/v2";
+const MAX_RUN_OPERATIONS: usize = 8;
+const MAX_OPERATION_ARGUMENTS: usize = 32;
+const MAX_ARGUMENT_LENGTH: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandView {
-    pub children_column: ChildrenColumnView,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children_column: Option<ChildrenColumnView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run: Option<RunView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,11 +33,82 @@ pub enum ColumnWidth {
     Wide,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RunView {
+    pub operations: Vec<RunOperationView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RunOperationView {
+    pub id: String,
+    pub label: String,
+    pub arguments: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confirmation: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WebViewManifest {
     schema: String,
-    children_column: ChildrenColumnView,
+    children_column: Option<ChildrenColumnView>,
+    run: Option<RunView>,
+}
+
+fn validate_run(run: &RunView) -> io::Result<()> {
+    if run.operations.is_empty() || run.operations.len() > MAX_RUN_OPERATIONS {
+        return invalid_data(format!(
+            "Web run operations must contain between 1 and {MAX_RUN_OPERATIONS} items"
+        ));
+    }
+
+    let mut identifiers = std::collections::BTreeSet::new();
+    for operation in &run.operations {
+        let valid_id = !operation.id.is_empty()
+            && operation.id.len() <= 32
+            && operation.id.bytes().enumerate().all(|(index, byte)| {
+                byte.is_ascii_lowercase() || (index > 0 && (byte.is_ascii_digit() || byte == b'-'))
+            });
+        if !valid_id || !identifiers.insert(operation.id.as_str()) {
+            return invalid_data(format!(
+                "Web run operation id '{}' must be unique and match [a-z][a-z0-9-]{{0,31}}",
+                operation.id
+            ));
+        }
+        if operation.label.trim() != operation.label
+            || operation.label.is_empty()
+            || operation.label.chars().count() > 64
+        {
+            return invalid_data(format!(
+                "Web run operation '{}' label must be a trimmed string of 1 to 64 characters",
+                operation.id
+            ));
+        }
+        if operation.arguments.len() > MAX_OPERATION_ARGUMENTS
+            || operation
+                .arguments
+                .iter()
+                .any(|argument| argument.len() > MAX_ARGUMENT_LENGTH)
+        {
+            return invalid_data(format!(
+                "Web run operation '{}' exceeds the argument limits",
+                operation.id
+            ));
+        }
+        if operation.confirmation.as_ref().is_some_and(|confirmation| {
+            confirmation.trim() != confirmation
+                || confirmation.is_empty()
+                || confirmation.chars().count() > 500
+        }) {
+            return invalid_data(format!(
+                "Web run operation '{}' confirmation must be a trimmed string of 1 to 500 characters",
+                operation.id
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn read_local_web_view(command_directory: &Path) -> io::Result<Option<CommandView>> {
@@ -101,8 +178,18 @@ pub(super) fn read_local_web_view(command_directory: &Path) -> io::Result<Option
             view_file.path.display()
         ));
     }
+    if manifest.children_column.is_none() && manifest.run.is_none() {
+        return invalid_data(format!(
+            "Web command view manifest '{}' must declare childrenColumn or run",
+            view_file.path.display()
+        ));
+    }
+    if let Some(run) = &manifest.run {
+        validate_run(run)?;
+    }
 
     Ok(Some(CommandView {
         children_column: manifest.children_column,
+        run: manifest.run,
     }))
 }

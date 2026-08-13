@@ -11,6 +11,7 @@ import {
   isCommandRunSupported,
 } from "./command-run-model.js";
 import { createCommandRunOutput } from "./command-run-output.js";
+import { createCommandRunOperations } from "./command-run-operations.js";
 
 export const ACTIVE_COMMAND_RUN_KEY = "swawkit.command-run.active.v1";
 
@@ -39,6 +40,10 @@ export function createCommandRunView(elements, options = {}) {
   const clearTimer = options.clearTimer ?? globalThis.clearTimeout;
   const pollDelay = options.pollDelay ?? 400;
   const commandOutput = createCommandRunOutput(elements, options);
+  const commandOperations = createCommandRunOperations(elements, {
+    document: documentObject,
+    onExecute: (arguments_) => void execute(arguments_),
+  });
   let selectedCommand = null;
   let snapshot = null;
   let cursor = 0;
@@ -124,11 +129,13 @@ export function createCommandRunView(elements, options = {}) {
     elements.commandRunState.dataset.state = status.tone;
     elements.commandRunSubmit.disabled = !runnable || editorBlocked;
     elements.commandRunAdd.disabled = !runnable || editorBlocked;
+    commandOperations.render({ blocked: editorBlocked, runnable });
     for (const input of inputs()) {
       input.disabled = editorBlocked;
       input.nextElementSibling.disabled = editorBlocked;
     }
     elements.commandRunCancel.hidden = !active;
+    elements.commandRunActions.hidden = commandOperations.usesOperations() && !active;
     elements.commandRunCancel.disabled = canceling || snapshot?.state === "canceling";
     elements.commandRunResult.hidden = snapshot === null;
     elements.commandRunAddress.textContent = snapshot?.address ?? "";
@@ -230,7 +237,7 @@ export function createCommandRunView(elements, options = {}) {
     }
   }
 
-  async function execute() {
+  async function execute(explicitArguments) {
     const command = selectedCommand;
     if (
       !isCommandRunSupported(command)
@@ -245,7 +252,10 @@ export function createCommandRunView(elements, options = {}) {
     setFeedback("正在启动…");
     render();
     try {
-      const next = await startCommandRun(command.address, argumentValues(inputs()), fetchRun);
+      const arguments_ = explicitArguments === undefined
+        ? argumentValues(inputs())
+        : [...explicitArguments];
+      const next = await startCommandRun(command.address, arguments_, fetchRun);
       if (next.address !== command.address) {
         throw contractError("创建响应返回了不同的命令地址。");
       }
@@ -371,6 +381,7 @@ export function createCommandRunView(elements, options = {}) {
   function select(command) {
     const previous = selectedCommand?.address ?? null;
     selectedCommand = command ?? null;
+    commandOperations.select(selectedCommand);
     if (!isCommandRunActive(snapshot) && previous !== selectedCommand?.address) {
       clearArguments();
     }

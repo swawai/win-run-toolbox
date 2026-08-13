@@ -53,11 +53,11 @@ fn discovers_control_kernel_and_action_hierarchies() {
     );
     fixture.file(
         "home/_lib/proj/..entry/env/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v1","childrenColumn":{"width":"normal"}}"#,
+        r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"normal"}}"#,
     );
     fixture.file(
         "home/_lib/proj/..entry/env/preferences/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v1","childrenColumn":{"width":"wide"}}"#,
+        r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"wide"}}"#,
     );
     fixture.file(
         "home/_lib/proj/..entry/claim/run.core.json",
@@ -71,6 +71,10 @@ fn discovers_control_kernel_and_action_hierarchies() {
     fixture.file(
         "home/_lib/proj/.runtime/cleanup/run.toolchain.json",
         r#"{"schema":"swawkit.toolchain-command/v1","handler":"runtime.cleanup"}"#,
+    );
+    fixture.file(
+        "home/_lib/proj/.runtime/cleanup/_view/web.json",
+        r#"{"schema":"swawkit.command-view/web/v2","run":{"operations":[{"id":"preview","label":"Preview","arguments":[]},{"id":"apply","label":"Apply","arguments":["--apply"],"confirmation":"Delete old releases?"}]}}"#,
     );
     fixture.file("home/_lib/proj/.help/run.ps1", "");
     fixture.file("home/_lib/proj/.h/run.ps1", "");
@@ -136,7 +140,10 @@ fn discovers_control_kernel_and_action_hierarchies() {
     assert_eq!(env.parent.as_deref(), Some("..entry"));
     assert!(!env.runnable);
     assert_eq!(
-        env.view.as_ref().map(|view| view.children_column.width),
+        env.view
+            .as_ref()
+            .and_then(|view| view.children_column.as_ref())
+            .map(|column| column.width),
         Some(ColumnWidth::Normal)
     );
     let preferences = node(&snapshot, CommandSource::Control, "..entry.env.preferences");
@@ -145,7 +152,8 @@ fn discovers_control_kernel_and_action_hierarchies() {
         preferences
             .view
             .as_ref()
-            .map(|view| view.children_column.width),
+            .and_then(|view| view.children_column.as_ref())
+            .map(|column| column.width),
         Some(ColumnWidth::Wide)
     );
     let default_shell = node(
@@ -172,6 +180,18 @@ fn discovers_control_kernel_and_action_hierarchies() {
     assert_eq!(cleanup.entry.as_deref(), Some("run.toolchain.json"));
     assert_eq!(cleanup.adapter.as_deref(), Some("toolchain"));
     assert_eq!(cleanup.handler.as_deref(), Some("runtime.cleanup"));
+    let operations = &cleanup
+        .view
+        .as_ref()
+        .and_then(|view| view.run.as_ref())
+        .expect("cleanup run view")
+        .operations;
+    assert_eq!(operations.len(), 2);
+    assert_eq!(operations[1].arguments, ["--apply"]);
+    assert_eq!(
+        operations[1].confirmation.as_deref(),
+        Some("Delete old releases?")
+    );
 
     let info = node(&snapshot, CommandSource::Kernel, ".info");
     let help = info.help.as_ref().expect("info help");
@@ -250,7 +270,7 @@ fn reports_an_invalid_parent_owned_web_view_without_stopping_discovery() {
     fixture.file("home/_lib/proj/run.ps1", "");
     fixture.file(
         "home/_lib/proj/.broken/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v1","childrenColumn":{"width":"480px"}}"#,
+        r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"480px"}}"#,
     );
 
     let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
@@ -262,6 +282,27 @@ fn reports_an_invalid_parent_owned_web_view_without_stopping_discovery() {
             .diagnostic
             .as_deref()
             .is_some_and(|message| message.contains("unknown variant `480px`"))
+    );
+}
+
+#[test]
+fn rejects_ambiguous_web_run_operations() {
+    let fixture = Fixture::new();
+    let kernel = fixture.directory("home/_lib/proj");
+    let actions = fixture.directory("project/.swaw");
+    fixture.file(
+        "home/_lib/proj/.broken/_view/web.json",
+        r#"{"schema":"swawkit.command-view/web/v2","run":{"operations":[{"id":"apply","label":"Apply","arguments":[]},{"id":"apply","label":"Again","arguments":[]}]}}"#,
+    );
+
+    let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
+    let broken = node(&snapshot, CommandSource::Kernel, ".broken");
+    assert!(broken.view.is_none());
+    assert!(
+        broken
+            .diagnostic
+            .as_deref()
+            .is_some_and(|message| message.contains("must be unique"))
     );
 }
 

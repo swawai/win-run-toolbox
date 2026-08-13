@@ -15,12 +15,73 @@
 }
 
 .command-run-heading h3,
-.command-run-arguments-heading {
+.command-run-arguments-heading,
+.command-run-operations h4 {
   color: var(--ui-text-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.command-run-operations h4 {
+  margin: 0;
+}
+
+.command-run-operation-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.command-run-operation {
+  min-height: 39px;
+  padding: 9px 12px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--radius-control);
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-run-operation:hover {
+  border-color: var(--ui-selection-bg);
+  background: var(--ui-surface-muted);
+}
+
+.command-run-confirmation {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--ui-status-error);
+  border-radius: var(--radius-control);
+  color: var(--ui-status-error);
+  background: var(--ui-status-error-surface);
+}
+
+.command-run-confirmation p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.command-run-confirmation > div {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.command-run-confirm {
+  padding: 7px 12px;
+  border: 1px solid var(--ui-status-error);
+  border-radius: var(--radius-control);
+  color: #fff;
+  background: var(--ui-status-error);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .command-run-heading p {
@@ -132,7 +193,9 @@
 
 .command-run-submit:disabled,
 .command-run-section .secondary-button:disabled,
-.command-run-argument:disabled {
+.command-run-argument:disabled,
+.command-run-operation:disabled,
+.command-run-confirm:disabled {
   cursor: not-allowed;
   opacity: 0.52;
 }

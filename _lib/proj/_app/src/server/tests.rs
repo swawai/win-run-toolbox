@@ -253,6 +253,8 @@ async fn serves_only_the_declared_local_surface() {
         .expect("index body");
     let index_html = String::from_utf8_lossy(&body);
     assert!(index_html.contains("Swaw Kit Proj"));
+    assert!(index_html.contains("id=\"command-run-operation-list\""));
+    assert!(index_html.contains("id=\"command-run-confirmation\""));
     assert!(index_html.contains("class=\"command-run-output\" id=\"command-run-output\""));
     assert!(index_html.contains("class=\"command-journal-output\" id=\"command-journal-output\""));
 
@@ -322,6 +324,10 @@ async fn serves_only_the_declared_local_surface() {
             "text/javascript; charset=utf-8",
         ),
         ("/assets/command-run.js", "text/javascript; charset=utf-8"),
+        (
+            "/assets/command-run-operations.js",
+            "text/javascript; charset=utf-8",
+        ),
         (
             "/assets/command-journal.js",
             "text/javascript; charset=utf-8",
@@ -435,7 +441,11 @@ async fn serializes_the_complete_catalog_node_contract() {
     fixture.file("home/_lib/proj/.dev/status/run.cmd", "");
     fixture.file(
         "home/_lib/proj/.dev/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v1","childrenColumn":{"width":"wide"}}"#,
+        r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"wide"}}"#,
+    );
+    fixture.file(
+        "home/_lib/proj/.dev/status/_view/web.json",
+        r#"{"schema":"swawkit.command-view/web/v2","run":{"operations":[{"id":"preview","label":"Preview","arguments":[]},{"id":"apply","label":"Apply","arguments":["--apply"],"confirmation":"Confirm cleanup."}]}}"#,
     );
     fixture.file(
         "home/_lib/proj/.dev/status/_help/zh-CN.txt",
@@ -482,7 +492,23 @@ async fn serializes_the_complete_catalog_node_contract() {
                 "summary": "Show .dev.status",
                 "text": "Show .dev.status\nUse swawkit .dev.status"
             },
-            "view": null,
+            "view": {
+                "run": {
+                    "operations": [
+                        {
+                            "id": "preview",
+                            "label": "Preview",
+                            "arguments": []
+                        },
+                        {
+                            "id": "apply",
+                            "label": "Apply",
+                            "arguments": ["--apply"],
+                            "confirmation": "Confirm cleanup."
+                        }
+                    ]
+                }
+            },
             "diagnostic": null
         })
     );

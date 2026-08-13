@@ -199,15 +199,31 @@
                         </header>
 
                         <form class="command-run-form" id="command-run-form">
-                          <div class="command-run-arguments-heading">
-                            <span>参数</span>
-                            <button class="secondary-button command-run-add" id="command-run-add" type="button">
-                              添加参数
-                            </button>
+                          <div id="command-run-editor">
+                            <div class="command-run-arguments-heading">
+                              <span>参数</span>
+                              <button class="secondary-button command-run-add" id="command-run-add" type="button">
+                                添加参数
+                              </button>
+                            </div>
+                            <div class="command-run-arguments" id="command-run-arguments"></div>
+                            <p class="command-run-empty" id="command-run-empty">当前不传递参数。</p>
                           </div>
-                          <div class="command-run-arguments" id="command-run-arguments"></div>
-                          <p class="command-run-empty" id="command-run-empty">当前不传递参数。</p>
-                          <div class="command-run-actions">
+
+                          <section class="command-run-operations" id="command-run-operations"
+                            aria-labelledby="command-run-operations-title" hidden>
+                            <h4 id="command-run-operations-title">可用操作</h4>
+                            <div class="command-run-operation-list" id="command-run-operation-list"></div>
+                            <div class="command-run-confirmation" id="command-run-confirmation" role="alert" hidden>
+                              <p id="command-run-confirmation-text"></p>
+                              <div>
+                                <button class="command-run-confirm" id="command-run-confirm" type="button">确认执行</button>
+                                <button class="secondary-button" id="command-run-confirm-dismiss" type="button">返回</button>
+                              </div>
+                            </div>
+                          </section>
+
+                          <div class="command-run-actions" id="command-run-actions">
                             <button class="command-run-submit" id="command-run-submit" type="submit">执行</button>
                             <button class="secondary-button command-run-cancel" id="command-run-cancel"
                               type="button" hidden>

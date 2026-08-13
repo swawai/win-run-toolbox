@@ -29,6 +29,7 @@ const ENTRY_PROFILE_JS: &str = include_str!("../web/entry-profile.js");
 const HOST_CONTROL_JS: &str = include_str!("../web/host-control.js");
 const CLAIM_JS: &str = include_str!("../web/claim.js");
 const COMMAND_RUN_JS: &str = include_str!("../web/command-run.js");
+const COMMAND_RUN_OPERATIONS_JS: &str = include_str!("../web/command-run-operations.js");
 const COMMAND_RUN_CLIENT_JS: &str = include_str!("../web/command-run-client.js");
 const COMMAND_RUN_MODEL_JS: &str = include_str!("../web/command-run-model.js");
 const COMMAND_RUN_OUTPUT_JS: &str = include_str!("../web/command-run-output.js");
@@ -65,6 +66,9 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "host-control.js" => Some(("text/javascript; charset=utf-8", HOST_CONTROL_JS)),
         "claim.js" => Some(("text/javascript; charset=utf-8", CLAIM_JS)),
         "command-run.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_JS)),
+        "command-run-operations.js" => {
+            Some(("text/javascript; charset=utf-8", COMMAND_RUN_OPERATIONS_JS))
+        }
         "command-run-client.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_CLIENT_JS)),
         "command-run-model.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_MODEL_JS)),
         "command-run-output.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_OUTPUT_JS)),

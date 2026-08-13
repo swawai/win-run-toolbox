@@ -17,7 +17,7 @@ use filesystem::{
 };
 pub(crate) use filesystem::{NamedDirectory, named_directories};
 use view::read_local_web_view;
-pub use view::{ChildrenColumnView, ColumnWidth, CommandView};
+pub use view::{ChildrenColumnView, ColumnWidth, CommandView, RunOperationView, RunView};
 
 pub const CATALOG_PROTOCOL: &str = "swawkit.command-catalog/v4";
 

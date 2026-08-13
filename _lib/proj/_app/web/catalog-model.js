@@ -50,21 +50,83 @@ function normalizeView(value, index) {
     return null;
   }
   const view = requireObject(value, `commands[${index}].view`);
-  const childrenColumn = requireObject(
-    view.childrenColumn,
-    `commands[${index}].view.childrenColumn`,
-  );
-  const width = requireString(
-    childrenColumn.width,
-    `commands[${index}].view.childrenColumn.width`,
-    { allowEmpty: false },
-  );
-  if (!new Set(["normal", "wide"]).has(width)) {
-    throw contractError(
-      `commands[${index}].view.childrenColumn.width 只能是 normal 或 wide。`,
+  let width = "normal";
+  if (view.childrenColumn !== undefined) {
+    const childrenColumn = requireObject(
+      view.childrenColumn,
+      `commands[${index}].view.childrenColumn`,
     );
+    width = requireString(
+      childrenColumn.width,
+      `commands[${index}].view.childrenColumn.width`,
+      { allowEmpty: false },
+    );
+    if (!new Set(["normal", "wide"]).has(width)) {
+      throw contractError(
+        `commands[${index}].view.childrenColumn.width 只能是 normal 或 wide。`,
+      );
+    }
   }
-  return { childrenColumnWidth: width };
+
+  let runOperations = [];
+  if (view.run !== undefined) {
+    const run = requireObject(view.run, `commands[${index}].view.run`);
+    if (
+      !Array.isArray(run.operations)
+      || run.operations.length === 0
+      || run.operations.length > 8
+    ) {
+      throw contractError(
+        `commands[${index}].view.run.operations 必须包含 1 至 8 个操作。`,
+      );
+    }
+    const identifiers = new Set();
+    runOperations = run.operations.map((rawOperation, operationIndex) => {
+      const field = `commands[${index}].view.run.operations[${operationIndex}]`;
+      const operation = requireObject(rawOperation, field);
+      const id = requireString(operation.id, `${field}.id`, { allowEmpty: false });
+      if (!/^[a-z][a-z0-9-]{0,31}$/.test(id) || identifiers.has(id)) {
+        throw contractError(`${field}.id 必须唯一并匹配 [a-z][a-z0-9-]{0,31}。`);
+      }
+      identifiers.add(id);
+      const label = requireString(operation.label, `${field}.label`, {
+        allowEmpty: false,
+      });
+      if (label.trim() !== label || label.length > 64) {
+        throw contractError(`${field}.label 必须是 1 至 64 个字符的无首尾空白文本。`);
+      }
+      if (
+        !Array.isArray(operation.arguments)
+        || operation.arguments.length > 32
+        || operation.arguments.some((argument) => (
+          typeof argument !== "string" || argument.length > 4096
+        ))
+      ) {
+        throw contractError(`${field}.arguments 必须是最多 32 项的字符串数组。`);
+      }
+      let confirmation = null;
+      if (operation.confirmation !== undefined) {
+        confirmation = requireString(operation.confirmation, `${field}.confirmation`, {
+          allowEmpty: false,
+        });
+        if (confirmation.trim() !== confirmation || confirmation.length > 500) {
+          throw contractError(
+            `${field}.confirmation 必须是 1 至 500 个字符的无首尾空白文本。`,
+          );
+        }
+      }
+      return {
+        arguments: [...operation.arguments],
+        confirmation,
+        id,
+        label,
+      };
+    });
+  }
+  if (view.childrenColumn === undefined && view.run === undefined) {
+    throw contractError(`commands[${index}].view 必须声明 childrenColumn 或 run。`);
+  }
+  return { childrenColumnWidth: width, runOperations };
 }
 
 function normalizeCommand(value, index) {
@@ -111,6 +173,7 @@ function normalizeCommand(value, index) {
     parent: nullableString(command.parent, field("parent"), {
       allowEmpty: true,
     }),
+    runOperations: view?.runOperations ?? [],
     runnable: command.runnable,
     source,
     summary: help?.summary ?? "",

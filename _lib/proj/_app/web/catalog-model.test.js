@@ -183,4 +183,51 @@ describe("Catalog v4 model", () => {
       }),
     ]))).toThrow("width 只能是 normal 或 wide");
   });
+
+  test("normalizes fixed Web run operations and rejects ambiguous declarations", () => {
+    const catalog = createCatalog(payload([
+      node(".runtime.cleanup", {
+        runnable: true,
+        entry: "run.toolchain.json",
+        adapter: "toolchain",
+        handler: "runtime.cleanup",
+        view: {
+          run: {
+            operations: [
+              { id: "preview", label: "预览", arguments: [] },
+              {
+                id: "apply",
+                label: "清理",
+                arguments: ["--apply"],
+                confirmation: "确认清理？",
+              },
+            ],
+          },
+        },
+      }),
+    ]));
+
+    expect(catalog.commandByAddress.get(".runtime.cleanup").runOperations)
+      .toEqual([
+        { id: "preview", label: "预览", arguments: [], confirmation: null },
+        {
+          id: "apply",
+          label: "清理",
+          arguments: ["--apply"],
+          confirmation: "确认清理？",
+        },
+      ]);
+    expect(() => createCatalog(payload([
+      node(".broken", {
+        view: {
+          run: {
+            operations: [
+              { id: "apply", label: "清理", arguments: [] },
+              { id: "apply", label: "再次清理", arguments: [] },
+            ],
+          },
+        },
+      }),
+    ]))).toThrow("id 必须唯一");
+  });
 });

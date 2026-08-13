@@ -26,6 +26,7 @@ Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'peer-ssh.ps1')
 . (Join-Path $PSScriptRoot 'session.ps1')
 . (Join-Path $PSScriptRoot 'session-connect.ps1')
+. (Join-Path $PSScriptRoot 'launch-ui.ps1')
 
 function Resolve-RdpClientOutputPath {
     param(
@@ -59,12 +60,133 @@ function Resolve-RdpClientOutputPath {
     return [IO.Path]::GetFullPath($ExpandedPath)
 }
 
+function Invoke-RdpClientSetupScript {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    if (-not [IO.File]::Exists($ScriptPath)) {
+        throw "$Description script was not found: $ScriptPath"
+    }
+    $PowerShellPath = Join-Path `
+        (Get-RdpClientSigningSystemDirectory) `
+        'WindowsPowerShell\v1.0\powershell.exe'
+    if (-not [IO.File]::Exists($PowerShellPath)) {
+        throw "Native Windows PowerShell not found: $PowerShellPath"
+    }
+
+    $PreviousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $Output = @(& $PowerShellPath `
+            -NoLogo `
+            -NoProfile `
+            -ExecutionPolicy Bypass `
+            -File $ScriptPath `
+            @Arguments 2>&1)
+        $ExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+    foreach ($Line in $Output) {
+        Write-Host ([string]$Line)
+    }
+    if ($ExitCode -ne 0) {
+        throw "$Description failed with exit code $ExitCode."
+    }
+}
+
+function Assert-RdpClientHostAliasReadyForLaunch {
+    param(
+        [AllowEmptyString()][string]$HostAlias,
+        [Parameter(Mandatory = $true)][string]$EntryPath,
+        [Parameter(Mandatory = $true)][string]$CommandName,
+        [Parameter(Mandatory = $true)][bool]$ExplorerLaunch
+    )
+
+    try {
+        Assert-RdpClientHostAliasResolves `
+            -HostAlias $HostAlias `
+            -CommandName $CommandName
+        return
+    } catch {
+        if (-not $ExplorerLaunch -or
+            [string]::IsNullOrWhiteSpace($HostAlias)) {
+            throw
+        }
+    }
+
+    $Decision = Request-RdpClientHostsInstall `
+        -HostAlias $HostAlias `
+        -CommandName $CommandName
+    if ($Decision -ne 'Install') {
+        throw [OperationCanceledException]::new(
+            'Remote Desktop connection was cancelled.'
+        )
+    }
+    Invoke-RdpClientSetupScript `
+        -ScriptPath (Join-Path $PSScriptRoot 'hosts.ps1') `
+        -Arguments @(
+            '-EntryFile', $EntryPath,
+            '-Action', 'install',
+            '-HostAlias', $HostAlias,
+            '-CommandName', $CommandName,
+            '-Uac'
+        ) `
+        -Description 'RDP hosts installation'
+    Assert-RdpClientHostAliasResolves `
+        -HostAlias $HostAlias `
+        -CommandName $CommandName
+}
+
+function Resolve-RdpClientSigningStateForLaunch {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject]$State,
+        [Parameter(Mandatory = $true)][pscustomobject]$Configuration,
+        [Parameter(Mandatory = $true)][string]$CommandName,
+        [Parameter(Mandatory = $true)][bool]$ExplorerLaunch
+    )
+
+    if (-not $ExplorerLaunch -or $State.Name -ne 'Missing') {
+        return $State
+    }
+    $Decision = Request-RdpClientSigningSetup -CommandName $CommandName
+    if ($Decision -eq 'ContinueUnsigned') {
+        return $State
+    }
+    if ($Decision -ne 'Install') {
+        throw [OperationCanceledException]::new(
+            'Remote Desktop connection was cancelled.'
+        )
+    }
+    Invoke-RdpClientSetupScript `
+        -ScriptPath (Join-Path $PSScriptRoot 'signing.ps1') `
+        -Arguments @(
+            '-Action', 'install',
+            '-CommandName', $CommandName
+        ) `
+        -Description 'RDP signing installation'
+    $InstalledState = Get-RdpClientSigningState `
+        -Configuration $Configuration
+    if ($InstalledState.Name -ne 'Ready') {
+        throw (
+            'RDP signing installation did not reach Ready state: ' +
+            "$($InstalledState.Name)."
+        )
+    }
+    return $InstalledState
+}
+
+$ExplorerLaunch = $false
 try {
     $Utf8NoBom = New-Object Text.UTF8Encoding($false)
     [Console]::OutputEncoding = $Utf8NoBom
     $OutputEncoding = $Utf8NoBom
 
     $ResolvedEntry = [IO.Path]::GetFullPath($EntryFile)
+    $ExplorerLaunch = $Launch -and (Test-RdpClientExplorerLaunch)
     $HostAlias = Resolve-RdpClientHostAlias -Value $env:RDP_HOST_ALIAS
     $Document = Read-RdpClientEntryDocument -Path $ResolvedEntry
     $HasSessionId = $PSBoundParameters.ContainsKey('SessionId')
@@ -74,6 +196,27 @@ try {
     if ($ReportMstscProcessId -and -not $Launch) {
         throw 'An mstsc process ID can only be reported when launching Remote Desktop.'
     }
+    if ($Launch) {
+        Assert-RdpClientHostAliasReadyForLaunch `
+            -HostAlias $HostAlias `
+            -EntryPath $ResolvedEntry `
+            -CommandName $CommandName `
+            -ExplorerLaunch $ExplorerLaunch
+    }
+
+    $SigningConfiguration = Get-RdpClientSigningConfiguration
+    $SigningState = Get-RdpClientSigningState `
+        -Configuration $SigningConfiguration
+    if ($Launch) {
+        $SigningState = Resolve-RdpClientSigningStateForLaunch `
+            -State $SigningState `
+            -Configuration $SigningConfiguration `
+            -CommandName $CommandName `
+            -ExplorerLaunch $ExplorerLaunch
+    }
+    $SigningIdentity = Get-RdpClientSigningIdentity `
+        -State $SigningState `
+        -CommandName $CommandName
 
     $SelectedSession = $null
     $SessionState = $null
@@ -117,12 +260,6 @@ try {
         throw "RDP file already exists: $OutputPath Run `"$CommandName .rdp create --force`" to overwrite it."
     }
 
-    $SigningConfiguration = Get-RdpClientSigningConfiguration
-    $SigningState = Get-RdpClientSigningState `
-        -Configuration $SigningConfiguration
-    $SigningIdentity = Get-RdpClientSigningIdentity `
-        -State $SigningState `
-        -CommandName $CommandName
     $SourceHash = Get-RdpClientSourceHash -Lines $RdpLines
     $ManifestPath = Get-RdpClientManifestPath `
         -RuntimeDirectory $PSScriptRoot `
@@ -139,7 +276,9 @@ try {
         if ($SigningState.Name -eq 'Ready') {
             Write-Host "[RDP] Signed:     $($SigningConfiguration.FriendlyName) (unchanged)"
         } else {
-            Write-Host '[RDP] Signing:   not installed; cached file remains unsigned.'
+            Write-RdpClientSigningMissingNotice `
+                -CommandName $CommandName `
+                -Cached
         }
     } else {
         # mstsc and rdpsign use the native Windows RDP text representation.
@@ -196,6 +335,13 @@ try {
 
     exit 0
 } catch {
-    [Console]::Error.WriteLine("[ERROR] $($_.Exception.Message)")
+    $FailureMessage = [string]$_.Exception.Message
+    [Console]::Error.WriteLine("[ERROR] $FailureMessage")
+    if ($ExplorerLaunch -and
+        $_.Exception -isnot [OperationCanceledException]) {
+        Show-RdpClientLaunchError `
+            -Message $FailureMessage `
+            -CommandName $CommandName
+    }
     exit 1
 }

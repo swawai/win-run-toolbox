@@ -365,6 +365,23 @@ function Invoke-RdpClientRdpSignCompatible {
     return $FallbackResult
 }
 
+function Write-RdpClientSigningMissingNotice {
+    param(
+        [string]$CommandName = 'rdp',
+        [switch]$Cached
+    )
+
+    if ($Cached) {
+        Write-Host '[RDP] Signing:   not installed; cached file remains unsigned.'
+    } else {
+        Write-Host '[RDP] Signing:   not installed; file remains unsigned.'
+    }
+    Write-Host (
+        '[RDP]            Run "{0} .sign install" to enable trusted signing.' -f `
+            $CommandName
+    )
+}
+
 function Invoke-RdpClientFileSigning {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -374,8 +391,7 @@ function Invoke-RdpClientFileSigning {
 
     $State = Get-RdpClientSigningState -Configuration $Configuration
     if ($State.Name -eq 'Missing') {
-        Write-Host "[RDP] Signing:   not installed; file remains unsigned."
-        Write-Host "[RDP]            Run `"$CommandName .sign install`" to enable trusted signing."
+        Write-RdpClientSigningMissingNotice -CommandName $CommandName
         return $false
     }
     if ($State.Name -ne 'Ready') {

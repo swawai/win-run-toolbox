@@ -69,6 +69,28 @@ if (-not $Configuration.PrivateKeyFriendlyName.Contains('PRIVATE KEY') -or
     throw 'Signing certificate labels should describe their role and paired cleanup locations.'
 }
 
+$MissingNotice = Write-RdpClientSigningMissingNotice `
+    -CommandName 'rdp.test' 6>&1 | Out-String
+foreach ($Expected in @(
+    '[RDP] Signing:   not installed; file remains unsigned.',
+    'Run "rdp.test .sign install" to enable trusted signing.'
+)) {
+    if (-not $MissingNotice.Contains($Expected)) {
+        throw "Missing signing notice is missing '$Expected'.`n$MissingNotice"
+    }
+}
+$CachedMissingNotice = Write-RdpClientSigningMissingNotice `
+    -CommandName 'rdp.test' `
+    -Cached 6>&1 | Out-String
+foreach ($Expected in @(
+    '[RDP] Signing:   not installed; cached file remains unsigned.',
+    'Run "rdp.test .sign install" to enable trusted signing.'
+)) {
+    if (-not $CachedMissingNotice.Contains($Expected)) {
+        throw "Cached signing notice is missing '$Expected'.`n$CachedMissingNotice"
+    }
+}
+
 $TestRsa = [Security.Cryptography.RSA]::Create(2048)
 try {
     $TestRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
@@ -201,12 +223,22 @@ $MissingStatusOutput = Write-RdpClientSigningStatus `
 foreach ($Expected in @(
     '[RDP] Signing publisher: Not installed',
     'ABSENT  Cert:\CurrentUser\My\<swaw-kit-publisher>',
-    'ABSENT  Cert:\CurrentUser\Root\<swaw-kit-publisher>',
-    'ABSENT  HKCU:\Software\Policies\Microsoft\Windows NT\Terminal Services\TrustedCertThumbprints [swaw-kit-publisher]'
+    'ABSENT  Cert:\CurrentUser\Root\<swaw-kit-publisher>'
 )) {
     if (-not $MissingStatusOutput.Contains($Expected)) {
         throw "Missing signing status output is missing '$Expected'.`n$MissingStatusOutput"
     }
+}
+$MissingPolicyIsAbsent = $MissingStatusOutput.Contains(
+    'ABSENT  HKCU:\Software\Policies\Microsoft\Windows NT\Terminal Services\TrustedCertThumbprints [swaw-kit-publisher]'
+)
+$MissingPolicyIsShared = $MissingStatusOutput -match (
+    'SHARED\s+HKCU:\\Software\\Policies\\Microsoft\\Windows NT\\' +
+    'Terminal Services\\TrustedCertThumbprints = \d+ opaque fingerprint\(s\); ' +
+    'no swaw-kit certificate remains to match'
+)
+if (-not $MissingPolicyIsAbsent -and -not $MissingPolicyIsShared) {
+    throw "Missing signing status should report the policy as ABSENT or SHARED.`n$MissingStatusOutput"
 }
 foreach ($Unexpected in @('Signing publisher: Missing', 'UNKNOWN', 'N/A', 'DETAIL')) {
     if ($MissingStatusOutput.Contains($Unexpected)) {

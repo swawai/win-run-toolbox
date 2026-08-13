@@ -151,6 +151,12 @@ try {
         'set "RDP_HOST_ALIAS="',
         'set "RDP_HOST_ALIAS=rdp-client-test.invalid"'
     )
+    $BaselineOutput = [Convert]::ToBase64String(
+        [IO.File]::ReadAllBytes($OutputPath)
+    )
+    $BaselineManifest = [Convert]::ToBase64String(
+        [IO.File]::ReadAllBytes($ManifestPath)
+    )
     [IO.File]::WriteAllText($Entry, $UnresolvedText, (New-Object Text.UTF8Encoding($false)))
     $UnresolvedOutput = Invoke-RdpEntry -Arguments @() -ExpectedExitCode 1
     if (
@@ -159,16 +165,20 @@ try {
             "Run `"$EntryName .hosts install --uac`"."
         ) -or
         $UnresolvedOutput.Contains('Configure DNS') -or
-        -not $UnresolvedOutput.Contains('full address:s:rdp-client-test.invalid:3389') -or
-        -not $UnresolvedOutput.Contains("[RDP] Generated: $OutputPath")
+        $UnresolvedOutput.Contains('[RDP] Generated:') -or
+        $UnresolvedOutput.Contains('[RDP] Reused:') -or
+        $UnresolvedOutput.Contains('[RDP] Target:')
     ) {
-        throw "An unresolved alias should stop before mstsc starts.`n$UnresolvedOutput"
+        throw (
+            'An unresolved alias should stop before artifact work or mstsc. ' +
+            "`n$UnresolvedOutput"
+        )
     }
 
-    $ReusedOutput = Invoke-RdpEntry -Arguments @() -ExpectedExitCode 1
-    if (-not $ReusedOutput.Contains("[RDP] Reused:    $OutputPath") -or
-        $ReusedOutput.Contains("[RDP] Generated: $OutputPath")) {
-        throw "An unchanged RDP artifact should be reused.`n$ReusedOutput"
+    $RepeatedOutput = Invoke-RdpEntry -Arguments @() -ExpectedExitCode 1
+    if ($RepeatedOutput.Contains('[RDP] Generated:') -or
+        $RepeatedOutput.Contains('[RDP] Reused:')) {
+        throw "Repeated preflight failures must remain non-mutating.`n$RepeatedOutput"
     }
 
     $CommentOnlyText = $UnresolvedText + "`r`n:: cache-neutral edit`r`n"
@@ -178,8 +188,13 @@ try {
         (New-Object Text.UTF8Encoding($false))
     )
     $CommentOnlyOutput = Invoke-RdpEntry -Arguments @() -ExpectedExitCode 1
-    if (-not $CommentOnlyOutput.Contains("[RDP] Reused:    $OutputPath")) {
-        throw "A source-only comment should not rebuild the RDP artifact.`n$CommentOnlyOutput"
+    if ($CommentOnlyOutput.Contains('[RDP] Generated:') -or
+        $CommentOnlyOutput.Contains('[RDP] Reused:') -or
+        [Convert]::ToBase64String([IO.File]::ReadAllBytes($OutputPath)) -ne
+            $BaselineOutput -or
+        [Convert]::ToBase64String([IO.File]::ReadAllBytes($ManifestPath)) -ne
+            $BaselineManifest) {
+        throw "A failed hosts preflight changed cached artifacts.`n$CommentOnlyOutput"
     }
 
     [IO.File]::WriteAllText(
@@ -188,17 +203,28 @@ try {
         (New-Object Text.UTF8Encoding($false))
     )
     $CorruptManifestOutput = Invoke-RdpEntry -Arguments @() -ExpectedExitCode 1
-    if (-not $CorruptManifestOutput.Contains("[RDP] Generated: $OutputPath")) {
-        throw "A corrupt manifest should cause a safe rebuild.`n$CorruptManifestOutput"
+    if ([IO.File]::ReadAllText($ManifestPath, [Text.Encoding]::UTF8) -ne
+        '{not-json' -or $CorruptManifestOutput.Contains('[RDP] Generated:')) {
+        throw "A failed preflight should not repair artifacts.`n$CorruptManifestOutput"
     }
 
+    [IO.File]::WriteAllText($Entry, $EntryText, (New-Object Text.UTF8Encoding($false)))
+    Invoke-RdpEntry `
+        -Arguments @('.rdp', 'create', '--force') `
+        -ExpectedExitCode 0 |
+        Out-Null
     [IO.File]::WriteAllText($OutputPath, 'tampered', [Text.Encoding]::Unicode)
+    [IO.File]::WriteAllText($Entry, $UnresolvedText, (New-Object Text.UTF8Encoding($false)))
     $TamperedOutput = Invoke-RdpEntry -Arguments @() -ExpectedExitCode 1
-    if (-not $TamperedOutput.Contains("[RDP] Generated: $OutputPath") -or
-        $TamperedOutput.Contains("[RDP] Reused:    $OutputPath")) {
-        throw "A modified RDP artifact should be rebuilt.`n$TamperedOutput"
+    if ([IO.File]::ReadAllText($OutputPath, [Text.Encoding]::Unicode) -ne
+        'tampered' -or $TamperedOutput.Contains('[RDP] Generated:')) {
+        throw "A failed preflight should not rebuild a tampered artifact.`n$TamperedOutput"
     }
     [IO.File]::WriteAllText($Entry, $EntryText, (New-Object Text.UTF8Encoding($false)))
+    Invoke-RdpEntry `
+        -Arguments @('.rdp', 'create', '--force') `
+        -ExpectedExitCode 0 |
+        Out-Null
 
     $CustomText = $EntryText.Replace(
         "set `"RDP_OUTPUT_PATH=$OutputPath`"",

@@ -39,6 +39,7 @@ const elements = {
   commandJournalDetailEmpty: document.querySelector("#command-journal-detail-empty"),
   commandJournalDirectoryFeedback: document.querySelector("#command-journal-directory-feedback"),
   commandJournalEmpty: document.querySelector("#command-journal-empty"),
+  commandJournalError: document.querySelector("#command-journal-error"),
   commandJournalFeedback: document.querySelector("#command-journal-feedback"),
   commandJournalList: document.querySelector("#command-journal-list"),
   commandJournalMeta: document.querySelector("#command-journal-meta"),

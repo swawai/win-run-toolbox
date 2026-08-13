@@ -120,6 +120,8 @@ export function createCommandJournalView(elements, options = {}) {
     elements.commandJournalOutput.replaceChildren();
     elements.commandJournalDetail.hidden = true;
     elements.commandJournalDetailEmpty.hidden = false;
+    elements.commandJournalError.hidden = true;
+    elements.commandJournalError.textContent = "";
     elements.commandJournalTruncated.hidden = true;
     elements.commandJournalDirectoryFeedback.textContent = "";
     elements.commandJournalDirectoryFeedback.dataset.state = "";
@@ -162,6 +164,8 @@ export function createCommandJournalView(elements, options = {}) {
     elements.commandJournalState.textContent = presentation.label;
     elements.commandJournalState.dataset.state = presentation.tone;
     elements.commandJournalMeta.textContent = `${sourceLabels[journal.source]} · ${formatTime(journal.startedAtUnixMs)}`;
+    elements.commandJournalError.textContent = journal.error ?? "";
+    elements.commandJournalError.hidden = journal.error === null;
     elements.commandJournalOpen.disabled = false;
     elements.commandJournalTruncated.hidden = !journal.truncated;
   }

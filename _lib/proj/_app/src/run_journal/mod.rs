@@ -1,18 +1,19 @@
 mod event;
+mod owner;
 mod read;
+mod storage;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::os::windows::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use owner::{RunOwnerLease, remove_owner_file};
 use serde::{Deserialize, Serialize};
-use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
-
-use crate::atomic_file;
+use storage::{StoredRunEvent, StoredRunState, assert_plain_directory, publish_stored_state};
+use storage::{ensure_plain_directory, new_running_state};
 
 pub(crate) use event::{RunJournalEvent, RunJournalEventData, RunJournalPhase, RunJournalStream};
 pub use read::{RunJournalDocument, RunJournalHistoryDocument};
@@ -23,6 +24,8 @@ pub(crate) const JOURNAL_EVENT_SCHEMA: &str = "swawkit.command-run-event/v1";
 pub(crate) const JOURNAL_DIRECTORY_NAME: &str = "_runs";
 pub(crate) const JOURNAL_STATE_FILE_NAME: &str = "_state.json";
 pub(crate) const JOURNAL_EVENTS_FILE_NAME: &str = "events.jsonl";
+pub(super) const INTERRUPTED_ERROR: &str =
+    "command execution owner ended before publishing a terminal state";
 const MAX_EVENTS_FILE_BYTES: usize = 8 * 1024 * 1024;
 const CREATE_ATTEMPTS: usize = 8;
 
@@ -74,16 +77,42 @@ impl RunJournal {
         for _ in 0..CREATE_ATTEMPTS {
             let id = next_run_id(started_at_unix_ms);
             let run_root = journals_root.join(&id);
-            match fs::create_dir(&run_root) {
-                Ok(()) => {
-                    assert_plain_directory(&run_root)?;
-                    return Self::create(request, id, run_root, started_at_unix_ms);
-                }
+            if run_root.exists() {
+                collision = Some(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "run journal id already exists",
+                ));
+                continue;
+            }
+            let owner = match RunOwnerLease::create(&journals_root, &id) {
+                Ok(owner) => owner,
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                     collision = Some(error);
+                    continue;
                 }
                 Err(error) => return Err(error),
+            };
+            let work_root = journals_root.join(format!(".{id}.work"));
+            match fs::create_dir(&work_root) {
+                Ok(()) => {
+                    if let Err(error) = assert_plain_directory(&work_root) {
+                        drop(owner);
+                        remove_owner_file(&journals_root, &id);
+                        let _ = fs::remove_dir(&work_root);
+                        return Err(error);
+                    }
+                }
+                Err(error) => {
+                    drop(owner);
+                    remove_owner_file(&journals_root, &id);
+                    if error.kind() == io::ErrorKind::AlreadyExists {
+                        collision = Some(error);
+                        continue;
+                    }
+                    return Err(error);
+                }
             }
+            return Self::create(request, id, work_root, run_root, owner, started_at_unix_ms);
         }
         Err(collision.unwrap_or_else(|| io::Error::other("cannot allocate a run journal id")))
     }
@@ -91,55 +120,71 @@ impl RunJournal {
     fn create(
         request: StartRunJournal,
         id: String,
+        work_root: PathBuf,
         run_root: PathBuf,
+        owner: RunOwnerLease,
         started_at_unix_ms: u64,
     ) -> io::Result<Self> {
-        let events_path = run_root.join(JOURNAL_EVENTS_FILE_NAME);
-        let events = match OpenOptions::new()
+        let journals_root = run_root.parent().expect("run journal has a parent");
+        let events_path = work_root.join(JOURNAL_EVENTS_FILE_NAME);
+        let prepared_events = match OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&events_path)
         {
             Ok(events) => events,
             Err(error) => {
-                let _ = fs::remove_dir(&run_root);
+                drop(owner);
+                remove_owner_file(journals_root, &id);
+                let _ = fs::remove_dir(&work_root);
                 return Err(error);
             }
         };
-        if let Err(error) = events.sync_all() {
-            drop(events);
+        if let Err(error) = prepared_events.sync_all() {
+            drop(prepared_events);
             let _ = fs::remove_file(&events_path);
-            let _ = fs::remove_dir(&run_root);
+            drop(owner);
+            remove_owner_file(journals_root, &id);
+            let _ = fs::remove_dir(&work_root);
             return Err(error);
         }
+        drop(prepared_events);
+        let state = new_running_state(
+            &id,
+            request.address,
+            request.source,
+            started_at_unix_ms,
+            request.argument_count,
+            request.profile_revision,
+        );
+        let work_state_path = work_root.join(JOURNAL_STATE_FILE_NAME);
+        if let Err(error) = publish_stored_state(&work_state_path, &state) {
+            let _ = fs::remove_file(&events_path);
+            drop(owner);
+            remove_owner_file(journals_root, &id);
+            let _ = fs::remove_dir(&work_root);
+            return Err(error);
+        }
+        if let Err(error) = fs::rename(&work_root, &run_root) {
+            let _ = fs::remove_file(&work_state_path);
+            let _ = fs::remove_file(&events_path);
+            drop(owner);
+            remove_owner_file(journals_root, &id);
+            let _ = fs::remove_dir(&work_root);
+            return Err(error);
+        }
+        let events = OpenOptions::new()
+            .append(true)
+            .open(run_root.join(JOURNAL_EVENTS_FILE_NAME))?;
         let writer = Writer {
             state_path: run_root.join(JOURNAL_STATE_FILE_NAME),
             events,
-            state: StoredRunState {
-                schema: JOURNAL_STATE_SCHEMA.to_owned(),
-                id,
-                address: request.address,
-                source: request.source,
-                status: RunJournalStatus::Running,
-                started_at_unix_ms,
-                finished_at_unix_ms: None,
-                exit_code: None,
-                error: None,
-                argument_count: request.argument_count,
-                profile_revision: request.profile_revision,
-                event_count: 0,
-                truncated: false,
-            },
+            owner: Some(owner),
+            state,
             next_sequence: 0,
             stored_event_bytes: 0,
             write_error: None,
         };
-        if let Err(error) = writer.publish_state() {
-            drop(writer);
-            let _ = fs::remove_file(&events_path);
-            let _ = fs::remove_dir(&run_root);
-            return Err(error);
-        }
         Ok(Self {
             inner: Arc::new(Mutex::new(writer)),
         })
@@ -216,6 +261,7 @@ impl RunJournal {
 struct Writer {
     state_path: PathBuf,
     events: File,
+    owner: Option<RunOwnerLease>,
     state: StoredRunState,
     next_sequence: u64,
     stored_event_bytes: usize,
@@ -291,11 +337,16 @@ impl Writer {
             ),
             None => (requested_status, requested_exit_code, requested_error),
         };
-        self.state.status = status;
-        self.state.exit_code = exit_code;
-        self.state.error = error;
-        self.state.finished_at_unix_ms = Some(unix_time_ms()?);
-        self.publish_state()?;
+        let mut completed = self.state.clone();
+        completed.status = status;
+        completed.exit_code = exit_code;
+        completed.error = error;
+        completed.finished_at_unix_ms = Some(unix_time_ms()?);
+        publish_stored_state(&self.state_path, &completed)?;
+        self.state = completed;
+        if let Some(owner) = self.owner.take() {
+            owner.release();
+        }
         match journal_error {
             Some(error) => Err(io::Error::other(error)),
             None => Ok(()),
@@ -303,9 +354,7 @@ impl Writer {
     }
 
     fn publish_state(&self) -> io::Result<()> {
-        let mut content = serde_json::to_vec_pretty(&self.state).map_err(io::Error::other)?;
-        content.push(b'\n');
-        atomic_file::publish(&self.state_path, &content)
+        publish_stored_state(&self.state_path, &self.state)
     }
 
     fn remember_error(&mut self, error: io::Error) -> io::Error {
@@ -313,60 +362,6 @@ impl Writer {
         self.write_error = Some(message.clone());
         io::Error::new(error.kind(), message)
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct StoredRunState {
-    pub schema: String,
-    pub id: String,
-    pub address: String,
-    pub source: RunJournalSource,
-    pub status: RunJournalStatus,
-    pub started_at_unix_ms: u64,
-    pub finished_at_unix_ms: Option<u64>,
-    pub exit_code: Option<i32>,
-    pub error: Option<String>,
-    pub argument_count: usize,
-    pub profile_revision: String,
-    pub event_count: u64,
-    pub truncated: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct StoredRunEvent {
-    pub schema: String,
-    pub run_id: String,
-    #[serde(flatten)]
-    pub event: RunJournalEvent,
-}
-
-pub(super) fn assert_plain_directory(path: &Path) -> io::Result<()> {
-    let metadata = fs::symlink_metadata(path)?;
-    if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        return Err(io::Error::other(format!(
-            "run journal directory must be a normal directory: {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
-pub(super) fn assert_plain_file(path: &Path) -> io::Result<()> {
-    let metadata = fs::symlink_metadata(path)?;
-    if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        return Err(io::Error::other(format!(
-            "run journal file must be a normal file: {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
-fn ensure_plain_directory(path: &Path) -> io::Result<()> {
-    fs::create_dir_all(path)?;
-    assert_plain_directory(path)
 }
 
 pub(super) fn valid_run_id(id: &str) -> bool {
@@ -386,7 +381,7 @@ fn next_run_id(timestamp: u64) -> String {
     )
 }
 
-fn unix_time_ms() -> io::Result<u64> {
+pub(super) fn unix_time_ms() -> io::Result<u64> {
     let milliseconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(io::Error::other)?

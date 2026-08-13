@@ -17,6 +17,7 @@ function elements() {
     commandJournalDetailEmpty: element(),
     commandJournalDirectoryFeedback: element(),
     commandJournalEmpty: element(),
+    commandJournalError: element(),
     commandJournalFeedback: element(),
     commandJournalList: element(),
     commandJournalMeta: element(),
@@ -142,6 +143,36 @@ describe("command journal view", () => {
     expect(dom.commandJournalOutput.children[1].textContent)
       .toContain("[progress:completed] Downloaded fixture.zip · 42/42 bytes");
     expect(dom.commandJournalOutput.children[1].dataset.state).toBe("completed");
+  });
+
+  test("renders the persisted reason for a failed run", async () => {
+    const dom = elements();
+    const error = "command execution owner ended before publishing a terminal state";
+    const failedSummary = {
+      ...summary(),
+      state: "failed",
+      exitCode: null,
+      error,
+    };
+    const failedJournal = {
+      ...journal(),
+      state: "failed",
+      exitCode: null,
+      error,
+    };
+    const view = createCommandJournalView(dom, {
+      document: documentObject(),
+      fetchJournal: async (url) => url.includes("/run-1?")
+        ? response(200, failedJournal)
+        : response(200, history([failedSummary])),
+    });
+
+    view.select(command, { active: true });
+    await settle();
+    await settle();
+
+    expect(dom.commandJournalError.hidden).toBeFalse();
+    expect(dom.commandJournalError.textContent).toBe(error);
   });
 
   test("leaving during a slow load does not block reopening the same command", async () => {

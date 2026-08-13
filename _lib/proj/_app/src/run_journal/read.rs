@@ -1,15 +1,20 @@
 use std::collections::VecDeque;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
 use serde::Serialize;
 
 use super::{
-    JOURNAL_DIRECTORY_NAME, JOURNAL_EVENT_SCHEMA, JOURNAL_EVENTS_FILE_NAME,
+    INTERRUPTED_ERROR, JOURNAL_DIRECTORY_NAME, JOURNAL_EVENT_SCHEMA, JOURNAL_EVENTS_FILE_NAME,
     JOURNAL_STATE_FILE_NAME, JOURNAL_STATE_SCHEMA, RunJournalEvent, RunJournalSource,
-    RunJournalStatus, StoredRunEvent, StoredRunState, assert_plain_directory, assert_plain_file,
-    valid_run_id,
+    RunJournalStatus,
+    owner::{OwnerLeaseState, RunOwnerLease},
+    storage::{
+        StoredRunEvent, StoredRunState, assert_plain_directory, assert_plain_file,
+        publish_stored_state,
+    },
+    unix_time_ms, valid_run_id,
 };
 
 const HISTORY_PROTOCOL: &str = "swawkit.command-run-history/v1";
@@ -90,7 +95,7 @@ pub(crate) fn read_run_history(
         };
         let run_root = entry.path();
         assert_plain_directory(&run_root)?;
-        states.push(read_state(&run_root, id, address)?);
+        states.push(read_reconciled_state(&run_root, id, address)?);
     }
     states.sort_by(|left, right| {
         right
@@ -127,19 +132,19 @@ pub(crate) fn read_run(
         ));
     }
     assert_plain_directory(&run_root)?;
-    let state = read_state(&run_root, id, address)?;
-    let (events, next_cursor, response_truncated) = read_events(
+    let state = read_reconciled_state(&run_root, id, address)?;
+    let event_read = read_events(
         &run_root,
         id,
         after,
         state.status == RunJournalStatus::Running,
     )?;
-    if state.status.is_terminal() && state.event_count != next_cursor {
+    if state.status.is_terminal() && state.event_count != event_read.next_cursor {
         return Err(invalid(
             "terminal run journal event count does not match events.jsonl",
         ));
     }
-    if !state.status.is_terminal() && state.event_count > next_cursor {
+    if !state.status.is_terminal() && state.event_count > event_read.next_cursor {
         return Err(invalid(
             "running run journal event count is ahead of events.jsonl",
         ));
@@ -157,9 +162,9 @@ pub(crate) fn read_run(
         error: state.error,
         argument_count: state.argument_count,
         profile_revision: state.profile_revision,
-        next_cursor,
-        events,
-        truncated: state.truncated || response_truncated,
+        next_cursor: event_read.next_cursor,
+        events: event_read.events,
+        truncated: state.truncated || event_read.response_truncated,
     })
 }
 
@@ -182,8 +187,44 @@ pub(crate) fn read_run_directory(
         ));
     }
     assert_plain_directory(&run_root)?;
-    read_state(&run_root, id, address)?;
+    read_reconciled_state(&run_root, id, address)?;
     Ok(run_root)
+}
+
+fn read_reconciled_state(
+    run_root: &Path,
+    expected_id: &str,
+    address: &str,
+) -> io::Result<StoredRunState> {
+    let state = read_state(run_root, expected_id, address)?;
+    if state.status != RunJournalStatus::Running {
+        return Ok(state);
+    }
+    let owner = match RunOwnerLease::try_acquire(run_root)? {
+        OwnerLeaseState::Active | OwnerLeaseState::Legacy => return Ok(state),
+        OwnerLeaseState::Acquired(owner) => owner,
+    };
+
+    let mut state = read_state(run_root, expected_id, address)?;
+    if state.status != RunJournalStatus::Running {
+        owner.release();
+        return Ok(state);
+    }
+    let event_read = read_events(run_root, expected_id, 0, true)?;
+    if state.event_count > event_read.next_cursor {
+        return Err(invalid(
+            "running run journal event count is ahead of events.jsonl",
+        ));
+    }
+    sync_complete_event_stream(run_root, &event_read)?;
+    state.status = RunJournalStatus::Failed;
+    state.finished_at_unix_ms = Some(unix_time_ms()?);
+    state.exit_code = None;
+    state.error = Some(INTERRUPTED_ERROR.to_owned());
+    state.event_count = event_read.next_cursor;
+    publish_stored_state(&run_root.join(JOURNAL_STATE_FILE_NAME), &state)?;
+    owner.release();
+    Ok(state)
 }
 
 fn read_state(run_root: &Path, expected_id: &str, address: &str) -> io::Result<StoredRunState> {
@@ -227,12 +268,20 @@ fn validate_state(state: &StoredRunState) -> io::Result<()> {
     Ok(())
 }
 
+struct EventRead {
+    events: Vec<RunJournalEvent>,
+    next_cursor: u64,
+    response_truncated: bool,
+    valid_bytes: u64,
+    incomplete_tail: bool,
+}
+
 fn read_events(
     run_root: &Path,
     expected_id: &str,
     after: u64,
     allow_incomplete_tail: bool,
-) -> io::Result<(Vec<RunJournalEvent>, u64, bool)> {
+) -> io::Result<EventRead> {
     let path = run_root.join(JOURNAL_EVENTS_FILE_NAME);
     assert_plain_file(&path)?;
     if fs::metadata(&path)?.len() > MAX_STORED_EVENTS_FILE_BYTES {
@@ -245,6 +294,8 @@ fn read_events(
     let mut response_bytes = 0;
     let mut previous_sequence = 0;
     let mut truncated = false;
+    let mut valid_bytes = 0_u64;
+    let mut incomplete_tail = false;
 
     let mut line = Vec::new();
     loop {
@@ -254,12 +305,14 @@ fn read_events(
         }
         if line.last() != Some(&b'\n') {
             if allow_incomplete_tail {
+                incomplete_tail = true;
                 break;
             }
             return Err(invalid(
                 "terminal run journal has an incomplete event record",
             ));
         }
+        valid_bytes = valid_bytes.saturating_add(line.len() as u64);
         line.pop();
         let event = parse_stored_event(&line)?;
         if event.schema != JOURNAL_EVENT_SCHEMA
@@ -282,7 +335,23 @@ fn read_events(
             truncated = true;
         }
     }
-    Ok((events.into_iter().collect(), previous_sequence, truncated))
+    Ok(EventRead {
+        events: events.into_iter().collect(),
+        next_cursor: previous_sequence,
+        response_truncated: truncated,
+        valid_bytes,
+        incomplete_tail,
+    })
+}
+
+fn sync_complete_event_stream(run_root: &Path, event_read: &EventRead) -> io::Result<()> {
+    let path = run_root.join(JOURNAL_EVENTS_FILE_NAME);
+    assert_plain_file(&path)?;
+    let events = OpenOptions::new().write(true).open(path)?;
+    if event_read.incomplete_tail {
+        events.set_len(event_read.valid_bytes)?;
+    }
+    events.sync_all()
 }
 
 fn parse_stored_event(line: &[u8]) -> io::Result<StoredRunEvent> {

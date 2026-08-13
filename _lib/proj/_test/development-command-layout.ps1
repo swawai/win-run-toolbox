@@ -45,6 +45,17 @@ Assert-ProjDevelopmentCommandLayout `
         $SetupContract.handler -ceq 'dev.setup') `
     -Message '.dev.setup Toolchain manifest is invalid'
 
+$CleanupManifest = Join-Path $ProjRoot '.runtime\cleanup\run.toolchain.json'
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ([IO.File]::Exists($CleanupManifest)) `
+    -Message '.runtime.cleanup does not have a native Toolchain entry'
+$CleanupContract = Get-Content -LiteralPath $CleanupManifest -Raw |
+    ConvertFrom-Json
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ($CleanupContract.schema -ceq 'swawkit.toolchain-command/v1' -and
+        $CleanupContract.handler -ceq 'runtime.cleanup') `
+    -Message '.runtime.cleanup Toolchain manifest is invalid'
+
 $DependencyContracts = @(
     @{
         Name = '.dev.bun toolchain root'

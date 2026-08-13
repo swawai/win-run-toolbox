@@ -68,6 +68,10 @@ fn discovers_control_kernel_and_action_hierarchies() {
         "home/_lib/proj/.dev/setup/run.toolchain.json",
         r#"{"schema":"swawkit.toolchain-command/v1","handler":"dev.setup"}"#,
     );
+    fixture.file(
+        "home/_lib/proj/.runtime/cleanup/run.toolchain.json",
+        r#"{"schema":"swawkit.toolchain-command/v1","handler":"runtime.cleanup"}"#,
+    );
     fixture.file("home/_lib/proj/.help/run.ps1", "");
     fixture.file("home/_lib/proj/.h/run.ps1", "");
     fixture.file("home/_lib/proj/-con/run.ps1", "");
@@ -116,6 +120,8 @@ fn discovers_control_kernel_and_action_hierarchies() {
             (CommandSource::Kernel, ".h"),
             (CommandSource::Kernel, ".help"),
             (CommandSource::Kernel, ".info"),
+            (CommandSource::Kernel, ".runtime"),
+            (CommandSource::Kernel, ".runtime.cleanup"),
             (CommandSource::Action, "build"),
             (CommandSource::Action, "build.host"),
             (CommandSource::Action, "python"),
@@ -160,6 +166,12 @@ fn discovers_control_kernel_and_action_hierarchies() {
     assert_eq!(setup.entry.as_deref(), Some("run.toolchain.json"));
     assert_eq!(setup.adapter.as_deref(), Some("toolchain"));
     assert_eq!(setup.handler.as_deref(), Some("dev.setup"));
+
+    let cleanup = node(&snapshot, CommandSource::Kernel, ".runtime.cleanup");
+    assert_eq!(cleanup.parent.as_deref(), Some(".runtime"));
+    assert_eq!(cleanup.entry.as_deref(), Some("run.toolchain.json"));
+    assert_eq!(cleanup.adapter.as_deref(), Some("toolchain"));
+    assert_eq!(cleanup.handler.as_deref(), Some("runtime.cleanup"));
 
     let info = node(&snapshot, CommandSource::Kernel, ".info");
     let help = info.help.as_ref().expect("info help");

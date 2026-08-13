@@ -7,6 +7,7 @@ use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 const REVISION_PREFIX: &str = "sha256-";
 
 pub(super) struct CommandContext {
+    pub(super) swawkit_home: PathBuf,
     pub(super) data_root: PathBuf,
     pub(super) export_root: PathBuf,
     pub(super) entry_command: String,
@@ -25,10 +26,13 @@ impl CommandContext {
         let expected_address = match handler {
             "dev.setup" => ".dev.setup",
             "dev.status" => ".dev.status",
+            "runtime.cleanup" => ".runtime.cleanup",
             _ => return Err(format!("unsupported Toolchain command handler '{handler}'")),
         };
         require_exact("SWAWKIT_PROJ_CORE_COMMAND_ADDRESS", expected_address)?;
 
+        let swawkit_home = absolute_path(required("SWAWKIT_HOME")?, "Swaw Kit Home")?;
+        regular_directory(&swawkit_home, "Swaw Kit Home")?;
         let data_root = absolute_path(required("SWAWKIT_PROJ_DATA_ROOT")?, "Entry DataRoot")?;
         readable_data_root(&data_root)?;
         let entry_command = required("SWAWKIT_PROJ_ENTRY_COMMAND")?;
@@ -45,6 +49,7 @@ impl CommandContext {
             .join("setup");
         let export_root = setup_root.join("export");
         Ok(Self {
+            swawkit_home,
             data_root,
             export_root,
             entry_command,

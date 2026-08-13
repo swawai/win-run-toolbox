@@ -85,5 +85,5 @@
 2. Run Journal V1 先通过 8 MiB 单次上限约束失控输出；积累真实使用量后，再定义跨进程安全的按模块保留数量、清理入口和“进程异常退出后未完成”的对账规则，不提前加入常驻日志服务或 OpenTelemetry SDK。确有跨进程 Trace 或外部采集需求时，再从当前事件协议映射到 OTLP。
 3. `.dev.setup` / `.dev.status` 已验证 `run.toolchain.json` 的完整垂直路径；App 与 Launcher 的 build → publish 均已验证完整开发环境驱动 Action `run.ts`、模块 Provider 消费和原子发布的日常垂直路径。`run.ps1` 的 managed/system/disabled 三模式已有 CLI 黑盒与 Web/Catalog 协议验收；Host Release 黑盒同时覆盖二次启动激活、更新状态、安全重启和无残留退出。下一批为默认四领域补长期运行、取消和真实网络故障验收。冷 Bootstrap 的 Rust/MSVC 准备逻辑继续保留在系统原生 Shell。为受管 Python 建立明确所有权后再启用目前只由 Catalog 诊断的 `run.py`，避免系统 Python fallback。
 4. Launcher 的日常 Action 与冷 Bootstrap 构建器共用声明式 `build.json` 编译契约；前者消费 Entry 受管 MSVC，后者只在 Core 不存在时准备固定工具链。不要把 Bootstrap 恢复逻辑重新引入普通 Action，也不要为单一产品制品制造通用资产框架。
-5. 为不可变 Release Set 增加显式保留与清理命令：只删除不再由 `current` 指向、且未被旧 Host 映射的目录；不要把生命周期判断塞进每次发布。
+5. 不可变 Release Set 已由显式 `.runtime.cleanup` 管理：默认 preview，只有 `--apply` 才删除；它与发布共用锁，严格复验 selector、Manifest、成员、长度和 SHA-256，并保留当前 Release、被 Core/Host/Toolchain 进程映射的 Release、破损目录与重解析点。生命周期判断不进入每次发布。
 6. 长期目标是保持一个正式 Core、一套配置与命令协议，让 CLI、Web 和后续入口共享同一套行为语义，同时让每个目录化模块独立拥有自己的领域数据与演进节奏。

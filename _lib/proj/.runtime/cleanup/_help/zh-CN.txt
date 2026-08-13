@@ -1,0 +1,9 @@
+预览或删除未被使用的旧 Runtime Release。
+
+用法：
+  swawkit .runtime.cleanup
+  swawkit .runtime.cleanup --apply
+
+默认只预览。--apply 只删除未被 current 选中、未被 Core、Host 或 Toolchain
+进程使用，并且 Manifest、目录成员、文件长度与 SHA-256 均验证通过的 Release。
+无法验证、包含重解析点或无法确认进程状态的目录会被保留并报告。

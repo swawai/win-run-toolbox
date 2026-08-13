@@ -11,11 +11,13 @@
   {{COMMAND}} .2 screenshot --output D:\shot.png 保存到绝对 PNG 路径；目标文件必须尚不存在
   {{COMMAND}} .2 pixel 640 360              按会话截图坐标读取像素
   {{COMMAND}} .2 click 640 360              按会话截图坐标左键点击；会话未就绪时追加 --display
+  {{COMMAND}} .2 script workflow.ps1 --display 在一份显示租约和超时预算内执行有界桌面工作流
   {{COMMAND}} .2 screenshot --display --timeout 60s 所有桌面工作阶段共享同一份 60 秒预算
   {{COMMAND}} .rdp create                   仅生成 RDP 文件；目标已存在时拒绝覆盖
   {{COMMAND}} .rdp create --force           生成 RDP 文件并覆盖已有目标
 
   桌面动作依赖 RDP_PEER_SSH_ENTRY 和托管 PsExec；请先运行 {{COMMAND}} .peer psexec add。
+  工作流语句仅限 Screenshot 'path.png'、Pixel x y、Click x y、Wait-Desktop 毫秒；任意 PowerShell 会被拒绝。
   活动但锁定的会话会直接拒绝桌面动作；--display 不会自动解锁或改路由。
 
 

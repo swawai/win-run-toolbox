@@ -10,6 +10,7 @@ set "RDP_DESKTOP_DISPLAY="
 set "RDP_DESKTOP_TIMEOUT=60s"
 set "RDP_DESKTOP_TIMEOUT_SET="
 set "RDP_DESKTOP_OUTPUT_PATH="
+set "RDP_DESKTOP_SCRIPT_PATH="
 set "RDP_DESKTOP_X="
 set "RDP_DESKTOP_Y="
 
@@ -52,6 +53,7 @@ if /i "%~2"=="connect" goto :SessionConnect
 if /i "%~2"=="screenshot" goto :SessionScreenshot
 if /i "%~2"=="pixel" goto :SessionPixel
 if /i "%~2"=="click" goto :SessionClick
+if /i "%~2"=="script" goto :SessionScript
 goto :InvalidSessionCommand
 
 :SessionConnect
@@ -78,6 +80,13 @@ if "%~4"=="" goto :InvalidSessionCommand
 set "RDP_DESKTOP_X=%~3"
 set "RDP_DESKTOP_Y=%~4"
 shift /3
+shift /3
+goto :ParseNextDesktopOption
+
+:SessionScript
+if "%~3"=="" goto :InvalidSessionCommand
+set "RDP_DESKTOP_ACTION=script"
+set "RDP_DESKTOP_SCRIPT_PATH=%~3"
 shift /3
 
 :ParseNextDesktopOption
@@ -120,7 +129,7 @@ if not exist "%RDP_DESKTOP_SCRIPT%" (
     exit /b 1
 )
 
-PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_DESKTOP_SCRIPT%" -Action "%RDP_DESKTOP_ACTION%" -EntryFile "%RDP_ENTRY_FILE%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -SessionId "%RDP_CLIENT_SESSION_ID%" -CommandName "%RDP_ENTRY_COMMAND%" -X "%RDP_DESKTOP_X%" -Y "%RDP_DESKTOP_Y%" -Timeout "%RDP_DESKTOP_TIMEOUT%" -OutputPath "%RDP_DESKTOP_OUTPUT_PATH%" %RDP_DESKTOP_DISPLAY%
+PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RDP_DESKTOP_SCRIPT%" -Action "%RDP_DESKTOP_ACTION%" -EntryFile "%RDP_ENTRY_FILE%" -SshEntryFile "%RDP_PEER_SSH_ENTRY%" -SessionId "%RDP_CLIENT_SESSION_ID%" -CommandName "%RDP_ENTRY_COMMAND%" -X "%RDP_DESKTOP_X%" -Y "%RDP_DESKTOP_Y%" -Timeout "%RDP_DESKTOP_TIMEOUT%" -OutputPath "%RDP_DESKTOP_OUTPUT_PATH%" -ScriptPath "%RDP_DESKTOP_SCRIPT_PATH%" %RDP_DESKTOP_DISPLAY%
 exit /b %ERRORLEVEL%
 
 :SessionList
@@ -459,6 +468,7 @@ echo   "%RDP_ENTRY_COMMAND% .<session-id> [connect]"
 echo   "%RDP_ENTRY_COMMAND% .<session-id> screenshot [--display] [--timeout <seconds>] [--output <absolute.png>]"
 echo   "%RDP_ENTRY_COMMAND% .<session-id> pixel <x> <y> [--display] [--timeout <seconds>]"
 echo   "%RDP_ENTRY_COMMAND% .<session-id> click <x> <y> [--display] [--timeout <seconds>]"
+echo   "%RDP_ENTRY_COMMAND% .<session-id> script <workflow.ps1> [--display] [--timeout <seconds>]"
 exit /b 1
 
 :InvalidPeerCommand

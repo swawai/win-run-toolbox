@@ -525,10 +525,20 @@ try {
             '.desktop-identity-' + [Guid]::NewGuid().ToString('N') + '.json'
         )
         $DesktopWorkerFinished = $false
+        $DesktopStopwatch = [Diagnostics.Stopwatch]::StartNew()
         try {
+            $DesktopRemainingSeconds = [int][Math]::Ceiling(
+                $DesktopTimeoutSeconds - $DesktopStopwatch.Elapsed.TotalSeconds
+            )
+            if ($DesktopRemainingSeconds -le 0) {
+                throw (
+                    'The interactive desktop worker timed out after ' +
+                    "$DesktopTimeoutSeconds seconds."
+                )
+            }
             $LauncherExitCode = Invoke-RdpClientUncapturedProcess `
                 -FilePath $ManagedPath `
-                -TimeoutSeconds ([Math]::Min(30, $DesktopTimeoutSeconds)) `
+                -TimeoutSeconds ([Math]::Min(30, $DesktopRemainingSeconds)) `
                 -Arguments @(
                     '-accepteula',
                     '-nobanner',
@@ -552,21 +562,67 @@ try {
                     $DesktopResultPath,
                     '-ProcessIdentityPath',
                     $DesktopProcessIdentityPath
-                )
+            )
             # PsExec 2.43 may expose the detached child PID as its process exit
             # code. The worker-created identity file is the start authority.
+            $DesktopRemainingSeconds = [int][Math]::Ceiling(
+                $DesktopTimeoutSeconds - $DesktopStopwatch.Elapsed.TotalSeconds
+            )
+            if ($DesktopRemainingSeconds -le 0) {
+                throw (
+                    'The interactive desktop worker timed out after ' +
+                    "$DesktopTimeoutSeconds seconds."
+                )
+            }
             Wait-RdpClientDesktopWorkerIdentityFile `
                 -Path $DesktopProcessIdentityPath `
-                -TimeoutSeconds ([Math]::Min(10, $DesktopTimeoutSeconds)) `
+                -TimeoutSeconds ([Math]::Min(10, $DesktopRemainingSeconds)) `
                 -LauncherExitCode $LauncherExitCode
+            $DesktopRemainingSeconds = [int][Math]::Ceiling(
+                $DesktopTimeoutSeconds - $DesktopStopwatch.Elapsed.TotalSeconds
+            )
+            if ($DesktopRemainingSeconds -le 0) {
+                throw (
+                    'The interactive desktop worker timed out after ' +
+                    "$DesktopTimeoutSeconds seconds."
+                )
+            }
             $DesktopResult = Wait-RdpClientDesktopResultFile `
                 -Path $DesktopResultPath `
                 -Encoding $Utf8 `
-                -TimeoutSeconds $DesktopTimeoutSeconds
+                -TimeoutSeconds $DesktopRemainingSeconds
             $DesktopWorkerFinished = $true
             Write-Output $DesktopResult.Marker
             exit $(if ($DesktopResult.Success) { 0 } else { 1 })
+        } catch {
+            $Failure = $_.Exception
+            while ($null -ne $Failure.InnerException) {
+                $Failure = $Failure.InnerException
+            }
+            $FailureMessage = [string]$Failure.Message
+            $FailureCode = if ($FailureMessage -match
+                '^\[(?<Code>[A-Z0-9_]+)\]\s*(?<Detail>.*)$') {
+                $FailureMessage = $Matches.Detail
+                $Matches.Code
+            } elseif ($FailureMessage -match '(?i)timed out') {
+                'DESKTOP_TASK_TIMEOUT'
+            } else {
+                'DESKTOP_TASK_FAILED'
+            }
+            $FailureJson = ConvertTo-Json -InputObject ([ordered]@{
+                Version   = 1
+                Success   = $false
+                Action    = 'desktop'
+                ErrorCode = $FailureCode
+                Error     = $FailureMessage
+            }) -Compress
+            $FailurePayload = [Convert]::ToBase64String(
+                $Utf8.GetBytes($FailureJson)
+            )
+            Write-Output ('RDP_CLIENT_DESKTOP_RESULT_V1:' + $FailurePayload)
+            exit 1
         } finally {
+            $DesktopStopwatch.Stop()
             if (-not $DesktopWorkerFinished) {
                 Stop-RdpClientDesktopWorkerProcess `
                     -IdentityPath $DesktopProcessIdentityPath

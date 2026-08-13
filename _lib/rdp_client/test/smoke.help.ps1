@@ -91,6 +91,7 @@ try {
             "$EntryCommand .2 screenshot --display",
             "$EntryCommand .2 pixel 640 360",
             "$EntryCommand .2 click 640 360",
+            "$EntryCommand .2 script workflow.ps1",
             '--timeout 60s',
             '.peer psexec add',
             'RDP_PEER_SSH_ENTRY',

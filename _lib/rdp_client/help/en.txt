@@ -11,11 +11,13 @@
   {{COMMAND}} .2 screenshot --output D:\shot.png Save to an absolute PNG path; the target must not already exist
   {{COMMAND}} .2 pixel 640 360              Read a pixel in session-image coordinates
   {{COMMAND}} .2 click 640 360              Left-click session-image coordinates; append --display when the session is not display-ready
+  {{COMMAND}} .2 script workflow.ps1 --display Run a bounded desktop workflow under one display lease and timeout budget
   {{COMMAND}} .2 screenshot --display --timeout 60s Give all desktop-work phases one shared 60-second budget
   {{COMMAND}} .rdp create                   Generate the RDP file only; refuse to overwrite an existing target
   {{COMMAND}} .rdp create --force           Generate the RDP file and overwrite an existing target
 
   Desktop actions require RDP_PEER_SSH_ENTRY and managed PsExec; run {{COMMAND}} .peer psexec add first.
+  Workflow statements: Screenshot 'path.png', Pixel x y, Click x y, or Wait-Desktop milliseconds. Arbitrary PowerShell is rejected.
   An active but locked session is rejected; --display does not unlock or reroute it.
 
 

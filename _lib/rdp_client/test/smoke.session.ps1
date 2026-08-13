@@ -280,7 +280,8 @@ param(
     [string]$Y,
     [switch]$Display,
     [string]$Timeout,
-    [string]$OutputPath
+    [string]$OutputPath,
+    [string]$ScriptPath
 )
 [IO.File]::WriteAllLines($env:RDP_SESSION_DESKTOP_CAPTURE, @(
     "Action=$Action",
@@ -289,7 +290,8 @@ param(
     "Y=$Y",
     "Display=$($Display.IsPresent)",
     "Timeout=$Timeout",
-    "OutputPath=$OutputPath"
+    "OutputPath=$OutputPath",
+    "ScriptPath=$ScriptPath"
 ))
 exit 0
 '@
@@ -371,6 +373,31 @@ exit 0
         throw "Click syntax was not routed correctly.`n$ClickCapture"
     }
 
+    $WorkflowPath = Join-Path $ScratchRoot 'workflow with spaces.ps1'
+    Invoke-SessionTestEntry `
+        -Arguments @(
+            '.2',
+            'script',
+            $WorkflowPath,
+            '--display',
+            '--timeout',
+            '60s'
+        ) `
+        -ExpectedExitCode 0 |
+        Out-Null
+    $ScriptCapture = [IO.File]::ReadAllText($DesktopCapture)
+    foreach ($Expected in @(
+        'Action=script',
+        'SessionId=2',
+        'Display=True',
+        'Timeout=60s',
+        "ScriptPath=$WorkflowPath"
+    )) {
+        if (-not $ScriptCapture.Contains($Expected)) {
+            throw "Script syntax lost '$Expected'.`n$ScriptCapture"
+        }
+    }
+
     $env:RDP_CLIENT_SESSION_PARAMETER = '-SessionId 99'
     try {
         Invoke-SessionTestEntry -Arguments @() -ExpectedExitCode 0 | Out-Null
@@ -398,6 +425,8 @@ exit 0
         [string[]]@('.2', 'connect', 'unexpected'),
         [string[]]@('.2', 'pixel', '640'),
         [string[]]@('.2', 'click', '640', '360', '--output', 'x.png'),
+        [string[]]@('.2', 'script'),
+        [string[]]@('.2', 'script', 'workflow.ps1', '--output', 'x.png'),
         [string[]]@('.2', 'screenshot', '--display', '--display'),
         [string[]]@('.2', 'screenshot', '--timeout'),
         [string[]]@('.2', 'screenshot', '--output'),

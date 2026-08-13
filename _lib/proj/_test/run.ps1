@@ -17,6 +17,7 @@ $CandidateArguments = @{
 }
 & (Join-Path $PSScriptRoot 'launcher-runtime.ps1') @CandidateArguments
 & (Join-Path $PSScriptRoot 'smoke-entry.ps1') @CandidateArguments
+& (Join-Path $PSScriptRoot 'dev-setup-interruption.ps1') @CandidateArguments
 & (Join-Path $PSScriptRoot 'host-release.ps1') @CandidateArguments
 & (Join-Path $PSScriptRoot 'claim-entry.ps1') @CandidateArguments
 & (Join-Path $PSScriptRoot 'development-declaration.ps1')
@@ -40,6 +41,8 @@ if ($LASTEXITCODE -ne 0) {
 & (Join-Path $PSScriptRoot 'toolchain.ps1') `
     -ToolchainPath $CandidateArguments.ToolchainPath
 & (Join-Path $PSScriptRoot 'toolchain.setup.ps1') `
+    -ToolchainPath $CandidateArguments.ToolchainPath
+& (Join-Path $PSScriptRoot 'dev-setup-network.ps1') `
     -ToolchainPath $CandidateArguments.ToolchainPath
 & (Join-Path $PSScriptRoot 'web.ps1')
 & (Join-Path $PSScriptRoot 'bootstrap-contract.ps1')

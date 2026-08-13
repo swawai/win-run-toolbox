@@ -1,3 +1,4 @@
+mod console_cancel;
 mod development;
 mod environment;
 mod execute;
@@ -6,6 +7,7 @@ mod invocation;
 mod process;
 mod resolve;
 
+pub use console_cancel::ConsoleCancellation;
 #[cfg(test)]
 pub(crate) use development::resolve_entry_bun;
 pub(crate) use development::resolve_entry_development;

@@ -10,7 +10,7 @@ use std::os::windows::fs::MetadataExt;
 use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
 use swawkit_proj::{
-    command::CommandProcessMode,
+    command::{CommandProcessMode, ConsoleCancellation},
     context::EntryContext,
     launch::{
         ENTRY_FILE_ENV, LAUNCH_MODE_ENV, LAUNCH_PROTOCOL_ENV, LAUNCH_PROTOCOL_VERSION, LaunchMode,
@@ -55,8 +55,16 @@ fn run(request: LaunchRequest) -> Result<i32, Box<dyn Error>> {
     let context = EntryContext::from_launch(&request)?;
 
     match request.mode {
-        LaunchMode::Cli => cli::run(&context, &request.argv, CommandProcessMode::InheritConsole)
-            .map_err(Into::into),
+        LaunchMode::Cli => {
+            let cancellation = ConsoleCancellation::install()?;
+            cli::run_cancelable(
+                &context,
+                &request.argv,
+                CommandProcessMode::InheritConsole,
+                &cancellation,
+            )
+            .map_err(Into::into)
+        }
         LaunchMode::Worker => {
             cli::run(&context, &request.argv, CommandProcessMode::NoWindow).map_err(Into::into)
         }

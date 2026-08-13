@@ -5,8 +5,8 @@ use crate::catalog::{CatalogSnapshot, CommandAdapter, CommandSource};
 use crate::run_journal::{RunJournal, RunJournalPhase, RunJournalSource, StartRunJournal};
 
 use super::{
-    CommandError, CommandExecutionContext, CommandResult, ExecutionPhase, GuardPlan, Invocation,
-    ProcessEnvironment, ResolvedCommand, command_data_root,
+    CommandError, CommandExecutionContext, CommandResult, ConsoleCancellation, ExecutionPhase,
+    GuardPlan, Invocation, ProcessEnvironment, ResolvedCommand, command_data_root,
     process::{AdapterLaunch, run_process, run_process_journaled, validate_adapter},
     resolve_entry_development,
 };
@@ -38,6 +38,22 @@ impl<'a> CommandExecutor<'a> {
     }
 
     pub fn execute_journaled(&self, argv: &[OsString]) -> CommandResult<i32> {
+        self.execute_journaled_with_cancellation(argv, None)
+    }
+
+    pub fn execute_journaled_cancelable(
+        &self,
+        argv: &[OsString],
+        cancellation: &ConsoleCancellation,
+    ) -> CommandResult<i32> {
+        self.execute_journaled_with_cancellation(argv, Some(cancellation))
+    }
+
+    fn execute_journaled_with_cancellation(
+        &self,
+        argv: &[OsString],
+        cancellation: Option<&ConsoleCancellation>,
+    ) -> CommandResult<i32> {
         let invocation = Invocation::resolve(self.catalog, argv)?;
         let journal = RunJournal::start(StartRunJournal {
             module_data_root: command_data_root(self.context, &invocation.command)?,
@@ -47,7 +63,15 @@ impl<'a> CommandExecutor<'a> {
             profile_revision: self.context.profile_revision.clone(),
         })
         .map_err(|error| CommandError::new(format!("cannot start command journal: {error}")))?;
-        match self.execute_invocation(&invocation, Some(&journal)) {
+        let result = self.execute_invocation(&invocation, Some(&journal));
+        if cancellation.is_some_and(|cancellation| {
+            cancellation.requested() && !cancellation.termination_failed()
+        }) {
+            return journal.finish_canceled().map(|()| 130).map_err(|error| {
+                CommandError::new(format!("cannot cancel command journal: {error}"))
+            });
+        }
+        match result {
             Ok(exit_code) => journal
                 .finish_exited(exit_code)
                 .map(|()| exit_code)

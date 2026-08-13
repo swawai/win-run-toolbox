@@ -3,8 +3,10 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 use std::process::{Child, Stdio};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use crate::catalog::CommandAdapter;
+use crate::command::console_cancel;
 use crate::command_event::{
     CapturedCommandEvent, CommandEventFrameDecoder, CommandProgress, CommandProgressState,
     CommandProgressUnit,
@@ -85,15 +87,44 @@ fn monitor_child(
         }
     };
 
-    let wait_result = child
-        .wait()
-        .map_err(|error| CommandError::new(format!("cannot wait for command entry: {error}")));
+    let wait_result = wait_for_child_or_cancellation(child);
     let stdout = join_reader(stdout_thread, "stdout");
     let stderr = join_reader(stderr_thread, "stderr");
     let status = wait_result?;
     stdout?;
     stderr?;
     Ok(status.code().unwrap_or(1))
+}
+
+fn wait_for_child_or_cancellation(child: &mut Child) -> CommandResult<std::process::ExitStatus> {
+    loop {
+        if console_cancel::requested() {
+            if let Err(error) = child.kill() {
+                match child.try_wait() {
+                    Ok(Some(status)) => return Ok(status),
+                    _ => {
+                        console_cancel::mark_termination_failed();
+                        return Err(CommandError::new(format!(
+                            "cannot terminate canceled command entry: {error}"
+                        )));
+                    }
+                }
+            }
+            return child.wait().map_err(|error| {
+                console_cancel::mark_termination_failed();
+                CommandError::new(format!("cannot wait for canceled command entry: {error}"))
+            });
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(error) => {
+                return Err(CommandError::new(format!(
+                    "cannot wait for command entry: {error}"
+                )));
+            }
+        }
+    }
 }
 
 fn stop_unmonitored_child(child: &mut Child) {

@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 
 use swawkit_proj::{
     catalog::{CatalogSnapshot, is_help_marker},
-    command::{CommandExecutionContext, CommandExecutor, CommandProcessMode},
+    command::{CommandExecutionContext, CommandExecutor, CommandProcessMode, ConsoleCancellation},
     context::EntryContext,
     data_root::{DataRootClaimApprover, ResolveDataRootRequest, resolve_data_root},
     help::render_help,
@@ -24,6 +24,24 @@ pub fn run(
     argv: &[OsString],
     process_mode: CommandProcessMode,
 ) -> Result<i32, CliError> {
+    run_with_cancellation(context, argv, process_mode, None)
+}
+
+pub fn run_cancelable(
+    context: &EntryContext,
+    argv: &[OsString],
+    process_mode: CommandProcessMode,
+    cancellation: &ConsoleCancellation,
+) -> Result<i32, CliError> {
+    run_with_cancellation(context, argv, process_mode, Some(cancellation))
+}
+
+fn run_with_cancellation(
+    context: &EntryContext,
+    argv: &[OsString],
+    process_mode: CommandProcessMode,
+    cancellation: Option<&ConsoleCancellation>,
+) -> Result<i32, CliError> {
     let mut approver =
         |pending: &swawkit_proj::data_root::DataRootClaim| Err(claim::rejection(context, pending));
     let mut host_launcher = launch_entry_host;
@@ -31,6 +49,7 @@ pub fn run(
         context,
         argv,
         process_mode,
+        cancellation,
         &mut approver,
         &mut host_launcher,
     )
@@ -47,6 +66,7 @@ fn run_with_approver(
         context,
         argv,
         CommandProcessMode::InheritConsole,
+        None,
         approver,
         &mut host_launcher,
     )
@@ -63,6 +83,7 @@ fn run_with_host_launcher(
         context,
         argv,
         CommandProcessMode::InheritConsole,
+        None,
         approver,
         host_launcher,
     )
@@ -72,6 +93,7 @@ fn run_with_dependencies(
     context: &EntryContext,
     argv: &[OsString],
     process_mode: CommandProcessMode,
+    cancellation: Option<&ConsoleCancellation>,
     approver: &mut impl DataRootClaimApprover,
     host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
 ) -> Result<i32, CliError> {
@@ -134,7 +156,10 @@ fn run_with_dependencies(
         CommandExecutionContext::new(context, &profile, resolved.path(), process_mode);
     let executor = CommandExecutor::new(&execution_context, &snapshot);
     match process_mode {
-        CommandProcessMode::InheritConsole => executor.execute_journaled(argv),
+        CommandProcessMode::InheritConsole => match cancellation {
+            Some(cancellation) => executor.execute_journaled_cancelable(argv, cancellation),
+            None => executor.execute_journaled(argv),
+        },
         CommandProcessMode::NoWindow => executor.execute(argv),
     }
     .map_err(|error| CliError::new(error.to_string()))

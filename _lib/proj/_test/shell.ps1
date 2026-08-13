@@ -19,6 +19,28 @@ function Assert-ProjShellTest {
     }
 }
 
+function Set-ProjShellProcessPath {
+    param([AllowEmptyString()][string]$Value)
+
+    $Variables = [Environment]::GetEnvironmentVariables(
+        [EnvironmentVariableTarget]::Process
+    )
+    foreach ($Name in @($Variables.Keys | Where-Object {
+        [string]$_ -ieq 'PATH'
+    })) {
+        [Environment]::SetEnvironmentVariable(
+            [string]$Name,
+            $null,
+            [EnvironmentVariableTarget]::Process
+        )
+    }
+    [Environment]::SetEnvironmentVariable(
+        'Path',
+        $Value,
+        [EnvironmentVariableTarget]::Process
+    )
+}
+
 function Invoke-ProjShellTest {
     param(
         [Parameter(Mandatory = $true)][string]$Address,
@@ -79,6 +101,7 @@ $TemporaryRoot = Join-Path $TestRoot (
 )
 $UserPathBefore = [Environment]::GetEnvironmentVariable('PATH', 'User')
 $MachinePathBefore = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+$ProcessPathBefore = [Environment]::GetEnvironmentVariable('PATH', 'Process')
 $ManagedPwshSource = Join-Path $RepoRoot (
     'data\proj.swawkit\modules\kernel\.dev\setup\export\pwsh\installs\7.6.4'
 )
@@ -398,6 +421,68 @@ exit 33
             -Message "$($Invocation.Address) accepted $($Invocation.Name)"
     }
 
+    $SystemPwshRoot = Join-Path $TemporaryRoot 'system-pwsh'
+    Copy-ProjFixtureHardLinkTree `
+        -Source $ManagedPwshSource `
+        -Destination $SystemPwshRoot
+    Set-ProjShellProcessPath `
+        -Value ($SystemPwshRoot + ';' + $ProcessPathBefore)
+    $SystemMode = @(
+        & $script:ProjShellEntry `
+            '..entry.env.pwsh.SWAWKIT_PROJ_PWSH_MODE' `
+            'system' `
+            2>&1
+    )
+    Assert-ProjShellTest `
+        -Condition ($LASTEXITCODE -eq 0) `
+        -Message "failed to select system PowerShell: $SystemMode"
+    $SystemSetup = Invoke-ProjShellTest `
+        -Address '.dev.setup' `
+        -Arguments ([string[]]@())
+    Assert-ProjShellTest `
+        -Condition (
+            $SystemSetup.ExitCode -eq 0 -and
+            $SystemSetup.Text.Contains('PowerShell 7.6.4 system runtime is ready')
+        ) `
+        -Message "system PowerShell setup failed: $($SystemSetup.Text)"
+    $SystemPowerShell = Invoke-ProjShellTest `
+        -Address '.dev.pwsh' `
+        -Arguments @(
+            '-Command',
+            'Write-Output (''SYSTEM_PS_HOME='' + $PSHOME); exit 34'
+        )
+    Assert-ProjShellTest `
+        -Condition (
+            $SystemPowerShell.ExitCode -eq 34 -and
+            $SystemPowerShell.Text.Contains("SYSTEM_PS_HOME=$SystemPwshRoot")
+        ) `
+        -Message "system PowerShell execution failed: $($SystemPowerShell.Text)"
+
+    $DisabledMode = @(
+        & $script:ProjShellEntry `
+            '..entry.env.pwsh.SWAWKIT_PROJ_PWSH_MODE' `
+            'disabled' `
+            2>&1
+    )
+    Assert-ProjShellTest `
+        -Condition ($LASTEXITCODE -eq 0) `
+        -Message "failed to disable PowerShell: $DisabledMode"
+    $DisabledSetup = Invoke-ProjShellTest `
+        -Address '.dev.setup' `
+        -Arguments ([string[]]@())
+    Assert-ProjShellTest `
+        -Condition ($DisabledSetup.ExitCode -eq 0) `
+        -Message "disabled PowerShell setup failed: $($DisabledSetup.Text)"
+    $DisabledPowerShell = Invoke-ProjShellTest `
+        -Address '.dev.pwsh' `
+        -Arguments @('-Command', 'exit 0')
+    Assert-ProjShellTest `
+        -Condition (
+            $DisabledPowerShell.ExitCode -eq 1 -and
+            $DisabledPowerShell.Text.Contains('run.ps1 is disabled')
+        ) `
+        -Message "disabled PowerShell remained runnable: $($DisabledPowerShell.Text)"
+
     Assert-ProjShellTest `
         -Condition (
             [Environment]::GetEnvironmentVariable('PATH', 'User') -ceq
@@ -407,6 +492,7 @@ exit 33
         ) `
         -Message 'project shell commands changed persistent PATH'
 } finally {
+    Set-ProjShellProcessPath -Value $ProcessPathBefore
     foreach ($Name in $SavedAdapterEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable(
             $Name,

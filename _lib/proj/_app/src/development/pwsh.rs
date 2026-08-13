@@ -23,16 +23,23 @@ impl SystemPwsh {
 }
 
 pub fn resolve_system() -> Result<SystemPwsh, String> {
-    let path = env::var_os("PATH").ok_or_else(|| {
-        "system PowerShell 7 is unavailable because PATH is not defined".to_owned()
-    })?;
-    for directory in env::split_paths(&path).filter(|path| path.is_absolute()) {
-        let candidate = directory.join("pwsh.exe");
-        match inspect_candidate(&candidate) {
-            Ok(Some(pwsh)) => return Ok(pwsh),
-            Ok(None) => {}
-            Err(error) => return Err(error),
+    let mut found_path = false;
+    for (_, path) in env::vars_os().filter(|(name, _)| {
+        name.to_str()
+            .is_some_and(|name| name.eq_ignore_ascii_case("PATH"))
+    }) {
+        found_path = true;
+        for directory in env::split_paths(&path).filter(|path| path.is_absolute()) {
+            let candidate = directory.join("pwsh.exe");
+            match inspect_candidate(&candidate) {
+                Ok(Some(pwsh)) => return Ok(pwsh),
+                Ok(None) => {}
+                Err(error) => return Err(error),
+            }
         }
+    }
+    if !found_path {
+        return Err("system PowerShell 7 is unavailable because PATH is not defined".to_owned());
     }
     Err(format!(
         "system PowerShell 7 (pwsh.exe) was not found on PATH. Install PowerShell 7, restart the Entry Host, and run .dev.setup again"

@@ -52,7 +52,7 @@
 ## 四、关键不变量与协议
 
 1. **身份与配置。** Entry 以 Windows File ID 保持身份：复制产生新身份，改名延续原身份，文件被替换时才要求显式认领（claim）。`_entry.json` 只记录 Entry 身份，`_profile.json` 只记录用户配置；运行时环境变量不能反过来成为配置来源。
-2. **目录即命令协议。** 命令地址由目录层级唯一推导，一个目录最多有一个规范执行入口；Help、Web 展示提示和 Guard 都是模块的伴随声明。Catalog 以 `swawkit.command-catalog/v4` 生成结构性的 `runnable` 与 `diagnostic`，并用 `pwsh` 明确表示 PowerShell 7 适配器；Control 的 `run.core.json` 使用 `swawkit.core-command/v1`，Kernel 产品命令可用 `run.toolchain.json` 与 `swawkit.toolchain-command/v1` 静态选择同 Release Set 中的受限 Rust handler，`_view/web.json` 使用 `swawkit.command-view/web/v2`。全局与模块 Guard 在执行前判断运行前提。
+2. **目录即命令协议。** 命令地址由目录层级唯一推导，一个目录最多有一个规范执行入口；Help、Web 展示提示和 Guard 都是模块的伴随声明。Catalog 以 `swawkit.command-catalog/v4` 生成结构性的 `runnable` 与 `diagnostic`，并用 `pwsh` 明确表示 PowerShell 7 适配器；Control 的 `run.core.json` 使用 `swawkit.core-command/v1`，Kernel 中只有被 CLI 在普通执行器之前消费的精确内置元命令 `.help` / `.logs` 可声明受限 `meta.help` / `meta.logs` Core handler，其他 Kernel 产品命令可用 `run.toolchain.json` 与 `swawkit.toolchain-command/v1` 静态选择同 Release Set 中的受限 Rust handler，`_view/web.json` 使用 `swawkit.command-view/web/v2`。全局与模块 Guard 在执行前判断运行前提。
 3. **模块数据根。** Core 按命令来源和相对目录，将每个目录命令模块同构映射到 `DataRoot/modules/{control|kernel|action}/...`。例如 `.dev.setup` 对应 `modules/kernel/.dev/setup/`。`SWAWKIT_PROJ_DATA_ROOT` 表示 Entry 根，`SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT` 表示当前模块数据根；普通命令的工作数据、状态、锁和 Export 都归入后者。只有 Core 缺失时的 Bootstrap 构建和确实需要跨 Entry 复用的下载缓存进入 `data/proj_cache/`。
 4. **模块 Export 与显式依赖。** 模块把稳定候选或供其他模块消费的产物发布到自身的 `export/`，中间文件留在 `work/`。`export/` 只是稳定发布边界，不自动等于一套资产系统：需要自动消费的构建产物通过 `manifest.json` 声明文件名、长度与 SHA-256，并由提供命令地址、`producerContract` 和 `_state.json` 建立可验证发布边界。依赖尚未 Ready 或制品与 Manifest 不一致时，错误信息直接给出应执行的提供命令。
 5. **Provider State。** `_state.json` 使用 `swawkit.command-provider-state/v1`，状态为 `unavailable` 或 `ready`。影响开发环境的 Profile 输入变化时，`.dev.setup` 状态同步变为 `unavailable`；重新执行 `.dev.setup` 后，完成的 Export 与 `ready` 状态一起成为新的有效发布。`inputRevision`、`token` 与 `producerContract` 共同标识这次发布并保证消费一致性。
@@ -83,7 +83,7 @@
 ## 七、下一步
 
 1. `_view/web.json` 已先用 `.runtime.cleanup` 验证固定 argv 操作与二次确认；只有出现第二个真实的结构化输入命令后，再加入必要的参数类型与结果展示，不提前制造通用表单框架。临时输入和输出不进入 URL。
-2. Run Journal V1 先通过 8 MiB 单次上限约束失控输出，并已用运行所有者租约收敛新版进程异常退出留下的未完成记录。积累真实使用量后，再定义跨进程安全的按模块保留数量与清理入口，不提前加入常驻日志服务或 OpenTelemetry SDK。确有跨进程 Trace 或外部采集需求时，再从当前事件协议映射到 OTLP。
+2. Run Journal V1 先通过 8 MiB 单次上限约束失控输出，并已用运行所有者租约收敛新版进程异常退出留下的未完成记录；正式黑盒已能启动真实 Action、确认首条持久事件、强制结束本次测试专属的完整进程树，再通过公共 `.logs --run` 验证原事件保留、`failed` 终态、owner 清理和后代退出。积累真实使用量后，再定义跨进程安全的按模块保留数量与清理入口，不提前加入常驻日志服务或 OpenTelemetry SDK。确有跨进程 Trace 或外部采集需求时，再从当前事件协议映射到 OTLP。
 3. `.dev.setup` / `.dev.status` 已验证 `run.toolchain.json` 的完整垂直路径；App 与 Launcher 的 build → publish 均已验证完整开发环境驱动 Action `run.ts`、模块 Provider 消费和原子发布的日常垂直路径。`run.ps1` 的 managed/system/disabled 三模式已有 CLI 黑盒与 Web/Catalog 协议验收；Host Release 黑盒同时覆盖二次启动激活、更新状态、安全重启和无残留退出。默认四领域的长期执行边界现已补齐 CLI 控制台取消、Provider/Journal 收尾、网络失败不发布、Bun latest 公网冷下载及离线缓存重装；公网验收保持显式慢速入口，不加入每次快速回归。冷 Bootstrap 的 Rust/MSVC 准备逻辑继续保留在系统原生 Shell。为受管 Python 建立明确所有权后再启用目前只由 Catalog 诊断的 `run.py`，避免系统 Python fallback。
 4. Launcher 的日常 Action 与冷 Bootstrap 构建器共用声明式 `build.json` 编译契约；前者消费 Entry 受管 MSVC，后者只在 Core 不存在时准备固定工具链。不要把 Bootstrap 恢复逻辑重新引入普通 Action，也不要为单一产品制品制造通用资产框架。
 5. 不可变 Release Set 已由显式 `.runtime.cleanup` 管理：默认 preview，只有 `--apply` 才删除；它与发布共用锁，严格复验 selector、Manifest、成员、长度和 SHA-256，并保留当前 Release、被 Core/Host/Toolchain 进程映射的 Release、破损目录与重解析点。生命周期判断不进入每次发布。

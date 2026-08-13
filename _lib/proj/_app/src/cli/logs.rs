@@ -86,6 +86,8 @@ fn require_logs_command(snapshot: &CatalogSnapshot) -> Result<(), CliError> {
     if snapshot.commands.iter().any(|command| {
         command.source == CommandSource::Kernel
             && command.address == LOGS_ADDRESS
+            && command.adapter.as_deref() == Some("core")
+            && command.handler.as_deref() == Some("meta.logs")
             && command.runnable
     }) {
         Ok(())

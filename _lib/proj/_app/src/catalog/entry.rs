@@ -2,7 +2,10 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::filesystem::{FileCandidate, directory_files};
+use super::{
+    CommandSource,
+    filesystem::{FileCandidate, directory_files},
+};
 
 const ENTRY_PROTOCOL: [(&str, CommandAdapter); 7] = [
     ("run.core.json", CommandAdapter::Core),
@@ -13,12 +16,14 @@ const ENTRY_PROTOCOL: [(&str, CommandAdapter); 7] = [
     ("run.ps1", CommandAdapter::Pwsh),
     ("run.cmd", CommandAdapter::Cmd),
 ];
-const CORE_HANDLERS: [&str; 5] = [
+const CORE_HANDLERS: [&str; 7] = [
     "entry.claim",
     "entry.profile",
     "entry.profile.apply",
     "entry.profile.set",
     "host.start",
+    "meta.help",
+    "meta.logs",
 ];
 const TOOLCHAIN_HANDLERS: [&str; 3] = ["dev.setup", "dev.status", "runtime.cleanup"];
 
@@ -28,6 +33,21 @@ pub(crate) struct ResolvedEntry {
     pub(crate) adapter: CommandAdapter,
     pub(crate) path: PathBuf,
     pub(crate) handler: Option<String>,
+}
+
+impl ResolvedEntry {
+    pub(super) fn has_valid_core_owner(&self, source: CommandSource, address: &str) -> bool {
+        match source {
+            CommandSource::Control => {
+                !matches!(self.handler.as_deref(), Some("meta.help" | "meta.logs"))
+            }
+            CommandSource::Kernel => matches!(
+                (address, self.handler.as_deref()),
+                (".help", Some("meta.help")) | (".logs", Some("meta.logs"))
+            ),
+            CommandSource::Action => false,
+        }
+    }
 }
 
 pub(crate) fn resolve_entry(directory: &Path) -> io::Result<Option<ResolvedEntry>> {

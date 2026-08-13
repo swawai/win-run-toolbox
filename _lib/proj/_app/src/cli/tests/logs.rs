@@ -3,7 +3,11 @@ use super::*;
 #[test]
 fn logs_read_history_and_latest_after_the_target_stops_being_runnable() {
     let fixture = Fixture::new();
-    fixture.command(".logs", "run.ps1", "exit 99");
+    fixture.command(
+        ".logs",
+        "run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+    );
     let command_directory = fixture.command(
         ".demo",
         "run.cmd",

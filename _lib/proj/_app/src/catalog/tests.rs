@@ -76,7 +76,14 @@ fn discovers_control_kernel_and_action_hierarchies() {
         "home/_lib/proj/.runtime/cleanup/_view/web.json",
         r#"{"schema":"swawkit.command-view/web/v2","run":{"operations":[{"id":"preview","label":"Preview","arguments":[]},{"id":"apply","label":"Apply","arguments":["--apply"],"confirmation":"Delete old releases?"}]}}"#,
     );
-    fixture.file("home/_lib/proj/.help/run.ps1", "");
+    fixture.file(
+        "home/_lib/proj/.help/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.help"}"#,
+    );
+    fixture.file(
+        "home/_lib/proj/.logs/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+    );
     fixture.file("home/_lib/proj/.h/run.ps1", "");
     fixture.file("home/_lib/proj/-con/run.ps1", "");
     fixture.file("home/_lib/proj/--nul/run.ps1", "");
@@ -124,6 +131,7 @@ fn discovers_control_kernel_and_action_hierarchies() {
             (CommandSource::Kernel, ".h"),
             (CommandSource::Kernel, ".help"),
             (CommandSource::Kernel, ".info"),
+            (CommandSource::Kernel, ".logs"),
             (CommandSource::Kernel, ".runtime"),
             (CommandSource::Kernel, ".runtime.cleanup"),
             (CommandSource::Action, "build"),
@@ -200,6 +208,12 @@ fn discovers_control_kernel_and_action_hierarchies() {
 
     let help_alias = node(&snapshot, CommandSource::Kernel, ".h");
     assert_eq!(help_alias.alias_of.as_deref(), Some(".help"));
+    let meta_help = node(&snapshot, CommandSource::Kernel, ".help");
+    assert_eq!(meta_help.adapter.as_deref(), Some("core"));
+    assert_eq!(meta_help.handler.as_deref(), Some("meta.help"));
+    let meta_logs = node(&snapshot, CommandSource::Kernel, ".logs");
+    assert_eq!(meta_logs.adapter.as_deref(), Some("core"));
+    assert_eq!(meta_logs.handler.as_deref(), Some("meta.logs"));
 
     let build = node(&snapshot, CommandSource::Action, "build");
     assert_eq!(build.parent.as_deref(), Some(""));
@@ -315,6 +329,14 @@ fn restricts_owned_entries_to_their_catalog_sources() {
         "home/_lib/proj/.wrong/run.core.json",
         r#"{"schema":"swawkit.core-command/v1","handler":"entry.profile"}"#,
     );
+    fixture.file(
+        "home/_lib/proj/.fake-meta/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+    );
+    fixture.file(
+        "home/_lib/proj/..fake-meta/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+    );
     fixture.file("home/_lib/proj/..external/run.ps1", "");
     fixture.file(
         "home/_lib/proj/..unknown/run.core.json",
@@ -344,6 +366,16 @@ fn restricts_owned_entries_to_their_catalog_sources() {
             CommandSource::Kernel,
             ".wrong",
             "restricted to Control Plane",
+        ),
+        (
+            CommandSource::Kernel,
+            ".fake-meta",
+            "exact built-in Kernel meta commands",
+        ),
+        (
+            CommandSource::Control,
+            "..fake-meta",
+            "exact built-in Kernel meta commands",
         ),
         (
             CommandSource::Control,
@@ -421,6 +453,11 @@ fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
     let fixture = Fixture::new();
     let directory = fixture.directory("home/_lib/proj/.script");
     fixture.file("home/_lib/proj/.script/run.ps1", "");
+    let logs_directory = fixture.directory("home/_lib/proj/.logs");
+    fixture.file(
+        "home/_lib/proj/.logs/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+    );
     let pending = PendingDirectory {
         path: directory,
         address: ".script".to_owned(),
@@ -441,6 +478,20 @@ fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
     let enabled = scan_node(&pending, "fixture", PwshAvailability::Enabled);
     assert!(enabled.runnable);
     assert_eq!(enabled.adapter.as_deref(), Some("pwsh"));
+
+    let logs = scan_node(
+        &PendingDirectory {
+            path: logs_directory,
+            address: ".logs".to_owned(),
+            source: CommandSource::Kernel,
+            is_root: false,
+        },
+        "fixture",
+        PwshAvailability::Disabled,
+    );
+    assert!(logs.runnable);
+    assert_eq!(logs.adapter.as_deref(), Some("core"));
+    assert_eq!(logs.handler.as_deref(), Some("meta.logs"));
 }
 
 #[test]

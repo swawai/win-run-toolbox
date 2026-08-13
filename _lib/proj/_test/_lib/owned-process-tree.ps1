@@ -70,8 +70,17 @@ namespace SwawKit.Proj.Tests
 
         public static OwnedProcessTree Start(string executable, string workingDirectory)
         {
+            return Start(executable, String.Empty, workingDirectory);
+        }
+
+        public static OwnedProcessTree Start(
+            string executable,
+            string arguments,
+            string workingDirectory)
+        {
             if (String.IsNullOrWhiteSpace(executable) ||
-                String.IsNullOrWhiteSpace(workingDirectory))
+                String.IsNullOrWhiteSpace(workingDirectory) ||
+                arguments == null)
             {
                 throw new ArgumentException("owned process paths cannot be empty");
             }
@@ -104,6 +113,11 @@ namespace SwawKit.Proj.Tests
                 StringBuilder commandLine = new StringBuilder(
                     "\"" + executable + "\""
                 );
+                if (arguments.Length != 0)
+                {
+                    commandLine.Append(' ');
+                    commandLine.Append(arguments);
+                }
                 if (!CreateProcessW(
                     executable,
                     commandLine,
@@ -345,7 +359,8 @@ namespace SwawKit.Proj.Tests
 function Start-ProjOwnedProcessTree {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
-        [Parameter(Mandatory = $true)][string]$WorkingDirectory
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [string]$Arguments = ''
     )
 
     $FilePath = [IO.Path]::GetFullPath($FilePath)
@@ -358,6 +373,7 @@ function Start-ProjOwnedProcessTree {
     }
     return [SwawKit.Proj.Tests.OwnedProcessTree]::Start(
         $FilePath,
+        $Arguments,
         $WorkingDirectory
     )
 }

@@ -193,10 +193,10 @@ fn scan_node(pending: &PendingDirectory, entry_name: &str, pwsh: PwshAvailabilit
     let entry = match entry {
         Some(entry)
             if entry.adapter == CommandAdapter::Core
-                && pending.source != CommandSource::Control =>
+                && !entry.has_valid_core_owner(pending.source, &pending.address) =>
         {
             diagnostics.push(
-                "run.core.json is restricted to Control Plane commands (addresses beginning with '..')"
+                "run.core.json is restricted to Control Plane commands (addresses beginning with '..') and exact built-in Kernel meta commands"
                     .to_owned(),
             );
             None

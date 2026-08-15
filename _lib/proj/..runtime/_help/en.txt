@@ -1,0 +1,12 @@
+Inspect aggregate Host and native Runtime release state for the current Entry.
+
+Usage:
+  {{INVOCATION}}
+  {{INVOCATION}} --json
+
+The state includes the selected release, published release count, Host PID, running release, and whether a restart into a newer release is available.
+
+Subcommands:
+  host.exit       Gracefully exit this Entry Host.
+  host.restart    Restart Host into the selected release.
+  cleanup         Preview or remove unused old releases.

@@ -237,6 +237,7 @@ mod tests {
         let catalog = CatalogSnapshot {
             protocol: "fixture",
             entry_name: "swawkit".to_owned(),
+            language: "en",
             commands: vec![crate::catalog::CommandNode {
                 address: ".dev.status".to_owned(),
                 source: CommandSource::Kernel,
@@ -246,6 +247,7 @@ mod tests {
                 entry: Some("run.exe".to_owned()),
                 adapter: Some("exe".to_owned()),
                 handler: None,
+                module: None,
                 help: None,
                 view: None,
                 diagnostic: None,

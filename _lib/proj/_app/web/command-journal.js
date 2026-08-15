@@ -8,12 +8,13 @@ import {
   commandRunStatus,
   isCommandJournalSupported,
 } from "./command-run-model.js";
+import { t } from "./i18n.js";
 
 const sourceLabels = { cli: "CLI", web: "Web" };
 
 function journalStatus(value) {
   if (value?.state === "running") {
-    return { label: "运行中或未完成", tone: "warning" };
+    return { label: t("运行中或未完成", "Running or incomplete"), tone: "warning" };
   }
   return commandRunStatus(value);
 }
@@ -78,7 +79,10 @@ export function createCommandJournalView(elements, options = {}) {
       status.dataset.state = presentation.tone;
       time.textContent = formatTime(run.startedAtUnixMs);
       heading.append(time);
-      meta.textContent = `${sourceLabels[run.source]} · ${run.eventCount} 条事件`;
+      meta.textContent = t(
+        `${sourceLabels[run.source]} · ${run.eventCount} 条事件`,
+        `${sourceLabels[run.source]} · ${run.eventCount} events`,
+      );
       summary.className = "command-journal-record-summary";
       summary.append(meta, status);
       button.append(heading, summary);
@@ -94,19 +98,25 @@ export function createCommandJournalView(elements, options = {}) {
       return;
     }
     elements.commandJournalOpen.disabled = true;
-    elements.commandJournalDirectoryFeedback.textContent = "正在打开日志目录…";
+    elements.commandJournalDirectoryFeedback.textContent = t(
+      "正在打开日志目录…",
+      "Opening the log folder…",
+    );
     elements.commandJournalDirectoryFeedback.dataset.state = "";
     try {
       await openCommandJournalDirectory(locator, id, fetchJournal);
       if (active && commandJournalLocator(command) === locator && journal?.id === id) {
-        elements.commandJournalDirectoryFeedback.textContent = "已在资源管理器中打开日志目录。";
+        elements.commandJournalDirectoryFeedback.textContent = t(
+          "已在资源管理器中打开日志目录。",
+          "Opened the log folder in File Explorer.",
+        );
         elements.commandJournalDirectoryFeedback.dataset.state = "success";
       }
     } catch (error) {
       if (active && commandJournalLocator(command) === locator && journal?.id === id) {
         elements.commandJournalDirectoryFeedback.textContent = error instanceof Error
           ? error.message
-          : "打开日志目录失败。";
+          : t("打开日志目录失败。", "Failed to open the log folder.");
         elements.commandJournalDirectoryFeedback.dataset.state = "error";
       }
     } finally {
@@ -192,7 +202,7 @@ export function createCommandJournalView(elements, options = {}) {
       resetOutput();
       renderHistory();
     }
-    feedback("正在读取日志…");
+    feedback(t("正在读取日志…", "Loading log…"));
     try {
       const next = await readCommandJournal(
         commandJournalLocator(command),
@@ -229,7 +239,10 @@ export function createCommandJournalView(elements, options = {}) {
       }
     } catch (error) {
       if (expectedVersion === version) {
-        feedback(error instanceof Error ? error.message : "读取命令日志失败。", "error");
+        feedback(
+          error instanceof Error ? error.message : t("读取命令日志失败。", "Failed to load command log."),
+          "error",
+        );
       }
     }
   }
@@ -243,7 +256,7 @@ export function createCommandJournalView(elements, options = {}) {
     loading = true;
     elements.commandJournalRefresh.disabled = true;
     renderHistory();
-    feedback("正在读取历史运行…");
+    feedback(t("正在读取历史运行…", "Loading run history…"));
     try {
       const next = await readCommandJournalHistory(commandJournalLocator(command), fetchJournal);
       if (expectedVersion !== version || !active) {
@@ -261,7 +274,10 @@ export function createCommandJournalView(elements, options = {}) {
       }
     } catch (error) {
       if (expectedVersion === version) {
-        feedback(error instanceof Error ? error.message : "读取历史运行失败。", "error");
+        feedback(
+          error instanceof Error ? error.message : t("读取历史运行失败。", "Failed to load run history."),
+          "error",
+        );
       }
     } finally {
       if (expectedVersion === version) {

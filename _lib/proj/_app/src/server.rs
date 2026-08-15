@@ -33,6 +33,7 @@ mod claim;
 mod command_journal;
 mod command_run;
 mod host_control;
+mod runtime_control;
 
 use command_run::CommandRuns;
 use host_control::HostControl;
@@ -180,6 +181,7 @@ fn router_with_runs(
         )
         .route("/api/v2/profile", get(get_profile))
         .route("/api/v2/host", get(host_control::get_host))
+        .route("/api/v2/runtime", get(runtime_control::get_runtime))
         .route(
             "/api/v2/host/shutdown",
             axum::routing::post(host_control::post_shutdown),
@@ -187,6 +189,10 @@ fn router_with_runs(
         .route(
             "/api/v2/host/restart",
             axum::routing::post(host_control::post_restart),
+        )
+        .route(
+            "/api/v2/runtime/cleanup",
+            axum::routing::post(runtime_control::post_cleanup),
         )
         .route(
             "/api/v2/command-runs",
@@ -209,8 +215,8 @@ fn router_with_runs(
             axum::routing::post(command_journal::post_open_command_journal_directory),
         )
         .route(
-            "/api/v2/profile/variables/{name}",
-            axum::routing::put(put_profile_variable),
+            "/api/v2/profile/settings/{address}",
+            axum::routing::put(put_profile_setting),
         )
         .route("/healthz", get(host_control::health))
         .layer(middleware::from_fn(security_headers))
@@ -305,24 +311,20 @@ async fn get_profile(State(state): State<ServerState>) -> Response {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ProfileVariableUpdate {
+struct ProfileSettingUpdate {
     value: String,
 }
 
-async fn put_profile_variable(
+async fn put_profile_setting(
     State(state): State<ServerState>,
-    Path(name): Path<String>,
+    Path(address): Path<String>,
     headers: HeaderMap,
-    Json(update): Json<ProfileVariableUpdate>,
+    Json(update): Json<ProfileSettingUpdate>,
 ) -> Result<Response, (StatusCode, Json<ApiError>)> {
     let expected_revision = expected_revision(&headers, "entry profile")?.to_owned();
     let profile_store = ready_profile_store(&state).await?;
     let update = tokio::task::spawn_blocking(move || {
-        profile_store.update_environment_variable_if_revision(
-            &expected_revision,
-            &name,
-            update.value,
-        )
+        profile_store.update_setting_if_revision(&expected_revision, &address, update.value)
     })
     .await
     .map_err(|error| {

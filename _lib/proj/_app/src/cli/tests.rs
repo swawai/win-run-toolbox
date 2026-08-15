@@ -11,6 +11,7 @@ use swawkit_proj::profile::{EntryProfileRecord, EntryProfileStore};
 
 use super::*;
 
+mod check;
 mod control;
 mod logs;
 
@@ -52,6 +53,11 @@ impl Fixture {
             .join("swawkit-proj.exe");
         fs::create_dir_all(product_executable.parent().unwrap())
             .expect("create Runtime Release fixture");
+        fs::write(
+            root.join("_lib/proj/_bin/current"),
+            format!("{release_id}\n"),
+        )
+        .expect("write Runtime selector fixture");
         fs::write(
             product_executable.with_file_name("swawkit-proj-toolchain.exe"),
             "fixture",
@@ -112,6 +118,13 @@ impl Fixture {
     }
 
     fn core_command(&self, address: &str, handler: &str) -> PathBuf {
+        if address.starts_with('.') && !address.starts_with("..") {
+            return self.command(
+                address,
+                "run.core.json",
+                &format!("{{\"schema\":\"swawkit.core-command/v1\",\"handler\":\"{handler}\"}}"),
+            );
+        }
         let suffix = address
             .strip_prefix("..")
             .expect("Control address must begin with '..'");

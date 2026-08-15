@@ -1,0 +1,4 @@
+设置项目固定的 Rust toolchain，例如 stable 或 nightly-2026-07-28。
+
+用法：{{INVOCATION}} <value>
+修改后需重新执行 {{COMMAND}} .dev.setup。

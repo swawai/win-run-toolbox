@@ -1,0 +1,14 @@
+Show root help or help for one command node.
+
+Root help:
+  {{COMMAND}} .help
+  {{COMMAND}} .h
+  {{COMMAND}} -h
+  {{COMMAND}} --help
+
+Command help:
+  {{COMMAND}} .help <command-address>
+
+A command module may provide _help/zh-CN.txt and _help/en.txt. Proj selects help from the Entry Profile language and falls back to Simplified Chinese when an English translation is absent. The first non-empty line is the Catalog summary; the complete file is detailed help.
+
+`<command-address> --help` remains an argument handled by the target command.

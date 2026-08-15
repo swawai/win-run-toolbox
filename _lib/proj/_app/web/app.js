@@ -5,8 +5,9 @@ import { createCommandRunView } from "./command-run.js";
 import { createCommandJournalView } from "./command-journal.js";
 import { createDetailView } from "./detail.js";
 import { createExplorerView } from "./explorer.js";
-import { createHostControlView } from "./host-control.js";
 import { createEntryProfileView } from "./entry-profile.js";
+import { setLanguage, t } from "./i18n.js";
+import { createRuntimeControlView } from "./runtime-control.js";
 import {
   commandAtPath,
   parseCommandView,
@@ -14,7 +15,6 @@ import {
 } from "./navigation.js";
 
 const elements = {
-  breadcrumb: document.querySelector("#breadcrumb"),
   cliCommand: document.querySelector("#cli-command"),
   claimConfirmation: document.querySelector("#claim-confirmation"),
   claimConfirmationName: document.querySelector("#claim-confirmation-name"),
@@ -85,13 +85,13 @@ const elements = {
   explorerFrame: document.querySelector("#explorer-frame"),
   explorerFlow: document.querySelector("#explorer-flow"),
   finderColumns: document.querySelector("#finder-columns"),
-  hostQuit: document.querySelector("#host-quit"),
-  hostRestart: document.querySelector("#host-restart"),
-  hostIndicator: document.querySelector("#host-indicator"),
-  hostStatus: document.querySelector("#host-status"),
+  genericCommandOverview: document.querySelector("#generic-command-overview"),
   invocationSection: document.querySelector("#invocation-section"),
   issueCard: document.querySelector("#issue-card"),
   loadingState: document.querySelector("#loading-state"),
+  moduleContractSection: document.querySelector("#module-contract-section"),
+  moduleProvides: document.querySelector("#module-provides"),
+  moduleRequires: document.querySelector("#module-requires"),
   propertyAddress: document.querySelector("#property-address"),
   propertyEntry: document.querySelector("#property-entry"),
   propertyEntryRow: document.querySelector("#property-entry-row"),
@@ -100,8 +100,29 @@ const elements = {
   profileSaveButton: document.querySelector("#profile-save-button"),
   profileState: document.querySelector("#profile-state"),
   profileValue: document.querySelector("#profile-value"),
-  profileVariableName: document.querySelector("#profile-variable-name"),
+  profileSettingAddress: document.querySelector("#profile-setting-address"),
   retryButton: document.querySelector("#retry-button"),
+  runtimeCleanupApply: document.querySelector("#runtime-cleanup-apply"),
+  runtimeCleanupFeedback: document.querySelector("#runtime-cleanup-feedback"),
+  runtimeCleanupList: document.querySelector("#runtime-cleanup-list"),
+  runtimeCleanupPreview: document.querySelector("#runtime-cleanup-preview"),
+  runtimeCleanupResult: document.querySelector("#runtime-cleanup-result"),
+  runtimeCleanupSection: document.querySelector("#runtime-cleanup-section"),
+  runtimeCleanupSummary: document.querySelector("#runtime-cleanup-summary"),
+  runtimeControl: document.querySelector("#runtime-control"),
+  runtimeDescription: document.querySelector("#runtime-description"),
+  runtimeHostConnection: document.querySelector("#runtime-host-connection"),
+  runtimeHostExit: document.querySelector("#runtime-host-exit"),
+  runtimeHostFeedback: document.querySelector("#runtime-host-feedback"),
+  runtimeHostPid: document.querySelector("#runtime-host-pid"),
+  runtimeHostProperties: document.querySelector("#runtime-host-properties"),
+  runtimeHostRestart: document.querySelector("#runtime-host-restart"),
+  runtimeHostSection: document.querySelector("#runtime-host-section"),
+  runtimeHostStatus: document.querySelector("#runtime-host-status"),
+  runtimeReleaseCount: document.querySelector("#runtime-release-count"),
+  runtimeRunningRelease: document.querySelector("#runtime-running-release"),
+  runtimeSelectedRelease: document.querySelector("#runtime-selected-release"),
+  runtimeTitle: document.querySelector("#runtime-title"),
   selectionStatus: document.querySelector("#selection-status"),
   entryProfileDetail: document.querySelector("#entry-profile-detail"),
   entryProfileSummary: document.querySelector("#entry-profile-summary"),
@@ -113,14 +134,16 @@ const detail = createDetailView(elements);
 const commandRun = createCommandRunView(elements);
 const commandJournal = createCommandJournalView(elements);
 const commandActivity = createCommandActivityView(elements);
+let runtimeControl = null;
 const entryProfile = createEntryProfileView(elements, {
   async onProfileChanged(document) {
+    setLanguage(document.profile.language);
+    void runtimeControl?.load();
     explorer.setSetupRequired(!document.requiredComplete);
     await loadCatalog();
   },
 });
 const explorer = createExplorerView({
-  breadcrumb: elements.breadcrumb,
   columns: elements.finderColumns,
   detailPanel: elements.detailPanel,
   getCommandViews(command) {
@@ -131,6 +154,7 @@ const explorer = createExplorerView({
   onSelectCommand(command, options = {}) {
     entryProfile.render(command);
     detail.render(catalog, command);
+    runtimeControl?.select(command);
     commandRun.select(command);
     const selection = commandActivity.selectCommand(command, {
       hasChildren: hasChildren(catalog, command),
@@ -156,7 +180,11 @@ const dataRootClaim = createDataRootClaimView(elements, {
   },
   onReady: loadApplication,
 });
-const hostControl = createHostControlView(elements);
+runtimeControl = createRuntimeControlView(elements, {
+  onRuntimeState(state) {
+    explorer.setCommandState("..runtime", state);
+  },
+});
 
 function setLoadState(status, message = "") {
   const loading = status === "loading";
@@ -169,7 +197,7 @@ function setLoadState(status, message = "") {
   elements.explorerFrame.setAttribute("aria-busy", String(loading));
 
   if (failed) {
-    elements.errorMessage.textContent = message || "无法连接 Host。";
+    elements.errorMessage.textContent = message || t("无法连接 Host。", "Cannot connect to Host.");
   }
 }
 
@@ -180,7 +208,10 @@ async function startApplication() {
   } catch (error) {
     const message = error instanceof Error
       ? error.message
-      : "读取 DataRoot 状态时发生未知错误。";
+      : t(
+        "读取 DataRoot 状态时发生未知错误。",
+        "An unknown error occurred while reading DataRoot state.",
+      );
     setLoadState("error", message);
   }
 }
@@ -193,7 +224,7 @@ async function loadCatalog() {
       headers: { Accept: "application/json" },
     });
     if (!response.ok) {
-      throw new Error(`Host 返回 HTTP ${response.status}`);
+      throw new Error(t(`Host 返回 HTTP ${response.status}`, `Host returned HTTP ${response.status}`));
     }
 
     catalog = createCatalog(await response.json());
@@ -202,7 +233,7 @@ async function loadCatalog() {
   } catch (error) {
     const message = error instanceof Error
       ? error.message
-      : "读取 Catalog 时发生未知错误。";
+      : t("读取 Catalog 时发生未知错误。", "An unknown error occurred while loading the Catalog.");
     setLoadState("error", message);
   }
 }
@@ -211,13 +242,16 @@ async function loadApplication() {
   setLoadState("loading");
   try {
     const document = await entryProfile.loadProfile();
+    setLanguage(document.profile.language);
+    void commandRun.restore();
+    void runtimeControl.load();
     explorer.setSetupRequired(!document.requiredComplete);
     const response = await fetch("/api/v2/catalog", {
       cache: "no-store",
       headers: { Accept: "application/json" },
     });
     if (!response.ok) {
-      throw new Error(`Host 返回 HTTP ${response.status}`);
+      throw new Error(t(`Host 返回 HTTP ${response.status}`, `Host returned HTTP ${response.status}`));
     }
     catalog = createCatalog(await response.json());
     const routed = commandAtPath(catalog, window.location.pathname, {
@@ -232,7 +266,10 @@ async function loadApplication() {
   } catch (error) {
     const message = error instanceof Error
       ? error.message
-      : "读取控制台状态时发生未知错误。";
+      : t(
+        "读取控制台状态时发生未知错误。",
+        "An unknown error occurred while loading console state.",
+      );
     setLoadState("error", message);
   }
 }
@@ -263,11 +300,9 @@ window.addEventListener("popstate", () => {
   } catch (error) {
     setLoadState(
       "error",
-      error instanceof Error ? error.message : "当前命令 URL 无效。",
+      error instanceof Error ? error.message : t("当前命令 URL 无效。", "The command URL is invalid."),
     );
   }
 });
 
-void commandRun.restore();
-void hostControl.load();
 startApplication();

@@ -1,4 +1,0 @@
-管理 Swaw Kit Proj 原生 Runtime Release。
-
-子命令：
-  cleanup    预览或清理不再使用的旧 Runtime Release。

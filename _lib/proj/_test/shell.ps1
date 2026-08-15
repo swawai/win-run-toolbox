@@ -141,33 +141,27 @@ try {
 
     $SetupOutput = @(
         & $script:ProjShellEntry `
-            '..entry.env.project.SWAWKIT_PROJ_TARGET_PROJECT_ROOT' `
+            '..entry.project.root' `
             '${SWAWKIT_HOME}' `
             2>&1
     )
     Assert-ProjShellTest `
         -Condition ($LASTEXITCODE -eq 0) `
         -Message "Entry Profile setup failed: $SetupOutput"
-    $ModeVariables = [ordered]@{
-        bun = 'SWAWKIT_PROJ_BUN_MODE'
-        msvc = 'SWAWKIT_PROJ_MSVC_MODE'
-        rust = 'SWAWKIT_PROJ_RUST_MODE'
-    }
-    foreach ($Group in $ModeVariables.Keys) {
-        $ModeVariable = $ModeVariables[$Group]
+    foreach ($Group in @('bun', 'msvc', 'rust')) {
         $ModeOutput = @(
             & $script:ProjShellEntry `
-                "..entry.env.$Group.$ModeVariable" `
+                ".dev.$Group.mode" `
                 'disabled' `
                 2>&1
         )
         Assert-ProjShellTest `
             -Condition ($LASTEXITCODE -eq 0) `
-            -Message "Entry Profile setup failed for $ModeVariable`: $ModeOutput"
+            -Message "Entry Profile setup failed for $Group mode: $ModeOutput"
     }
     $PwshVersionOutput = @(
         & $script:ProjShellEntry `
-            '..entry.env.pwsh.SWAWKIT_PROJ_PWSH_VERSION' `
+            '.dev.pwsh.version' `
             '7.6.4' `
             2>&1
     )
@@ -176,7 +170,7 @@ try {
         -Message "Entry Profile setup failed for managed PowerShell: $PwshVersionOutput"
     $IdentityOutput = @(
         & $script:ProjShellEntry `
-            '..entry.env.git.SWAWKIT_PROJ_GIT_ID_NAME' `
+            '..entry.git.name' `
             'Shell Fixture' `
             2>&1
     )
@@ -429,7 +423,7 @@ exit 33
         -Value ($SystemPwshRoot + ';' + $ProcessPathBefore)
     $SystemMode = @(
         & $script:ProjShellEntry `
-            '..entry.env.pwsh.SWAWKIT_PROJ_PWSH_MODE' `
+            '.dev.pwsh.mode' `
             'system' `
             2>&1
     )
@@ -460,7 +454,7 @@ exit 33
 
     $DisabledMode = @(
         & $script:ProjShellEntry `
-            '..entry.env.pwsh.SWAWKIT_PROJ_PWSH_MODE' `
+            '.dev.pwsh.mode' `
             'disabled' `
             2>&1
     )

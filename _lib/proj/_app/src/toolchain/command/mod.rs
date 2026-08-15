@@ -1,5 +1,4 @@
 mod context;
-mod runtime_cleanup;
 mod setup;
 mod status;
 
@@ -12,7 +11,6 @@ pub(crate) fn run(handler: &str, arguments: &[OsString]) -> Result<(), String> {
     match handler {
         "dev.setup" => setup::run(&context, arguments),
         "dev.status" => status::run(&context, arguments),
-        "runtime.cleanup" => runtime_cleanup::run(&context, arguments),
         _ => Err(format!("unsupported Toolchain command handler '{handler}'")),
     }
 }

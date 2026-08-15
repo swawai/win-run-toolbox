@@ -256,6 +256,10 @@
   content: "暂无输出";
 }
 
+html:lang(en) .command-run-output:empty::before {
+  content: "No output yet";
+}
+
 .command-run-output [data-stream="stderr"] {
   color: var(--ui-status-error);
 }

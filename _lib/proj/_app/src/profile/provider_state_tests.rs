@@ -67,7 +67,7 @@ fn dev_setup_inputs_are_an_explicit_normalized_subset_of_profile_variables() {
     let mut non_provider = baseline.clone();
     non_provider.target_project_root = fixture_absolute_path("unrelated-target");
     non_provider.git.name = "Fixture User".to_owned();
-    non_provider.preferences.help_language = "zh-CN".to_owned();
+    non_provider.language = "en".to_owned();
     non_provider.development.go.version = "1.25".to_owned();
     non_provider.development.gh.mode = "disabled".to_owned();
     assert_eq!(non_provider.environment_input_revision(), baseline_revision);
@@ -122,7 +122,7 @@ fn profile_transactions_invalidate_the_dev_setup_provider_only_when_inputs_chang
 
     fixture
         .store
-        .update_environment_variable("SWAWKIT_PROJ_GIT_ID_NAME", "Fixture User".to_owned())
+        .update_setting("..entry.git.name", "Fixture User".to_owned())
         .expect("update a non-provider variable");
     assert_eq!(fs::read(&state_path).unwrap(), first_state_bytes);
 
@@ -130,8 +130,8 @@ fn profile_transactions_invalidate_the_dev_setup_provider_only_when_inputs_chang
     fs::create_dir(&other_target).expect("create another target project");
     fixture
         .store
-        .update_environment_variable(
-            "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
+        .update_setting(
+            "..entry.project.root",
             other_target.to_string_lossy().into_owned(),
         )
         .expect("update the target project without changing setup inputs");
@@ -139,7 +139,7 @@ fn profile_transactions_invalidate_the_dev_setup_provider_only_when_inputs_chang
 
     fixture
         .store
-        .update_environment_variable("SWAWKIT_PROJ_BUN_VERSION", "1.2.16".to_owned())
+        .update_setting(".dev.bun.version", "1.2.16".to_owned())
         .expect("update one provider input");
     let changed_state: Value = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
     assert_ne!(changed_state["inputRevision"], first_state["inputRevision"]);
@@ -203,7 +203,7 @@ fn profile_publication_failure_restores_the_previous_provider_state() {
 
     let error = fixture
         .store
-        .update_environment_variable("SWAWKIT_PROJ_BUN_VERSION", "1.2.16".to_owned())
+        .update_setting(".dev.bun.version", "1.2.16".to_owned())
         .expect_err("locked profile publication must fail");
 
     assert!(error.to_string().contains("cannot publish entry profile"));
@@ -230,7 +230,7 @@ fn profile_publication_failure_removes_a_new_provider_state() {
 
     let error = fixture
         .store
-        .update_environment_variable("SWAWKIT_PROJ_BUN_VERSION", "1.2.16".to_owned())
+        .update_setting(".dev.bun.version", "1.2.16".to_owned())
         .expect_err("locked profile publication must fail");
 
     assert!(error.to_string().contains("cannot publish entry profile"));
@@ -256,7 +256,7 @@ fn non_provider_profile_updates_do_not_wait_for_the_provider_state_lock() {
 
     let document = fixture
         .store
-        .update_environment_variable("SWAWKIT_PROJ_GIT_ID_NAME", "Fixture User".to_owned())
+        .update_setting("..entry.git.name", "Fixture User".to_owned())
         .expect("non-provider update must not acquire the provider state lock");
 
     assert_eq!(document.profile.git.name, "Fixture User");

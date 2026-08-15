@@ -153,6 +153,18 @@
   color: var(--ui-text);
 }
 
+.command-row[data-state-tone="online"]:not([data-selected="true"]) .row-icon {
+  color: var(--ui-status-ok);
+}
+
+.command-row[data-state-tone="warning"]:not([data-selected="true"]) .row-icon {
+  color: var(--ui-status-warning);
+}
+
+.command-row[data-state-tone="error"]:not([data-selected="true"]) .row-icon {
+  color: var(--ui-status-error);
+}
+
 .command-row[data-selected="true"] .row-icon {
   color: var(--ui-selection-bg);
   background: var(--ui-selection-text);
@@ -284,4 +296,18 @@
     width: min(92vw, 380px);
     flex-basis: min(92vw, 380px);
   }
+}
+.module-contract-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.module-contract-grid h4 {
+  margin: 0 0 0.35rem;
+}
+
+.module-contract-grid ul {
+  margin: 0;
+  padding-left: 1.2rem;
 }

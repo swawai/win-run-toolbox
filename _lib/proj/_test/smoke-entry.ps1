@@ -105,12 +105,12 @@ try {
     $Saved = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `
         -Arguments @(
-            '..entry.env.project.SWAWKIT_PROJ_TARGET_PROJECT_ROOT',
+            '..entry.project.root',
             '${SWAWKIT_HOME}'
         )
     Assert-ProjEntrySmoke `
         -Condition ($Saved.ExitCode -eq 0) `
-        -Message "..entry.env failed: $($Saved.Text)"
+        -Message "..entry.project.root failed: $($Saved.Text)"
     $SavedDocument = $Saved.Text | ConvertFrom-Json
     Assert-ProjEntrySmoke `
         -Condition (
@@ -125,10 +125,10 @@ try {
     Assert-ProjEntrySmoke `
         -Condition (
             $Help.ExitCode -eq 0 -and
-            $Help.Text.Contains('Control Plane:') -and
+            $Help.Text.Contains("${EntryName}:") -and
             $Help.Text.Contains("$EntryName ..entry")
         ) `
-        -Message "root help did not expose Control Plane: $($Help.Text)"
+        -Message "root help did not expose the Entry section: $($Help.Text)"
 
     $DotHelp = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `
@@ -136,7 +136,7 @@ try {
     Assert-ProjEntrySmoke `
         -Condition (
             $DotHelp.ExitCode -eq 0 -and
-            $DotHelp.Text.Contains('Control Plane:')
+            $DotHelp.Text.Contains("${EntryName}:")
         ) `
         -Message ".help leaked into its fail-closed adapter: $($DotHelp.Text)"
 
@@ -157,25 +157,21 @@ try {
             $DevelopmentStatus.Text
         )
 
-    foreach ($Setting in @(
-        @('bun', 'SWAWKIT_PROJ_BUN_MODE'),
-        @('msvc', 'SWAWKIT_PROJ_MSVC_MODE'),
-        @('rust', 'SWAWKIT_PROJ_RUST_MODE')
-    )) {
+    foreach ($Tool in @('bun', 'msvc', 'rust')) {
         $Disabled = Invoke-ProjEntrySmoke `
             -EntryPath $EntryPath `
             -Arguments @(
-                "..entry.env.$($Setting[0]).$($Setting[1])",
+                ".dev.$Tool.mode",
                 'disabled'
             )
         Assert-ProjEntrySmoke `
             -Condition ($Disabled.ExitCode -eq 0) `
-            -Message "failed to disable $($Setting[0]): $($Disabled.Text)"
+            -Message "failed to disable ${Tool}: $($Disabled.Text)"
     }
     $PwshVersion = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `
         -Arguments @(
-            '..entry.env.pwsh.SWAWKIT_PROJ_PWSH_VERSION',
+            '.dev.pwsh.version',
             '7.6.4'
         )
     Assert-ProjEntrySmoke `

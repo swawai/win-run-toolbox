@@ -15,6 +15,10 @@ describe("Explorer control-plane behavior", () => {
   test("keeps Control commands available during first setup", () => {
     expect(commandDisabledDuringSetup(true, { source: "control" })).toBe(false);
     expect(commandDisabledDuringSetup(true, { source: "kernel" })).toBe(true);
+    expect(commandDisabledDuringSetup(true, {
+      source: "kernel",
+      setupAvailable: true,
+    })).toBe(false);
     expect(commandDisabledDuringSetup(true, { source: "action" })).toBe(true);
     expect(commandDisabledDuringSetup(false, { source: "action" })).toBe(false);
   });
@@ -36,11 +40,11 @@ describe("Explorer control-plane behavior", () => {
   });
 
   test("expands a local view menu only for the terminal selection", () => {
-    const path = ["..entry", "..entry.env", "..entry.env.bun"];
-    expect(commandMenuExpanded(path, "..entry", 0)).toBe(false);
-    expect(commandMenuExpanded(path, "..entry.env", 1)).toBe(false);
-    expect(commandMenuExpanded(path, "..entry.env.bun", 2)).toBe(true);
-    expect(commandMenuExpanded(path, "..entry.env.git", 2)).toBe(false);
+    const path = [".dev", ".dev.rust", ".dev.rust.cargo"];
+    expect(commandMenuExpanded(path, ".dev", 0)).toBe(false);
+    expect(commandMenuExpanded(path, ".dev.rust", 1)).toBe(false);
+    expect(commandMenuExpanded(path, ".dev.rust.cargo", 2)).toBe(true);
+    expect(commandMenuExpanded(path, ".dev.bun", 2)).toBe(false);
   });
 
   test("uses the parent command's declared child column width", () => {
@@ -61,9 +65,9 @@ describe("Explorer control-plane behavior", () => {
   });
 
   test("keeps ancestor child columns but obeys the terminal command view", () => {
-    const entry = { address: "..entry" };
-    const env = { address: "..entry.env" };
-    const bun = { address: "..entry.env.bun" };
+    const entry = { address: ".dev" };
+    const env = { address: ".dev.rust" };
+    const bun = { address: ".dev.rust.cargo" };
     const catalog = {
       commandByAddress: new Map([
         [entry.address, entry],
@@ -110,7 +114,7 @@ describe("Explorer control-plane behavior", () => {
   test("restores vertical offsets only for columns representing the same parent", () => {
     let rendered = [
       { dataset: { scrollKey: "root" }, scrollTop: 17 },
-      { dataset: { scrollKey: "choices:..entry.env" }, scrollTop: 559 },
+      { dataset: { scrollKey: "choices:.dev.rust" }, scrollTop: 559 },
     ];
     const columns = {
       querySelectorAll() {
@@ -121,7 +125,7 @@ describe("Explorer control-plane behavior", () => {
 
     rendered = [
       { dataset: { scrollKey: "root" }, scrollTop: 0 },
-      { dataset: { scrollKey: "choices:..entry.env" }, scrollTop: 0 },
+      { dataset: { scrollKey: "choices:.dev.rust" }, scrollTop: 0 },
       { dataset: { scrollKey: "choices:proj" }, scrollTop: 0 },
     ];
     restoreColumnScrollOffsets(columns, offsets);

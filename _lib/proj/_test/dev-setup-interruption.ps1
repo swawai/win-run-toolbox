@@ -113,17 +113,16 @@ try {
     $Bound = Invoke-ProjSetupEntry `
         -EntryPath $EntryPath `
         -Arguments @(
-            '..entry.env.project.SWAWKIT_PROJ_TARGET_PROJECT_ROOT',
+            '..entry.project.root',
             '${SWAWKIT_HOME}'
         )
     Assert-ProjSetupInterruption `
         -Condition ($Bound.ExitCode -eq 0) `
         -Message "cannot create the isolated Entry Profile: $($Bound.Text)"
-    foreach ($Tool in @('bun', 'pwsh', 'msvc', 'rust', 'go', 'python', 'uv')) {
-        $Variable = 'SWAWKIT_PROJ_{0}_MODE' -f $Tool.ToUpperInvariant()
+    foreach ($Tool in @('bun', 'pwsh', 'msvc', 'rust')) {
         $Disabled = Invoke-ProjSetupEntry `
             -EntryPath $EntryPath `
-            -Arguments @("..entry.env.$Tool.$Variable", 'disabled')
+            -Arguments @(".dev.$Tool.mode", 'disabled')
         Assert-ProjSetupInterruption `
             -Condition ($Disabled.ExitCode -eq 0) `
             -Message "cannot disable ${Tool}: $($Disabled.Text)"

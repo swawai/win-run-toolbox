@@ -1,0 +1,6 @@
+Gracefully exit the current Entry Host.
+
+Usage:
+  {{INVOCATION}}
+
+This terminates Web commands still running inside Host. The command verifies the published Host Runtime description and uses the product shutdown path; it does not guess by PID or terminate the process directly.

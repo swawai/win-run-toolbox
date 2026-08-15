@@ -1,0 +1,3 @@
+Set the target project root; the ${SWAWKIT_HOME} placeholder is supported.
+
+Usage: {{INVOCATION}} <value>

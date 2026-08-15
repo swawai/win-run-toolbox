@@ -1,0 +1,14 @@
+{
+  "schema": "swawkit.command-module/v1",
+  "requires": [
+    {
+      "provider": ".dev.setup",
+      "contract": "swawkit.proj.dev-setup/v2"
+    }
+  ],
+  "provides": [
+    {
+      "contract": "swawkit.proj-build-launcher/v1"
+    }
+  ]
+}

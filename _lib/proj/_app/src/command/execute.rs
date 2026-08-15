@@ -133,8 +133,8 @@ impl<'a> CommandExecutor<'a> {
                 development_environment = Some(resolved.environment);
                 AdapterLaunch::Bun(resolved.bun_executable.ok_or_else(|| {
                     CommandError::new(format!(
-                        "Bun is disabled for this Entry. Enable SWAWKIT_PROJ_BUN_MODE and run '{} .dev.setup'",
-                        self.context.entry_name
+                        "Bun is disabled for this Entry. Run '{} .dev.bun.mode managed', then '{} .dev.setup'",
+                        self.context.entry_name, self.context.entry_name
                     ))
                 })?)
             }
@@ -143,8 +143,8 @@ impl<'a> CommandExecutor<'a> {
                 development_environment = Some(resolved.environment);
                 AdapterLaunch::Pwsh(resolved.pwsh_executable.ok_or_else(|| {
                     CommandError::new(format!(
-                        "PowerShell 7 is disabled for this Entry. Set SWAWKIT_PROJ_PWSH_MODE to managed or system and run '{} .dev.setup'",
-                        self.context.entry_name
+                        "PowerShell 7 is disabled for this Entry. Run '{} .dev.pwsh.mode managed', then '{} .dev.setup'",
+                        self.context.entry_name, self.context.entry_name
                     ))
                 })?)
             }
@@ -236,7 +236,7 @@ fn validate_command_adapter(command: &ResolvedCommand) -> CommandResult<()> {
     }
     if command.adapter == CommandAdapter::Pwsh && command.source == CommandSource::Control {
         return Err(CommandError::new(format!(
-            "the run.ps1 adapter is not supported for Control Plane command '{}'",
+            "the run.ps1 adapter is not supported for Entry command '{}'",
             command.address
         )));
     }

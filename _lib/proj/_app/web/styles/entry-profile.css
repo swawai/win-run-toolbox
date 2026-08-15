@@ -1,4 +1,4 @@
-/* Generic editor for Catalog commands handled by entry.profile.set. */
+/* Editor for typed Catalog settings handled atomically by entry.profile.set. */
 .profile-form {
   display: block;
 }

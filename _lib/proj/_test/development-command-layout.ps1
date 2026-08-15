@@ -20,16 +20,30 @@ Assert-ProjDevelopmentCommandLayout `
     -Condition (-not [IO.Directory]::Exists((Join-Path $ProjRoot '_global'))) `
     -Message 'the removed no-op global guard directory still exists'
 
-foreach ($Name in @('bun', 'cargo', 'cl', 'rustc', 'cmd', 'pwsh')) {
+$CommandEntries = [ordered]@{
+    bun = '.dev\bun\run.ps1'
+    cargo = '.dev\rust\cargo\run.ps1'
+    cl = '.dev\msvc\cl\run.ps1'
+    rustc = '.dev\rust\rustc\run.ps1'
+    cmd = '.dev\cmd\run.ps1'
+    exec = '.dev\exec\run.ps1'
+    pwsh = '.dev\pwsh\run.ps1'
+}
+foreach ($Name in $CommandEntries.Keys) {
     $LegacyPath = Join-Path $ProjRoot ".$Name"
-    $EntryPath = Join-Path $ProjRoot ".dev\$Name\run.ps1"
+    $EntryPath = Join-Path $ProjRoot $CommandEntries[$Name]
 
     Assert-ProjDevelopmentCommandLayout `
         -Condition (-not (Test-Path -LiteralPath $LegacyPath)) `
         -Message "legacy command .$Name still exists"
     Assert-ProjDevelopmentCommandLayout `
         -Condition ([IO.File]::Exists($EntryPath)) `
-        -Message ".dev.$Name does not have a PowerShell entry"
+        -Message "$Name does not have its declared PowerShell entry"
+}
+foreach ($OldAddress in @('cargo', 'cl', 'rustc')) {
+    Assert-ProjDevelopmentCommandLayout `
+        -Condition (-not (Test-Path -LiteralPath (Join-Path $ProjRoot ".dev\$OldAddress"))) `
+        -Message "old flat .dev.$OldAddress command still exists"
 }
 
 $SetupRoot = Join-Path $ProjRoot '.dev\setup'
@@ -45,16 +59,28 @@ Assert-ProjDevelopmentCommandLayout `
         $SetupContract.handler -ceq 'dev.setup') `
     -Message '.dev.setup Toolchain manifest is invalid'
 
-$CleanupManifest = Join-Path $ProjRoot '.runtime\cleanup\run.toolchain.json'
 Assert-ProjDevelopmentCommandLayout `
-    -Condition ([IO.File]::Exists($CleanupManifest)) `
-    -Message '.runtime.cleanup does not have a native Toolchain entry'
-$CleanupContract = Get-Content -LiteralPath $CleanupManifest -Raw |
-    ConvertFrom-Json
-Assert-ProjDevelopmentCommandLayout `
-    -Condition ($CleanupContract.schema -ceq 'swawkit.toolchain-command/v1' -and
-        $CleanupContract.handler -ceq 'runtime.cleanup') `
-    -Message '.runtime.cleanup Toolchain manifest is invalid'
+    -Condition (-not (Test-Path -LiteralPath (Join-Path $ProjRoot '.runtime'))) `
+    -Message 'the removed .runtime Kernel command still exists'
+
+$RuntimeContracts = @(
+    @{ Path = '..runtime\run.core.json'; Handler = 'runtime.status' },
+    @{ Path = '..runtime\host\exit\run.core.json'; Handler = 'host.exit' },
+    @{ Path = '..runtime\host\restart\run.core.json'; Handler = 'host.restart' },
+    @{ Path = '..runtime\cleanup\run.core.json'; Handler = 'runtime.cleanup' }
+)
+foreach ($RuntimeContract in $RuntimeContracts) {
+    $RuntimeManifest = Join-Path $ProjRoot $RuntimeContract.Path
+    Assert-ProjDevelopmentCommandLayout `
+        -Condition ([IO.File]::Exists($RuntimeManifest)) `
+        -Message "Runtime Control manifest is missing: $($RuntimeContract.Path)"
+    $RuntimeDocument = Get-Content -LiteralPath $RuntimeManifest -Raw |
+        ConvertFrom-Json
+    Assert-ProjDevelopmentCommandLayout `
+        -Condition ($RuntimeDocument.schema -ceq 'swawkit.core-command/v1' -and
+            $RuntimeDocument.handler -ceq $RuntimeContract.Handler) `
+        -Message "Runtime Control manifest is invalid: $($RuntimeContract.Path)"
+}
 
 $DependencyContracts = @(
     @{
@@ -64,21 +90,21 @@ $DependencyContracts = @(
         PathType = 'Container'
     },
     @{
-        Name = '.dev.cargo runtime'
-        Script = '.dev\cargo\run.ps1'
-        Relative = '..\..\_toolchain\_modules\rust\runtime.ps1'
+        Name = '.dev.rust.cargo runtime'
+        Script = '.dev\rust\cargo\run.ps1'
+        Relative = '..\..\..\_toolchain\_modules\rust\runtime.ps1'
         PathType = 'Leaf'
     },
     @{
-        Name = '.dev.cl runtime'
-        Script = '.dev\cl\run.ps1'
-        Relative = '..\..\_toolchain\_modules\msvc\runtime.ps1'
+        Name = '.dev.msvc.cl runtime'
+        Script = '.dev\msvc\cl\run.ps1'
+        Relative = '..\..\..\_toolchain\_modules\msvc\runtime.ps1'
         PathType = 'Leaf'
     },
     @{
-        Name = '.dev.rustc runtime'
-        Script = '.dev\rustc\run.ps1'
-        Relative = '..\..\_toolchain\_modules\rust\runtime.ps1'
+        Name = '.dev.rust.rustc runtime'
+        Script = '.dev\rust\rustc\run.ps1'
+        Relative = '..\..\..\_toolchain\_modules\rust\runtime.ps1'
         PathType = 'Leaf'
     },
     @{
@@ -86,6 +112,13 @@ $DependencyContracts = @(
         Script = '.dev\cmd\run.ps1'
         Relative = '..\..\_shell\runtime.ps1'
         SourceMarker = '_shell\runtime.ps1'
+        PathType = 'Leaf'
+    },
+    @{
+        Name = '.dev.exec development environment runtime'
+        Script = '.dev\exec\run.ps1'
+        Relative = '..\..\_toolchain\runtime.ps1'
+        SourceMarker = '_toolchain\runtime.ps1'
         PathType = 'Leaf'
     }
 )

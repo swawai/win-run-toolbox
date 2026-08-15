@@ -1,7 +1,7 @@
 import { hasChildren } from "./catalog-model.js";
 
 export function commandDisabledDuringSetup(setupRequired, command) {
-  return setupRequired && command.source !== "control";
+  return setupRequired && command.setupAvailable !== true && command.source !== "control";
 }
 
 export function availableCommand(catalog, setupRequired, address) {

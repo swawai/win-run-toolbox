@@ -29,19 +29,19 @@ provider 标记为 unavailable，旧 setup 也不能覆盖新的状态。重新�
 Bun 支持精确版本或 latest。latest 只在首次 setup 时解析为精确版本；
 选择记录在 .dev.setup 的 export/bun 中，重复 setup 不会隐式升级。
 GitHub Release API 提供的 digest 可用时会用于校验。
-可通过 {{COMMAND}} ..entry.env.bun.SWAWKIT_PROJ_BUN_SHA256 进一步锁定安装包；
+可通过 {{COMMAND}} .dev.bun.sha256 进一步锁定安装包；
 未设置时只给出黄色提示，不阻塞安装。latest 不能与固定 SHA 同时声明；
 需要固定 SHA 时应同时声明精确版本。
 
 PowerShell 支持精确版本或 latest，语义与 Bun 相同：首次 setup 通过官方
 GitHub Release API 将 latest 解析并锁定为精确版本，重复 setup 不会隐式升级。
 Windows x64 资产名称随版本生成，GitHub digest 可用时会用于校验；也可通过
-{{COMMAND}} ..entry.env.pwsh.SWAWKIT_PROJ_PWSH_SHA256 锁定精确版本的安装包。
+{{COMMAND}} .dev.pwsh.sha256 锁定精确版本的安装包。
 
 MSVC 通过 Visual Studio channel 自动解析最新版 x64 工具链和 Windows SDK。
 product manifest 以 channel 身份和实际内容哈希缓存；所有 VSIX、MSI、CAB
 均使用微软 manifest 提供的 SHA-256 严格校验，
-项目只需通过 {{COMMAND}} ..entry.env.msvc.SWAWKIT_PROJ_MSVC_CHANNEL 声明 channel，
+项目只需通过 {{COMMAND}} .dev.msvc.channel 声明 channel，
 不维护版本链接或 hash。
 
 Rust 通过 rustup 安装到隔离的 CARGO_HOME/RUSTUP_HOME，不修改用户 PATH。

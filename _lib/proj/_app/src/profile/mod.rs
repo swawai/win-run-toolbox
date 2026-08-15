@@ -1,5 +1,6 @@
 mod document;
 mod error;
+mod language;
 mod model;
 mod provider_state;
 mod storage;
@@ -8,11 +9,12 @@ mod variables;
 use std::fs;
 use std::path::PathBuf;
 
-pub use document::EntryProfileDocument;
+pub use document::{EntryProfileDocument, PROFILE_DOCUMENT_PROTOCOL};
 pub use error::{ProfileError, ProfileUpdateError};
+pub use language::{DEFAULT_LANGUAGE, EntryLanguage};
 pub use model::{
-    ChannelTool, DevelopmentProfile, EntryProfileRecord, GitProfile, ModeTool, Preferences,
-    RepositoryProfile, RustTool, VersionedTool,
+    ChannelTool, DevelopmentProfile, EntryProfileRecord, GitProfile, ModeTool, RustTool,
+    VersionedTool,
 };
 use storage::{read_record, revision, validate_data_root, validate_publication_target};
 
@@ -20,7 +22,7 @@ use crate::atomic_file;
 use crate::binding::ProjectBinding;
 use crate::data_root::DataRootLock;
 
-pub const PROFILE_SCHEMA: &str = "swawkit.entry-profile/v1";
+pub const PROFILE_SCHEMA: &str = "swawkit.entry-profile/v2";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryProfile {
@@ -45,6 +47,11 @@ impl EntryProfile {
 
     pub fn profile_revision(&self) -> &str {
         &self.profile_revision
+    }
+
+    pub fn language(&self) -> EntryLanguage {
+        EntryLanguage::parse(&self.record.language)
+            .expect("a resolved Entry Profile must have a supported language")
     }
 }
 
@@ -214,15 +221,15 @@ impl EntryProfileStore {
         )
     }
 
-    pub fn update_environment_variable(
+    pub fn update_setting(
         &self,
-        name: &str,
+        address: &str,
         value: String,
     ) -> Result<EntryProfileDocument, ProfileError> {
         let lock = self.acquire_lock()?;
         let current = self.snapshot();
-        let mut record = record_for_variable_update(current.state.clone())?;
-        record.set_environment_variable(name, value)?;
+        let mut record = record_for_setting_update(current.state.clone())?;
+        record.set_profile_setting(address, value)?;
         let prepared = self.commit_locked(&lock, &current, record)?;
         Ok(EntryProfileDocument::from_state(
             EntryProfileState::Ready(prepared.profile),
@@ -245,10 +252,10 @@ impl EntryProfileStore {
         ))
     }
 
-    pub fn update_environment_variable_if_revision(
+    pub fn update_setting_if_revision(
         &self,
         expected_revision: &str,
-        name: &str,
+        address: &str,
         value: String,
     ) -> Result<EntryProfileDocument, ProfileUpdateError> {
         let lock = self.acquire_lock().map_err(ProfileUpdateError::Profile)?;
@@ -258,10 +265,10 @@ impl EntryProfileStore {
                 current_revision: current.revision,
             });
         }
-        let mut record = record_for_variable_update(current.state.clone())
+        let mut record = record_for_setting_update(current.state.clone())
             .map_err(ProfileUpdateError::Profile)?;
         record
-            .set_environment_variable(name, value)
+            .set_profile_setting(address, value)
             .map_err(ProfileUpdateError::Profile)?;
         let prepared = self
             .commit_locked(&lock, &current, record)
@@ -328,9 +335,7 @@ impl EntryProfileRecord {
     }
 }
 
-fn record_for_variable_update(
-    state: EntryProfileState,
-) -> Result<EntryProfileRecord, ProfileError> {
+fn record_for_setting_update(state: EntryProfileState) -> Result<EntryProfileRecord, ProfileError> {
     match state {
         EntryProfileState::Missing { .. } => Ok(EntryProfileRecord::default()),
         EntryProfileState::Invalid {
@@ -342,7 +347,7 @@ fn record_for_variable_update(
             error,
             ..
         } => Err(ProfileError::new(format!(
-            "cannot update one variable because the current profile is unreadable: {error}. Replace it with '..entry.apply --file <path>'"
+            "cannot update one setting because the current profile is unreadable: {error}. Replace it with '..entry.apply --file <path>'"
         ))),
         EntryProfileState::Ready(profile) => Ok(profile.record().clone()),
     }

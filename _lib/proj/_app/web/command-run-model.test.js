@@ -28,7 +28,7 @@ describe("command run model", () => {
       .toEqual({ label: "执行失败", tone: "error" });
   });
 
-  test("keeps Control Plane commands on their dedicated Web APIs", () => {
+  test("keeps Entry commands on their dedicated Web APIs", () => {
     expect(isCommandRunSupported({ address: "..web", runnable: true, source: "control" })).toBe(false);
     expect(isCommandRunSupported({ address: "", runnable: true, source: "kernel" })).toBe(false);
     expect(isCommandRunSupported({ address: ".dev", runnable: true, source: "kernel" })).toBe(true);

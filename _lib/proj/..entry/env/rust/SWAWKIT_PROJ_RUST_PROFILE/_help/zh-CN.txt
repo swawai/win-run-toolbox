@@ -1,7 +1,0 @@
-设置 rustup 安装 Profile。
-
-用法:
-  {{INVOCATION}} <value>
-
-V0 固定要求 minimal，以保持工具链安装面最小。修改此值会参与完整 Profile 校验，
-并使 .dev.setup 需要重新协调。

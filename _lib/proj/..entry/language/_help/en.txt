@@ -1,0 +1,10 @@
+Set the Entry help and interface language.
+
+Usage:
+  {{INVOCATION}} <value>
+
+Supported values:
+  zh-CN
+  en
+
+The language belongs to the Entry Profile. After it is saved, CLI help and the Web interface use the new language. Module help without an English translation temporarily falls back to Simplified Chinese.

@@ -1,0 +1,7 @@
+在当前 Entry 的完整开发环境中直接运行一个可执行文件。
+
+用法:
+  {{INVOCATION}} <executable> [参数...]
+
+该命令不经过 cmd.exe，不解释管道、重定向或 Shell 元字符。需要 cmd 语法时使用
+{{COMMAND}} .dev.cmd；只需运行 Bun、Cargo、Rustc 或 CL 时优先使用对应的专用命令。

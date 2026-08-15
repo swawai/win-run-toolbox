@@ -8,6 +8,45 @@ use std::{
 use super::*;
 
 #[tokio::test]
+async fn runtime_status_is_one_typed_control_document() {
+    let fixture = Fixture::new();
+    let response = send(
+        fixture.app(),
+        Method::GET,
+        "/api/v2/runtime",
+        Some(AUTHORITY),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let document: Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .expect("Runtime status body"),
+    )
+    .expect("Runtime status JSON");
+    assert_eq!(document["protocol"], "swawkit.runtime-status/v1");
+    assert_eq!(document["selectedReleaseId"], "1".repeat(64));
+    assert_eq!(document["releaseCount"], 0);
+    assert_eq!(document["host"]["protocol"], "swawkit.host-status/v1");
+    assert_eq!(document["host"]["updateAvailable"], false);
+}
+
+#[tokio::test]
+async fn runtime_cleanup_requires_an_explicit_control_action() {
+    let fixture = Fixture::new();
+    let response = send(
+        fixture.app(),
+        Method::POST,
+        "/api/v2/runtime/cleanup",
+        Some(AUTHORITY),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn binds_independent_random_ports_on_ipv4_loopback() {
     let first = bind_loopback().await.expect("first listener");
     let second = bind_loopback().await.expect("second listener");

@@ -1,7 +1,0 @@
-设置 rustup 工具链声明。
-
-用法:
-  {{INVOCATION}} <value>
-
-当 SWAWKIT_PROJ_RUST_MODE 为 rustup 时，此值必须非空，例如 stable。
-修改此值会使 .dev.setup 需要重新协调。

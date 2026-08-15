@@ -2,6 +2,7 @@ import {
   cliInvocation,
   isGroup,
 } from "./catalog-model.js";
+import { t } from "./i18n.js";
 
 export function createDetailView(elements) {
   let copyTimer = null;
@@ -12,7 +13,7 @@ export function createDetailView(elements) {
       window.clearTimeout(copyTimer);
       copyTimer = null;
     }
-    elements.copyLabel.textContent = "复制";
+    elements.copyLabel.textContent = t("复制", "Copy");
     elements.copyFeedback.textContent = "";
     delete elements.copyFeedback.dataset.state;
   }
@@ -26,7 +27,9 @@ export function createDetailView(elements) {
     const issue = command.issue;
     elements.detailAddress.textContent = command.address;
     elements.detailSummary.textContent = command.summary
-      || (group ? "浏览这个命令组下的子命令。" : "该命令尚未提供摘要。");
+      || (group
+        ? t("浏览这个命令组下的子命令。", "Browse the subcommands in this group.")
+        : t("该命令尚未提供摘要。", "This command has no summary yet."));
     elements.issueCard.hidden = !issue;
     elements.detailIssue.textContent = issue;
     elements.invocationSection.hidden = !command.runnable;
@@ -34,15 +37,48 @@ export function createDetailView(elements) {
       ? cliInvocation(catalog, command)
       : "";
     elements.copyButton.disabled = !command.runnable;
-    elements.copyButton.title = command.runnable ? "复制 CLI 调用" : "";
+    elements.copyButton.title = command.runnable ? t("复制 CLI 调用", "Copy CLI invocation") : "";
     elements.propertyAddress.textContent = command.address;
     elements.propertyEntryRow.hidden = !command.entry;
     elements.propertyEntry.textContent = command.adapter
       ? `${command.entry} · ${command.adapter}`
       : command.entry;
-    elements.detailHelp.textContent = command.help || "该命令尚未提供详细帮助。";
+    renderModuleContract(command.module);
+    elements.detailHelp.textContent = command.help
+      || t("该命令尚未提供详细帮助。", "This command has no detailed help yet.");
     elements.commandHelpAddress.textContent = command.address;
-    elements.selectionStatus.textContent = `已选择命令 ${command.address}`;
+    elements.selectionStatus.textContent = t(
+      `已选择命令 ${command.address}`,
+      `Selected command ${command.address}`,
+    );
+  }
+
+  function renderModuleContract(module) {
+    elements.moduleContractSection.hidden = !module;
+    elements.moduleRequires.replaceChildren();
+    elements.moduleProvides.replaceChildren();
+    if (!module) {
+      return;
+    }
+    appendItems(
+      elements.moduleRequires,
+      module.requires.map(({ provider, contract }) => `${provider} · ${contract}`),
+      t("无声明依赖", "No declared requirements"),
+    );
+    appendItems(
+      elements.moduleProvides,
+      module.provides.map(({ contract }) => contract),
+      t("不提供 Export", "No Export provided"),
+    );
+  }
+
+  function appendItems(list, items, emptyText) {
+    const values = items.length > 0 ? items : [emptyText];
+    for (const value of values) {
+      const item = document.createElement("li");
+      item.textContent = value;
+      list.append(item);
+    }
   }
 
   async function copyInvocation() {
@@ -57,9 +93,9 @@ export function createDetailView(elements) {
         return;
       }
       resetCopyFeedback();
-      elements.copyFeedback.textContent = "已复制到剪贴板";
+      elements.copyFeedback.textContent = t("已复制到剪贴板", "Copied to clipboard");
       elements.copyFeedback.dataset.state = "success";
-      elements.copyLabel.textContent = "已复制";
+      elements.copyLabel.textContent = t("已复制", "Copied");
       copyTimer = window.setTimeout(() => {
         if (version === copyVersion) {
           resetCopyFeedback();
@@ -73,7 +109,10 @@ export function createDetailView(elements) {
         return;
       }
       resetCopyFeedback();
-      elements.copyFeedback.textContent = "复制失败，请手动选择命令文本。";
+      elements.copyFeedback.textContent = t(
+        "复制失败，请手动选择命令文本。",
+        "Copy failed. Select the command text manually.",
+      );
       elements.copyFeedback.dataset.state = "error";
     }
   }

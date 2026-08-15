@@ -48,15 +48,11 @@ fn discovers_control_kernel_and_action_hierarchies() {
         r#"{"schema":"swawkit.core-command/v1","handler":"entry.profile"}"#,
     );
     fixture.file(
-        "home/_lib/proj/..entry/env/preferences/SWAWKIT_PROJ_DEFAULT_SHELL/run.core.json",
+        "home/_lib/proj/..entry/language/run.core.json",
         r#"{"schema":"swawkit.core-command/v1","handler":"entry.profile.set"}"#,
     );
     fixture.file(
-        "home/_lib/proj/..entry/env/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"normal"}}"#,
-    );
-    fixture.file(
-        "home/_lib/proj/..entry/env/preferences/_view/web.json",
+        "home/_lib/proj/..entry/_view/web.json",
         r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"wide"}}"#,
     );
     fixture.file(
@@ -65,16 +61,28 @@ fn discovers_control_kernel_and_action_hierarchies() {
     );
     fixture.file("home/_lib/proj/.dev/run.ps1", "");
     fixture.file(
+        "home/_lib/proj/.dev/bun/mode/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"entry.profile.set"}"#,
+    );
+    fixture.file(
         "home/_lib/proj/.dev/setup/run.toolchain.json",
         r#"{"schema":"swawkit.toolchain-command/v1","handler":"dev.setup"}"#,
     );
     fixture.file(
-        "home/_lib/proj/.runtime/cleanup/run.toolchain.json",
-        r#"{"schema":"swawkit.toolchain-command/v1","handler":"runtime.cleanup"}"#,
+        "home/_lib/proj/..runtime/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"runtime.status"}"#,
     );
     fixture.file(
-        "home/_lib/proj/.runtime/cleanup/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v2","run":{"operations":[{"id":"preview","label":"Preview","arguments":[]},{"id":"apply","label":"Apply","arguments":["--apply"],"confirmation":"Delete old releases?"}]}}"#,
+        "home/_lib/proj/..runtime/cleanup/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"runtime.cleanup"}"#,
+    );
+    fixture.file(
+        "home/_lib/proj/..runtime/host/exit/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"host.exit"}"#,
+    );
+    fixture.file(
+        "home/_lib/proj/..runtime/host/restart/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"host.restart"}"#,
     );
     fixture.file(
         "home/_lib/proj/.help/run.core.json",
@@ -106,6 +114,7 @@ fn discovers_control_kernel_and_action_hierarchies() {
     fixture.file("project/.swaw/Bad/run.ps1", "");
 
     let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
+    assert_eq!(snapshot.language, "zh-CN");
     let addresses: Vec<(CommandSource, &str)> = snapshot
         .commands
         .iter()
@@ -117,23 +126,23 @@ fn discovers_control_kernel_and_action_hierarchies() {
         [
             (CommandSource::Control, "..entry"),
             (CommandSource::Control, "..entry.claim"),
-            (CommandSource::Control, "..entry.env"),
-            (CommandSource::Control, "..entry.env.preferences"),
-            (
-                CommandSource::Control,
-                "..entry.env.preferences.SWAWKIT_PROJ_DEFAULT_SHELL",
-            ),
+            (CommandSource::Control, "..entry.language"),
+            (CommandSource::Control, "..runtime"),
+            (CommandSource::Control, "..runtime.cleanup"),
+            (CommandSource::Control, "..runtime.host"),
+            (CommandSource::Control, "..runtime.host.exit"),
+            (CommandSource::Control, "..runtime.host.restart"),
             (CommandSource::Kernel, ""),
             (CommandSource::Kernel, "--nul"),
             (CommandSource::Kernel, "-con"),
             (CommandSource::Kernel, ".dev"),
+            (CommandSource::Kernel, ".dev.bun"),
+            (CommandSource::Kernel, ".dev.bun.mode"),
             (CommandSource::Kernel, ".dev.setup"),
             (CommandSource::Kernel, ".h"),
             (CommandSource::Kernel, ".help"),
             (CommandSource::Kernel, ".info"),
             (CommandSource::Kernel, ".logs"),
-            (CommandSource::Kernel, ".runtime"),
-            (CommandSource::Kernel, ".runtime.cleanup"),
             (CommandSource::Action, "build"),
             (CommandSource::Action, "build.host"),
             (CommandSource::Action, "python"),
@@ -144,36 +153,22 @@ fn discovers_control_kernel_and_action_hierarchies() {
     assert_eq!(entry.parent.as_deref(), Some(""));
     assert_eq!(entry.adapter.as_deref(), Some("core"));
     assert_eq!(entry.handler.as_deref(), Some("entry.profile"));
-    let env = node(&snapshot, CommandSource::Control, "..entry.env");
-    assert_eq!(env.parent.as_deref(), Some("..entry"));
-    assert!(!env.runnable);
+    let entry = node(&snapshot, CommandSource::Control, "..entry");
     assert_eq!(
-        env.view
-            .as_ref()
-            .and_then(|view| view.children_column.as_ref())
-            .map(|column| column.width),
-        Some(ColumnWidth::Normal)
-    );
-    let preferences = node(&snapshot, CommandSource::Control, "..entry.env.preferences");
-    assert_eq!(preferences.parent.as_deref(), Some("..entry.env"));
-    assert_eq!(
-        preferences
+        entry
             .view
             .as_ref()
             .and_then(|view| view.children_column.as_ref())
             .map(|column| column.width),
         Some(ColumnWidth::Wide)
     );
-    let default_shell = node(
-        &snapshot,
-        CommandSource::Control,
-        "..entry.env.preferences.SWAWKIT_PROJ_DEFAULT_SHELL",
-    );
-    assert_eq!(
-        default_shell.parent.as_deref(),
-        Some("..entry.env.preferences")
-    );
-    assert_eq!(default_shell.handler.as_deref(), Some("entry.profile.set"));
+    let language = node(&snapshot, CommandSource::Control, "..entry.language");
+    assert_eq!(language.parent.as_deref(), Some("..entry"));
+    assert_eq!(language.handler.as_deref(), Some("entry.profile.set"));
+    let bun_mode = node(&snapshot, CommandSource::Kernel, ".dev.bun.mode");
+    assert_eq!(bun_mode.parent.as_deref(), Some(".dev.bun"));
+    assert_eq!(bun_mode.adapter.as_deref(), Some("core"));
+    assert_eq!(bun_mode.handler.as_deref(), Some("entry.profile.set"));
     let claim = node(&snapshot, CommandSource::Control, "..entry.claim");
     assert_eq!(claim.handler.as_deref(), Some("entry.claim"));
 
@@ -183,23 +178,20 @@ fn discovers_control_kernel_and_action_hierarchies() {
     assert_eq!(setup.adapter.as_deref(), Some("toolchain"));
     assert_eq!(setup.handler.as_deref(), Some("dev.setup"));
 
-    let cleanup = node(&snapshot, CommandSource::Kernel, ".runtime.cleanup");
-    assert_eq!(cleanup.parent.as_deref(), Some(".runtime"));
-    assert_eq!(cleanup.entry.as_deref(), Some("run.toolchain.json"));
-    assert_eq!(cleanup.adapter.as_deref(), Some("toolchain"));
+    let runtime = node(&snapshot, CommandSource::Control, "..runtime");
+    assert_eq!(runtime.parent.as_deref(), Some(""));
+    assert_eq!(runtime.handler.as_deref(), Some("runtime.status"));
+    let cleanup = node(&snapshot, CommandSource::Control, "..runtime.cleanup");
+    assert_eq!(cleanup.parent.as_deref(), Some("..runtime"));
+    assert_eq!(cleanup.entry.as_deref(), Some("run.core.json"));
+    assert_eq!(cleanup.adapter.as_deref(), Some("core"));
     assert_eq!(cleanup.handler.as_deref(), Some("runtime.cleanup"));
-    let operations = &cleanup
-        .view
-        .as_ref()
-        .and_then(|view| view.run.as_ref())
-        .expect("cleanup run view")
-        .operations;
-    assert_eq!(operations.len(), 2);
-    assert_eq!(operations[1].arguments, ["--apply"]);
-    assert_eq!(
-        operations[1].confirmation.as_deref(),
-        Some("Delete old releases?")
-    );
+    assert!(cleanup.view.is_none());
+    let exit = node(&snapshot, CommandSource::Control, "..runtime.host.exit");
+    assert_eq!(exit.parent.as_deref(), Some("..runtime.host"));
+    assert_eq!(exit.handler.as_deref(), Some("host.exit"));
+    let restart = node(&snapshot, CommandSource::Control, "..runtime.host.restart");
+    assert_eq!(restart.handler.as_deref(), Some("host.restart"));
 
     let info = node(&snapshot, CommandSource::Kernel, ".info");
     let help = info.help.as_ref().expect("info help");
@@ -236,7 +228,7 @@ fn discovers_control_kernel_and_action_hierarchies() {
 }
 
 #[test]
-fn entry_env_directory_modules_match_the_profile_variable_registry() {
+fn profile_setting_modules_match_the_typed_setting_registry() {
     let kernel = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("Proj kernel root");
@@ -245,6 +237,7 @@ fn entry_env_directory_modules_match_the_profile_variable_registry() {
         None,
         "swawkit",
         PwshAvailability::ProfileUnavailable,
+        EntryLanguage::default(),
     )
     .expect("source-tree Catalog");
     let setters = snapshot
@@ -252,14 +245,13 @@ fn entry_env_directory_modules_match_the_profile_variable_registry() {
         .iter()
         .filter(|command| command.handler.as_deref() == Some("entry.profile.set"))
         .collect::<Vec<_>>();
-    let actual = setters
+    let mut actual = setters
         .iter()
         .map(|command| command.address.as_str())
         .collect::<Vec<_>>();
-    let expected = crate::profile::EntryProfileRecord::environment_variable_commands()
-        .into_iter()
-        .map(|(group, name)| format!("..entry.env.{group}.{name}"))
-        .collect::<Vec<_>>();
+    let mut expected = crate::profile::EntryProfileRecord::profile_setting_addresses();
+    actual.sort_unstable();
+    expected.sort_unstable();
 
     assert_eq!(actual, expected);
     for command in setters {
@@ -365,7 +357,7 @@ fn restricts_owned_entries_to_their_catalog_sources() {
         (
             CommandSource::Kernel,
             ".wrong",
-            "restricted to Control Plane",
+            "restricted to Entry commands",
         ),
         (
             CommandSource::Kernel,
@@ -449,6 +441,48 @@ fn reports_multiple_and_non_canonical_run_entries_without_stopping_discovery() {
 }
 
 #[test]
+fn module_contracts_are_strict_and_invalid_declarations_disable_the_command() {
+    let fixture = Fixture::new();
+    let kernel = fixture.directory("home/_lib/proj");
+    let actions = fixture.directory("project/.swaw");
+    fixture.file("home/_lib/proj/.provider/run.exe", "");
+    fixture.file(
+        "home/_lib/proj/.provider/_module.json",
+        r#"{"schema":"swawkit.command-module/v1","provides":[{"contract":"swawkit.fixture/v1"}]}"#,
+    );
+    fixture.file("home/_lib/proj/.consumer/run.exe", "");
+    fixture.file(
+        "home/_lib/proj/.consumer/_module.json",
+        r#"{"schema":"swawkit.command-module/v1","requires":[{"provider":".provider","contract":"swawkit.fixture/v1"}]}"#,
+    );
+    fixture.file("home/_lib/proj/.broken/run.exe", "");
+    fixture.file(
+        "home/_lib/proj/.broken/_module.json",
+        r#"{"schema":"swawkit.command-module/v1","requires":[],"provides":[]}"#,
+    );
+
+    let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
+    let provider = node(&snapshot, CommandSource::Kernel, ".provider");
+    assert_eq!(
+        provider.module.as_ref().unwrap().provides[0].contract,
+        "swawkit.fixture/v1"
+    );
+    let consumer = node(&snapshot, CommandSource::Kernel, ".consumer");
+    assert_eq!(
+        consumer.module.as_ref().unwrap().requires[0].provider,
+        ".provider"
+    );
+    let broken = node(&snapshot, CommandSource::Kernel, ".broken");
+    assert!(!broken.runnable);
+    assert!(
+        broken
+            .diagnostic
+            .as_deref()
+            .is_some_and(|message| message.contains("must declare requires or provides"))
+    );
+}
+
+#[test]
 fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
     let fixture = Fixture::new();
     let directory = fixture.directory("home/_lib/proj/.script");
@@ -465,17 +499,27 @@ fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
         is_root: false,
     };
 
-    let disabled = scan_node(&pending, "fixture", PwshAvailability::Disabled);
+    let disabled = scan_node(
+        &pending,
+        "fixture",
+        PwshAvailability::Disabled,
+        EntryLanguage::default(),
+    );
     assert!(!disabled.runnable);
     assert!(disabled.entry.is_none());
     assert!(
         disabled
             .diagnostic
             .as_deref()
-            .is_some_and(|message| message.contains("SWAWKIT_PROJ_PWSH_MODE"))
+            .is_some_and(|message| message.contains(".dev.pwsh.mode"))
     );
 
-    let enabled = scan_node(&pending, "fixture", PwshAvailability::Enabled);
+    let enabled = scan_node(
+        &pending,
+        "fixture",
+        PwshAvailability::Enabled,
+        EntryLanguage::default(),
+    );
     assert!(enabled.runnable);
     assert_eq!(enabled.adapter.as_deref(), Some("pwsh"));
 
@@ -488,6 +532,7 @@ fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
         },
         "fixture",
         PwshAvailability::Disabled,
+        EntryLanguage::default(),
     );
     assert!(logs.runnable);
     assert_eq!(logs.adapter.as_deref(), Some("core"));
@@ -521,6 +566,40 @@ fn keeps_invalid_help_distinct_from_absent_help() {
     let absent = node(&snapshot, CommandSource::Kernel, ".absent");
     assert!(absent.help.is_none());
     assert!(absent.help_diagnostic.is_none());
+}
+
+#[test]
+fn selects_entry_language_help_and_falls_back_only_when_translation_is_absent() {
+    let fixture = Fixture::new();
+    let kernel = fixture.directory("home/_lib/proj");
+    let actions = fixture.directory("project/.swaw");
+    fixture.file("home/_lib/proj/.translated/_help/zh-CN.txt", "中文摘要");
+    fixture.file("home/_lib/proj/.translated/_help/en.txt", "English summary");
+    fixture.file("home/_lib/proj/.fallback/_help/zh-CN.txt", "中文回退");
+
+    let snapshot = CatalogSnapshot::discover_roots_in_language(
+        &kernel,
+        &actions,
+        "fixture",
+        EntryLanguage::En,
+    )
+    .expect("English catalog");
+
+    assert_eq!(snapshot.language, "en");
+    assert_eq!(
+        node(&snapshot, CommandSource::Kernel, ".translated")
+            .help
+            .as_ref()
+            .map(|help| help.summary.as_str()),
+        Some("English summary")
+    );
+    assert_eq!(
+        node(&snapshot, CommandSource::Kernel, ".fallback")
+            .help
+            .as_ref()
+            .map(|help| help.summary.as_str()),
+        Some("中文回退")
+    );
 }
 
 fn node<'a>(

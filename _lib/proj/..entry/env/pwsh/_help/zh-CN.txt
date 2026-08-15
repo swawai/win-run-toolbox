@@ -1,1 +1,0 @@
-PowerShell 运行时声明。

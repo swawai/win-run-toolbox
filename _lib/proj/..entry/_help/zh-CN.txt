@@ -5,9 +5,9 @@
   {{INVOCATION}} --json
 
 不带参数时输出精简状态；--json 输出供 Agent 使用的完整结构化文档。
-变量级修改使用 {{ADDRESS}}.env 下按 SWAWKIT_PROJ_* 命名的独立子命令，
-完整替换使用 {{ADDRESS}}.apply。
+项目绑定、界面语言和 Git 等设置使用 {{ADDRESS}} 下的类型化子命令；开发工具设置
+位于 .dev 对应工具节点。完整替换使用 {{ADDRESS}}.apply。
 DataRoot 需要确认归属时，使用 {{ADDRESS}}.claim 先查看计划，再显式认领。
 
-该命令属于 Rust Control Plane，在 Profile 缺失或损坏时仍然可用，也不会执行
+该命令属于当前 Entry，在 Profile 缺失或损坏时仍然可用，也不会执行
 项目命令的 _global 或 _guard。

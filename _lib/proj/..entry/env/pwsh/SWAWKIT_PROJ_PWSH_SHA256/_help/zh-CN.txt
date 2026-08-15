@@ -1,7 +1,0 @@
-设置 PowerShell 安装包的 SHA-256 摘要。
-
-用法:
-  {{INVOCATION}} <value>
-
-可留空；非空值必须是 64 位十六进制字符串。该摘要用于校验 managed 模式下载的
-安装包。修改此值会使 .dev.setup 需要重新协调。

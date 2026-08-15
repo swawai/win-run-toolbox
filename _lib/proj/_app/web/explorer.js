@@ -13,6 +13,7 @@ import {
   commandMenuExpanded,
   selectedCommandView,
 } from "./explorer-model.js";
+import { t } from "./i18n.js";
 
 export {
   availableCommand,
@@ -23,11 +24,11 @@ export {
   commandMenuExpanded,
 } from "./explorer-model.js";
 
-const sourceLabels = {
-  control: "Control Plane",
-  kernel: "Kernel Commands",
-  action: "Project Actions",
-};
+function sourceLabel(source) {
+  return source === "kernel"
+    ? t("内核命令", "Kernel Commands")
+    : t("项目操作", "Project Actions");
+}
 
 export function captureColumnScrollOffsets(columns) {
   return new Map(
@@ -46,7 +47,6 @@ export function restoreColumnScrollOffsets(columns, offsets) {
 }
 
 export function createExplorerView({
-  breadcrumb,
   columns,
   detailPanel,
   getCommandViews = () => [],
@@ -55,6 +55,7 @@ export function createExplorerView({
   let catalog = null;
   let selectedPath = [];
   let setupRequired = false;
+  const commandStates = new Map();
 
   function createCommandRow(command, depth) {
     const item = document.createElement("li");
@@ -74,6 +75,7 @@ export function createExplorerView({
       depth,
     );
     const disabled = commandDisabledDuringSetup(setupRequired, command);
+    const state = commandStates.get(command.address);
 
     button.type = "button";
     button.className = "finder-choice command-row";
@@ -83,6 +85,9 @@ export function createExplorerView({
     button.dataset.navigationKey = command.address;
     button.disabled = disabled;
     button.dataset.selected = String(selected);
+    if (state?.tone) {
+      button.dataset.stateTone = state.tone;
+    }
     if (menuExpanded) {
       button.setAttribute("aria-current", "page");
     }
@@ -94,25 +99,27 @@ export function createExplorerView({
         button.setAttribute("aria-controls", `finder-column-${depth + 1}`);
       }
     }
-    button.title = disabled ? "完成首次设置后可用" : command.address;
+    button.title = disabled
+      ? t("完成首次设置后可用", "Available after initial setup")
+      : command.address;
 
     icon.className = "row-icon";
-    icon.textContent = group ? "⌑" : ">_";
+    icon.textContent = state?.icon ?? (group ? "⌑" : ">_");
     icon.setAttribute("aria-hidden", "true");
     copy.className = "row-copy";
     name.className = "row-name";
     name.textContent = depth === 0 ? command.address : leafName(command.address);
     summary.className = "row-summary";
-    summary.textContent = command.summary || (
+    summary.textContent = (state?.summary ?? command.summary) || (
       command.issue
-        ? "存在协议问题"
+        ? t("存在协议问题", "Protocol issue")
         : expandable && command.runnable
-          ? "可运行命令组"
+          ? t("可运行命令组", "Runnable command group")
           : expandable
-            ? "命令组"
+            ? t("命令组", "Command group")
             : command.runnable
-              ? "可运行命令"
-              : "不可运行"
+              ? t("可运行命令", "Runnable command")
+              : t("不可运行", "Not runnable")
     );
     copy.append(name, summary);
     chevron.className = "row-chevron";
@@ -171,7 +178,10 @@ export function createExplorerView({
     const list = document.createElement("ul");
     list.className = "command-view-menu";
     list.id = `command-view-menu-${depth}`;
-    list.setAttribute("aria-label", `${command.address} 视图`);
+    list.setAttribute(
+      "aria-label",
+      t(`${command.address} 视图`, `${command.address} views`),
+    );
     for (const view of views) {
       list.append(createCommandViewRow(command, depth, view));
     }
@@ -209,7 +219,7 @@ export function createExplorerView({
     for (const source of ["control", "kernel", "action"]) {
       appendSection(
         column,
-        sourceLabels[source],
+        source === "control" ? catalog.entryName : sourceLabel(source),
         catalog.roots.filter((command) => command.source === source),
         0,
       );
@@ -217,7 +227,10 @@ export function createExplorerView({
     if (catalog.roots.length === 0) {
       const empty = document.createElement("p");
       empty.className = "empty-column";
-      empty.textContent = "Catalog 中没有可显示的命令。";
+      empty.textContent = t(
+        "Catalog 中没有可显示的命令。",
+        "The Catalog has no commands to display.",
+      );
       column.append(empty);
     }
     return column;
@@ -233,10 +246,13 @@ export function createExplorerView({
     column.dataset.scrollKey = `choices:${parentAddress}`;
     column.dataset.width = childrenColumnWidth(parent);
     column.setAttribute("role", "group");
-    column.setAttribute("aria-label", `${parent.address} 子命令`);
+    column.setAttribute(
+      "aria-label",
+      t(`${parent.address} 子命令`, `${parent.address} subcommands`),
+    );
     appendSection(
       column,
-      "子命令",
+      t("子命令", "Subcommands"),
       children,
       depth,
     );
@@ -274,26 +290,6 @@ export function createExplorerView({
     });
   }
 
-  function renderBreadcrumb() {
-    const fragment = document.createDocumentFragment();
-    const home = document.createElement("span");
-    home.className = "breadcrumb-home";
-    home.textContent = "控制台";
-    fragment.append(home);
-    for (const [depth, address] of selectedPath.entries()) {
-      const separator = document.createElement("span");
-      const item = document.createElement("span");
-      separator.className = "breadcrumb-separator";
-      separator.textContent = "›";
-      separator.setAttribute("aria-hidden", "true");
-      item.className = "breadcrumb-item";
-      item.textContent = depth === 0 ? address : leafName(address);
-      fragment.append(separator, item);
-    }
-    breadcrumb.replaceChildren(fragment);
-    breadcrumb.scrollLeft = breadcrumb.scrollWidth;
-  }
-
   function selectCommand(address, depth, options = {}) {
     const command = availableCommand(catalog, setupRequired, address);
     if (!command) {
@@ -302,7 +298,6 @@ export function createExplorerView({
     selectedPath = [...selectedPath.slice(0, depth), address];
     onSelectCommand(command, options);
     const view = selectedCommandView(getCommandViews(command));
-    renderBreadcrumb();
     renderColumns({
       focusKey: address,
       focusDetail: options.focusDetail === true && view !== "children",
@@ -330,7 +325,6 @@ export function createExplorerView({
     selectedPath = addressPath(address);
     onSelectCommand(command, options);
     const view = selectedCommandView(getCommandViews(command));
-    renderBreadcrumb();
     renderColumns({
       focusKey: address,
       focusDetail: options.focusDetail === true && view !== "children",
@@ -420,7 +414,6 @@ export function createExplorerView({
       selectAddress(command.address, { history: options.history ?? "none" });
     } else {
       selectedPath = [];
-      renderBreadcrumb();
       renderColumns();
     }
   }
@@ -441,11 +434,23 @@ export function createExplorerView({
     }
   }
 
+  function setCommandState(address, state) {
+    if (state) {
+      commandStates.set(address, state);
+    } else {
+      commandStates.delete(address);
+    }
+    if (catalog) {
+      renderColumns();
+    }
+  }
+
   return {
     handleKeyboard,
     selectAddress,
     selectCommand,
     setCatalog,
+    setCommandState,
     setSetupRequired,
   };
 }

@@ -1,3 +1,4 @@
+mod check;
 mod claim;
 mod control;
 mod logs;
@@ -122,6 +123,11 @@ fn run_with_dependencies(
         write_output(&output)
             .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
         return Ok(0);
+    }
+    if let Some(exit_code) =
+        check::dispatch(&snapshot, argv, context, resolved.path(), &profile_state)?
+    {
+        return Ok(exit_code);
     }
     if let Some(exit_code) =
         logs::dispatch(&snapshot, argv, context, resolved.path(), &profile_state)?

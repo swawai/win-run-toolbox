@@ -1,12 +1,10 @@
-const CATALOG_PROTOCOL = "swawkit.command-catalog/v4";
+import { t } from "./i18n.js";
 
-const collator = new Intl.Collator("zh-CN", {
-  numeric: true,
-  sensitivity: "base",
-});
+const CATALOG_PROTOCOL = "swawkit.command-catalog/v6";
+const MODULE_PROTOCOL = "swawkit.command-module/v1";
 
 function contractError(message) {
-  return new Error(`Catalog 协议无效：${message}`);
+  return new Error(`${t("Catalog 协议无效", "Invalid Catalog protocol")}: ${message}`);
 }
 
 function requireObject(value, field) {
@@ -43,6 +41,42 @@ function normalizeHelp(value, index) {
     summary: requireString(help.summary, `commands[${index}].help.summary`),
     text: requireString(help.text, `commands[${index}].help.text`),
   };
+}
+
+function normalizeModule(value, index) {
+  if (value === null) {
+    return null;
+  }
+  const field = `commands[${index}].module`;
+  const module = requireObject(value, field);
+  if (module.schema !== MODULE_PROTOCOL) {
+    throw contractError(`${field}.schema 必须是 ${MODULE_PROTOCOL}。`);
+  }
+  if (!Array.isArray(module.requires) || !Array.isArray(module.provides)) {
+    throw contractError(`${field} 必须包含 requires 和 provides 数组。`);
+  }
+  const requires = module.requires.map((raw, requirementIndex) => {
+    const requirementField = `${field}.requires[${requirementIndex}]`;
+    const requirement = requireObject(raw, requirementField);
+    return {
+      contract: requireString(requirement.contract, `${requirementField}.contract`, {
+        allowEmpty: false,
+      }),
+      provider: requireString(requirement.provider, `${requirementField}.provider`, {
+        allowEmpty: false,
+      }),
+    };
+  });
+  const provides = module.provides.map((raw, provisionIndex) => {
+    const provisionField = `${field}.provides[${provisionIndex}]`;
+    const provision = requireObject(raw, provisionField);
+    return {
+      contract: requireString(provision.contract, `${provisionField}.contract`, {
+        allowEmpty: false,
+      }),
+    };
+  });
+  return { provides, requires, schema: MODULE_PROTOCOL };
 }
 
 function normalizeView(value, index) {
@@ -160,6 +194,7 @@ function normalizeCommand(value, index) {
   }
 
   const help = normalizeHelp(command.help, index);
+  const module = normalizeModule(command.module, index);
   const view = normalizeView(command.view, index);
   return {
     address,
@@ -170,11 +205,13 @@ function normalizeCommand(value, index) {
     help: help?.text ?? "",
     handler: handler ?? "",
     issue: nullableString(command.diagnostic, field("diagnostic")) ?? "",
+    module,
     parent: nullableString(command.parent, field("parent"), {
       allowEmpty: true,
     }),
     runOperations: view?.runOperations ?? [],
     runnable: command.runnable,
+    setupAvailable: source === "control",
     source,
     summary: help?.summary ?? "",
   };
@@ -188,6 +225,12 @@ export function createCatalog(document) {
   const entryName = requireString(payload.entryName, "entryName", {
     allowEmpty: false,
   });
+  const language = requireString(payload.language, "language", {
+    allowEmpty: false,
+  });
+  if (!new Set(["zh-CN", "en"]).has(language)) {
+    throw contractError(t("language 只能是 zh-CN 或 en。", "language must be zh-CN or en."));
+  }
   if (!Array.isArray(payload.commands)) {
     throw contractError("commands 必须是数组。");
   }
@@ -222,11 +265,27 @@ export function createCatalog(document) {
     }
   }
 
+  for (const command of commandByAddress.values()) {
+    if (command.handler !== "entry.profile.set") {
+      continue;
+    }
+    let current = command;
+    while (current) {
+      current.setupAvailable = true;
+      current = current.parent ? commandByAddress.get(current.parent) : null;
+    }
+  }
+
   return {
     childrenByParent,
     commandByAddress,
     commands: [...commandByAddress.values()],
     entryName,
+    language,
+    collator: new Intl.Collator(language, {
+      numeric: true,
+      sensitivity: "base",
+    }),
     protocol: CATALOG_PROTOCOL,
     roots,
   };
@@ -248,7 +307,7 @@ export function sortCommands(catalog, commands) {
   return [...commands].sort((left, right) => {
     const groupOrder = Number(isGroup(catalog, right))
       - Number(isGroup(catalog, left));
-    return groupOrder || collator.compare(left.address, right.address);
+    return groupOrder || catalog.collator.compare(left.address, right.address);
   });
 }
 

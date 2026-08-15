@@ -11,6 +11,7 @@ pub fn render_help(
     snapshot: &CatalogSnapshot,
     target_address: &str,
 ) -> Result<String, HelpRenderError> {
+    let labels = HelpLabels::for_language(snapshot.language);
     let target = find_target(snapshot, target_address)?;
     let document = match (&target.help_diagnostic, &target.help) {
         (Some(diagnostic), _) => {
@@ -32,9 +33,10 @@ pub fn render_help(
     }
 
     if target_address.is_empty() {
+        let entry_section = format!("{}:", snapshot.entry_name);
         append_section(
             &mut sections,
-            "Control Plane:",
+            &entry_section,
             children
                 .iter()
                 .copied()
@@ -43,7 +45,7 @@ pub fn render_help(
         );
         append_section(
             &mut sections,
-            "Kernel Commands:",
+            labels.kernel_commands,
             children
                 .iter()
                 .copied()
@@ -52,7 +54,7 @@ pub fn render_help(
         );
         append_section(
             &mut sections,
-            "Project Actions:",
+            labels.project_actions,
             children
                 .iter()
                 .copied()
@@ -62,7 +64,7 @@ pub fn render_help(
     } else {
         append_section(
             &mut sections,
-            "Subcommands:",
+            labels.subcommands,
             children.iter().copied(),
             snapshot,
         );
@@ -147,7 +149,7 @@ fn append_section<'a>(
 fn render_row(snapshot: &CatalogSnapshot, node: &CommandNode) -> String {
     let address = display_address(snapshot, node);
     let invocation = format!("{} {address}", snapshot.entry_name);
-    format!("  {invocation:<34} {}", summary(node))
+    format!("  {invocation:<34} {}", summary(snapshot, node))
 }
 
 fn display_address(snapshot: &CatalogSnapshot, node: &CommandNode) -> String {
@@ -178,20 +180,57 @@ fn alias_kind(alias: &str) -> u8 {
     if alias.starts_with('.') { 0 } else { 1 }
 }
 
-fn summary(node: &CommandNode) -> String {
+fn summary(snapshot: &CatalogSnapshot, node: &CommandNode) -> String {
+    let labels = HelpLabels::for_language(snapshot.language);
     if let Some(diagnostic) = &node.help_diagnostic {
-        return format!("[help protocol error] {diagnostic}");
+        return format!("[{}] {diagnostic}", labels.help_protocol_error);
     }
     if let Some(help) = &node.help {
         return help.summary.clone();
     }
     if let Some(diagnostic) = &node.diagnostic {
-        return format!("[protocol error] {diagnostic}");
+        return format!("[{}] {diagnostic}", labels.protocol_error);
     }
     if node.runnable {
-        return "[help handled by command]".to_owned();
+        return format!("[{}]", labels.help_handled_by_command);
     }
-    "[command group; no Proj help]".to_owned()
+    format!("[{}]", labels.command_group_without_help)
+}
+
+struct HelpLabels {
+    kernel_commands: &'static str,
+    project_actions: &'static str,
+    subcommands: &'static str,
+    help_protocol_error: &'static str,
+    protocol_error: &'static str,
+    help_handled_by_command: &'static str,
+    command_group_without_help: &'static str,
+}
+
+impl HelpLabels {
+    fn for_language(language: &str) -> Self {
+        if language == "en" {
+            Self {
+                kernel_commands: "Kernel Commands:",
+                project_actions: "Project Actions:",
+                subcommands: "Subcommands:",
+                help_protocol_error: "help protocol error",
+                protocol_error: "protocol error",
+                help_handled_by_command: "help handled by command",
+                command_group_without_help: "command group; no Proj help",
+            }
+        } else {
+            Self {
+                kernel_commands: "内核命令：",
+                project_actions: "项目操作：",
+                subcommands: "子命令：",
+                help_protocol_error: "帮助协议错误",
+                protocol_error: "协议错误",
+                help_handled_by_command: "帮助由命令自身处理",
+                command_group_without_help: "命令组；没有 Proj 帮助",
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -221,7 +260,7 @@ mod tests {
 
         let output = render_help(&snapshot, "").expect("root help");
 
-        assert!(output.starts_with("Root help\n\nControl Plane:"));
+        assert!(output.starts_with("Root help\n\nswawkit:"));
         assert!(output.contains("swawkit ..entry"));
         assert!(output.contains("Kernel Commands:\n  swawkit .dev"));
         assert!(output.contains("swawkit .help (.h, -h, --help)"));
@@ -307,6 +346,7 @@ mod tests {
         CatalogSnapshot {
             protocol: CATALOG_PROTOCOL,
             entry_name: "swawkit".into(),
+            language: "en",
             commands,
         }
     }
@@ -339,6 +379,7 @@ mod tests {
             entry: None,
             adapter: None,
             handler: None,
+            module: None,
             help,
             view: None,
             diagnostic: None,

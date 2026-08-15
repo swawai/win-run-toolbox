@@ -1,0 +1,3 @@
+Run rustc.exe in the project-pinned Rust and MSVC environment.
+
+Usage: {{INVOCATION}} [rustc arguments...]

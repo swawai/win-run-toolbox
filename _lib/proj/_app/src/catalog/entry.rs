@@ -6,6 +6,7 @@ use super::{
     CommandSource,
     filesystem::{FileCandidate, directory_files},
 };
+use crate::profile::EntryProfileRecord;
 
 const ENTRY_PROTOCOL: [(&str, CommandAdapter); 7] = [
     ("run.core.json", CommandAdapter::Core),
@@ -16,16 +17,21 @@ const ENTRY_PROTOCOL: [(&str, CommandAdapter); 7] = [
     ("run.ps1", CommandAdapter::Pwsh),
     ("run.cmd", CommandAdapter::Cmd),
 ];
-const CORE_HANDLERS: [&str; 7] = [
+const CORE_HANDLERS: [&str; 12] = [
     "entry.claim",
     "entry.profile",
     "entry.profile.apply",
     "entry.profile.set",
+    "host.exit",
+    "host.restart",
     "host.start",
+    "meta.check",
     "meta.help",
     "meta.logs",
+    "runtime.cleanup",
+    "runtime.status",
 ];
-const TOOLCHAIN_HANDLERS: [&str; 3] = ["dev.setup", "dev.status", "runtime.cleanup"];
+const TOOLCHAIN_HANDLERS: [&str; 2] = ["dev.setup", "dev.status"];
 
 #[derive(Debug)]
 pub(crate) struct ResolvedEntry {
@@ -38,13 +44,19 @@ pub(crate) struct ResolvedEntry {
 impl ResolvedEntry {
     pub(super) fn has_valid_core_owner(&self, source: CommandSource, address: &str) -> bool {
         match source {
-            CommandSource::Control => {
-                !matches!(self.handler.as_deref(), Some("meta.help" | "meta.logs"))
-            }
-            CommandSource::Kernel => matches!(
-                (address, self.handler.as_deref()),
-                (".help", Some("meta.help")) | (".logs", Some("meta.logs"))
+            CommandSource::Control => !matches!(
+                self.handler.as_deref(),
+                Some("meta.check" | "meta.help" | "meta.logs")
             ),
+            CommandSource::Kernel => {
+                matches!(
+                    (address, self.handler.as_deref()),
+                    (".check", Some("meta.check"))
+                        | (".help", Some("meta.help"))
+                        | (".logs", Some("meta.logs"))
+                ) || (self.handler.as_deref() == Some("entry.profile.set")
+                    && EntryProfileRecord::is_profile_setting_address(address))
+            }
             CommandSource::Action => false,
         }
     }

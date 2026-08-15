@@ -1,11 +1,12 @@
+import { t } from "./i18n.js";
+
 const COMMAND_ROUTE_ROOT = "/commands";
 const COMMAND_SOURCES = new Set(["action", "kernel", "control"]);
 const COMMAND_VIEWS = new Set(["children", "edit", "overview", "help", "run", "logs"]);
 const NORMAL_SEGMENT = /^[a-z][a-z0-9-]*$/;
-const ENVIRONMENT_SEGMENT = /^SWAWKIT_PROJ_[A-Z0-9_]+$/;
 
 function isCommandSegment(segment) {
-  return NORMAL_SEGMENT.test(segment) || ENVIRONMENT_SEGMENT.test(segment);
+  return NORMAL_SEGMENT.test(segment);
 }
 
 function addressSegments(command) {
@@ -18,7 +19,10 @@ function addressSegments(command) {
   if (command.source === "control") {
     return command.address.slice(2).split(".");
   }
-  throw new Error(`不支持的命令来源：${command.source}`);
+  throw new Error(t(
+    `不支持的命令来源：${command.source}`,
+    `Unsupported command source: ${command.source}`,
+  ));
 }
 
 export function commandPath(command) {
@@ -35,23 +39,29 @@ export function parseCommandPath(pathname) {
   }
   const parts = pathname.split("/");
   if (parts.length < 3 || parts[0] !== "" || parts[1] !== "commands") {
-    throw new Error("当前 URL 不是有效的命令地址。");
+    throw new Error(t("当前 URL 不是有效的命令地址。", "The current URL is not a valid command address."));
   }
   const source = parts[2];
   if (!COMMAND_SOURCES.has(source)) {
-    throw new Error(`URL 包含未知的命令来源：${source || "<empty>"}。`);
+    throw new Error(t(
+      `URL 包含未知的命令来源：${source || "<empty>"}。`,
+      `The URL contains an unknown command source: ${source || "<empty>"}.`,
+    ));
   }
   let segments;
   try {
     segments = parts.slice(3).map((segment) => decodeURIComponent(segment));
   } catch {
-    throw new Error("URL 包含无效的转义字符。");
+    throw new Error(t("URL 包含无效的转义字符。", "The URL contains invalid escape characters."));
   }
   if (segments.some((segment) => !isCommandSegment(segment))) {
-    throw new Error("URL 包含无效的命令路径段。");
+    throw new Error(t("URL 包含无效的命令路径段。", "The URL contains an invalid command path segment."));
   }
   if (source !== "kernel" && segments.length === 0) {
-    throw new Error(`URL 缺少 ${source} 命令地址。`);
+    throw new Error(t(
+      `URL 缺少 ${source} 命令地址。`,
+      `The URL is missing a ${source} command address.`,
+    ));
   }
   const joined = segments.join(".");
   return {
@@ -78,7 +88,10 @@ export function commandAtPath(
     if (allowMissing) {
       return null;
     }
-    throw new Error(`URL 指向不存在的命令：${route.address || "<root>"}。`);
+    throw new Error(t(
+      `URL 指向不存在的命令：${route.address || "<root>"}。`,
+      `The URL points to a missing command: ${route.address || "<root>"}.`,
+    ));
   }
   return command;
 }
@@ -87,15 +100,21 @@ export function parseCommandView(search = "") {
   const params = new URLSearchParams(search);
   const unknown = [...params.keys()].find((name) => name !== "view");
   if (unknown) {
-    throw new Error(`URL 包含未知的命令视图参数：${unknown}。`);
+    throw new Error(t(
+      `URL 包含未知的命令视图参数：${unknown}。`,
+      `The URL contains an unknown command-view parameter: ${unknown}.`,
+    ));
   }
   const values = params.getAll("view");
   if (values.length > 1) {
-    throw new Error("URL 只能声明一个命令视图。");
+    throw new Error(t("URL 只能声明一个命令视图。", "The URL may declare only one command view."));
   }
   const view = values[0] ?? null;
   if (view !== null && !COMMAND_VIEWS.has(view)) {
-    throw new Error(`URL 包含未知的命令视图：${view || "<empty>"}。`);
+    throw new Error(t(
+      `URL 包含未知的命令视图：${view || "<empty>"}。`,
+      `The URL contains an unknown command view: ${view || "<empty>"}.`,
+    ));
   }
   return view;
 }

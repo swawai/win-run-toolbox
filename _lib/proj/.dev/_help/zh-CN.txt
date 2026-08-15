@@ -3,11 +3,13 @@
 可用子命令:
   {{COMMAND}} .dev.setup              安装并发布当前已实现的开发环境模块
   {{COMMAND}} .dev.status             显示安装状态和来源校验等级
-  {{COMMAND}} .dev.bun                执行项目受管 Bun
-  {{COMMAND}} .dev.cargo              执行项目受管 Cargo
-  {{COMMAND}} .dev.rustc              执行项目受管 Rustc
-  {{COMMAND}} .dev.cl                 执行项目受管 MSVC 编译器
+  {{COMMAND}} .dev.bun                执行 Bun，并维护 Bun 声明
+  {{COMMAND}} .dev.rust.cargo         执行项目固定的 Cargo
+  {{COMMAND}} .dev.rust.rustc         执行项目固定的 Rustc
+  {{COMMAND}} .dev.msvc.cl            执行项目受管 MSVC 编译器
+  {{COMMAND}} .dev.exec               在完整开发环境中直接运行可执行文件
   {{COMMAND}} .dev.cmd                执行一条项目环境中的 CMD 命令
   {{COMMAND}} .dev.pwsh               执行项目环境中的 PowerShell 7 脚本
 
-开发环境只写入 SWAWKIT_PROJ_DATA_ROOT，不修改用户或系统 PATH。
+工具设置原子写入 Entry Profile；SWAWKIT_PROJ_* 只在执行边界生成。开发环境只
+写入 SWAWKIT_PROJ_DATA_ROOT，不修改用户或系统 PATH。

@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 
 use super::{EntryProfileRecord, EntryProfileState};
 
+pub const PROFILE_DOCUMENT_PROTOCOL: &str = "swawkit.entry-profile-state/v5";
+
 /// Transport-neutral representation shared by the CLI and Web API.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,7 +15,7 @@ pub struct EntryProfileDocument {
     pub required_complete: bool,
     pub path: String,
     pub profile: EntryProfileRecord,
-    pub variables: BTreeMap<&'static str, String>,
+    pub settings: BTreeMap<&'static str, String>,
     pub resolved_target_project_root: Option<String>,
     pub error: Option<String>,
 }
@@ -22,12 +24,12 @@ impl EntryProfileDocument {
     pub(super) fn from_state(state: EntryProfileState, path: String, revision: String) -> Self {
         match state {
             EntryProfileState::Missing { .. } => Self {
-                protocol: "swawkit.entry-profile-state/v3",
+                protocol: PROFILE_DOCUMENT_PROTOCOL,
                 revision,
                 status: "setupRequired",
                 required_complete: false,
                 path,
-                variables: EntryProfileRecord::default().environment_variable_values(),
+                settings: EntryProfileRecord::default().profile_setting_values(),
                 profile: EntryProfileRecord::default(),
                 resolved_target_project_root: None,
                 error: None,
@@ -35,19 +37,19 @@ impl EntryProfileDocument {
             EntryProfileState::Invalid { record, error, .. } => {
                 let profile = record.unwrap_or_default();
                 Self {
-                    protocol: "swawkit.entry-profile-state/v3",
+                    protocol: PROFILE_DOCUMENT_PROTOCOL,
                     revision,
                     status: "invalid",
                     required_complete: false,
                     path,
-                    variables: profile.environment_variable_values(),
+                    settings: profile.profile_setting_values(),
                     profile,
                     resolved_target_project_root: None,
                     error: Some(error),
                 }
             }
             EntryProfileState::Ready(profile) => Self {
-                protocol: "swawkit.entry-profile-state/v3",
+                protocol: PROFILE_DOCUMENT_PROTOCOL,
                 revision,
                 status: "ready",
                 required_complete: true,
@@ -59,7 +61,7 @@ impl EntryProfileDocument {
                         .display()
                         .to_string(),
                 ),
-                variables: profile.record().environment_variable_values(),
+                settings: profile.record().profile_setting_values(),
                 profile: profile.record().clone(),
                 error: None,
             },

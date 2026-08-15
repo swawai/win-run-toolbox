@@ -1,0 +1,3 @@
+设置 Cursor 模式：system 或 disabled。
+
+用法：{{INVOCATION}} <value>

@@ -1,0 +1,7 @@
+Manage the Host process owned by the current Entry.
+
+Subcommands:
+  exit       Gracefully exit Host and terminate running Web commands.
+  restart    Safely restart Host after a new release is published.
+
+Use {{COMMAND}} ..web to start or activate Host; there is no second startup path.

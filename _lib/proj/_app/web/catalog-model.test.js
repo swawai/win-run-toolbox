@@ -5,7 +5,7 @@ import {
   isGroup,
 } from "./catalog-model.js";
 
-const protocol = "swawkit.command-catalog/v4";
+const protocol = "swawkit.command-catalog/v6";
 
 function node(address, overrides = {}) {
   return {
@@ -17,6 +17,7 @@ function node(address, overrides = {}) {
     entry: null,
     adapter: null,
     handler: null,
+    module: null,
     help: null,
     view: null,
     diagnostic: null,
@@ -28,12 +29,13 @@ function payload(commands, overrides = {}) {
   return {
     protocol,
     entryName: "swawkit",
+    language: "zh-CN",
     commands,
     ...overrides,
   };
 }
 
-describe("Catalog v4 model", () => {
+describe("Catalog v6 model", () => {
   test("derives a non-runnable group only from its children", () => {
     const catalog = createCatalog(payload([
       node(".dev"),
@@ -72,6 +74,26 @@ describe("Catalog v4 model", () => {
     expect(isGroup(catalog, group)).toBe(true);
   });
 
+  test("keeps typed Profile settings and their ancestors available during setup", () => {
+    const catalog = createCatalog(payload([
+      node(".dev"),
+      node(".dev.bun", { parent: ".dev" }),
+      node(".dev.bun.mode", {
+        parent: ".dev.bun",
+        runnable: true,
+        entry: "run.core.json",
+        adapter: "core",
+        handler: "entry.profile.set",
+      }),
+      node(".dev.exec", { parent: ".dev" }),
+    ]));
+
+    expect(catalog.commandByAddress.get(".dev").setupAvailable).toBe(true);
+    expect(catalog.commandByAddress.get(".dev.bun").setupAvailable).toBe(true);
+    expect(catalog.commandByAddress.get(".dev.bun.mode").setupAvailable).toBe(true);
+    expect(catalog.commandByAddress.get(".dev.exec").setupAvailable).toBe(false);
+  });
+
   test("keeps a diagnostic leaf distinct from a command group", () => {
     const catalog = createCatalog(payload([
       node(".broken", { diagnostic: "multiple run entries" }),
@@ -100,7 +122,24 @@ describe("Catalog v4 model", () => {
 
   test("rejects an unknown protocol version", () => {
     expect(() => createCatalog(payload([], { protocol: "catalog/v2" })))
-      .toThrow("protocol 必须是 swawkit.command-catalog/v4");
+      .toThrow("protocol 必须是 swawkit.command-catalog/v6");
+  });
+
+  test("normalizes declared module requirements and provisions", () => {
+    const catalog = createCatalog(payload([
+      node(".consumer", {
+        module: {
+          schema: "swawkit.command-module/v1",
+          requires: [{ provider: ".provider", contract: "swawkit.fixture/v1" }],
+          provides: [{ contract: "swawkit.consumer/v1" }],
+        },
+      }),
+    ]));
+    expect(catalog.commandByAddress.get(".consumer").module).toEqual({
+      schema: "swawkit.command-module/v1",
+      requires: [{ provider: ".provider", contract: "swawkit.fixture/v1" }],
+      provides: [{ contract: "swawkit.consumer/v1" }],
+    });
   });
 
   test("rejects a missing entry name", () => {
@@ -120,7 +159,7 @@ describe("Catalog v4 model", () => {
     ]))).toThrow("adapter 必须与 entry 同时存在或同时为空");
   });
 
-  test("accepts Control Plane commands and rejects unknown sources", () => {
+  test("accepts Entry commands and rejects unknown sources", () => {
     const catalog = createCatalog(payload([
       node("..entry", {
         source: "control",
@@ -169,13 +208,13 @@ describe("Catalog v4 model", () => {
 
   test("normalizes the parent-owned child column width", () => {
     const catalog = createCatalog(payload([
-      node("..entry.env.rust", {
-        source: "control",
+      node(".dev.rust", {
+        source: "kernel",
         view: { childrenColumn: { width: "wide" } },
       }),
     ]));
 
-    expect(catalog.commandByAddress.get("..entry.env.rust").childrenColumnWidth)
+    expect(catalog.commandByAddress.get(".dev.rust").childrenColumnWidth)
       .toBe("wide");
     expect(() => createCatalog(payload([
       node(".broken", {
@@ -186,11 +225,11 @@ describe("Catalog v4 model", () => {
 
   test("normalizes fixed Web run operations and rejects ambiguous declarations", () => {
     const catalog = createCatalog(payload([
-      node(".runtime.cleanup", {
+      node("maintenance.cleanup", {
+        source: "action",
         runnable: true,
-        entry: "run.toolchain.json",
-        adapter: "toolchain",
-        handler: "runtime.cleanup",
+        entry: "run.ps1",
+        adapter: "pwsh",
         view: {
           run: {
             operations: [
@@ -207,7 +246,7 @@ describe("Catalog v4 model", () => {
       }),
     ]));
 
-    expect(catalog.commandByAddress.get(".runtime.cleanup").runOperations)
+    expect(catalog.commandByAddress.get("maintenance.cleanup").runOperations)
       .toEqual([
         { id: "preview", label: "预览", arguments: [], confirmation: null },
         {

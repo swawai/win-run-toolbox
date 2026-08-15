@@ -1,0 +1,6 @@
+Show the current command, project, Action root, data directory, and invocation directory.
+
+Usage:
+  {{INVOCATION}}
+
+This command is read-only. It does not create project data directories or modify user or system PATH.

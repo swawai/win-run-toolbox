@@ -1,8 +1,0 @@
-设置 Git 身份使用的访问描述符。
-
-用法:
-  {{INVOCATION}} <value>
-
-Git Identity Kit 支持 ssh:command、https.github:host=HOST;account=ACCOUNT 和
-https.gitlab:host=HOST;account=ACCOUNT。该值可能包含敏感的本机访问路径，
-不应写入日志；传入空值可清除声明。

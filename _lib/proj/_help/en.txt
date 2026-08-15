@@ -1,0 +1,12 @@
+SWAW Kit is a portable development and project-control Entry bound to a project directory.
+
+The command directory is the command address. Every runnable command directory contains exactly one supported run.* entry, and Proj Core derives the Catalog from the real directory tree.
+
+Commands may declare execution prerequisites in a private _guard/run.exe or run.cmd and module requirements or Export contracts in _module.json. Inspect them with:
+  {{COMMAND}} .check <command-address> [--json]
+
+Core executes _global, the command _guard, and the command run.* in that order. Guards decide whether execution may proceed; a run.* that needs managed tools loads and verifies its own environment.
+
+The thin EXE Launcher owns Entry identity, Host/CLI routing, and the native argv boundary. Run _lib\proj\build.ps1 to build App and Launcher candidates with the pinned Bootstrap toolchain; this writes only below data/proj_cache/bootstrap/build and does not replace published artifacts.
+
+Addresses beginning with two dots belong to the current Entry, including {{COMMAND}} ..entry, {{COMMAND}} ..web, and {{COMMAND}} ..runtime. They do not execute project Guards.

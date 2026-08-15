@@ -12,7 +12,7 @@ function Resolve-ProjDevRustCommand {
     if ($null -eq $Definition) {
         throw (
             'Rust is disabled for this project. Run ' +
-            "'$($Context.EntryCommand) ..entry.env.rust.SWAWKIT_PROJ_RUST_MODE rustup', " +
+            "'$($Context.EntryCommand) .dev.rust.mode rustup', " +
             "then '$Repair'."
         )
     }
@@ -20,7 +20,7 @@ function Resolve-ProjDevRustCommand {
     if ($null -eq $MsvcDefinition) {
         throw (
             'Rust V0 requires the managed MSVC environment. Run ' +
-            "'$($Context.EntryCommand) ..entry.env.msvc.SWAWKIT_PROJ_MSVC_MODE managed', " +
+            "'$($Context.EntryCommand) .dev.msvc.mode managed', " +
             "then '$Repair'."
         )
     }
@@ -82,7 +82,7 @@ function Invoke-ProjDevRustCommand {
         throw (
             'Swaw Kit owns the Rust toolchain selection; +toolchain ' +
             'overrides are not allowed. Run ' +
-            "'$EntryCommand ..entry.env.rust.SWAWKIT_PROJ_RUST_TOOLCHAIN <value>', " +
+            "'$EntryCommand .dev.rust.toolchain <value>', " +
             "then '$Repair'."
         )
     }

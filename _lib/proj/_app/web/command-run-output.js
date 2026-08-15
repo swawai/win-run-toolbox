@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 const DEFAULT_MAX_OUTPUT_BYTES = 1024 * 1024;
 const DEFAULT_MAX_OUTPUT_EVENTS = 4096;
 const UTF8_ENCODER = new TextEncoder();
@@ -18,7 +20,11 @@ export function createCommandRunOutput(elements, options = {}) {
   }
 
   function progressDetail(event) {
-    const state = { running: "进行中", completed: "已完成", failed: "失败" }[event.state];
+    const state = {
+      running: t("进行中", "Running"),
+      completed: t("已完成", "Completed"),
+      failed: t("失败", "Failed"),
+    }[event.state];
     if (event.current === null) {
       return state;
     }

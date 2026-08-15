@@ -1,16 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-use super::{PROFILE_SCHEMA, ProfileError};
+use super::{DEFAULT_LANGUAGE, EntryLanguage, PROFILE_SCHEMA, ProfileError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EntryProfileRecord {
     pub schema: String,
     pub target_project_root: String,
-    pub preferences: Preferences,
+    pub language: String,
     pub development: DevelopmentProfile,
     pub git: GitProfile,
-    pub repository: RepositoryProfile,
 }
 
 impl EntryProfileRecord {
@@ -33,9 +32,7 @@ impl EntryProfileRecord {
             )));
         }
         require_trimmed("targetProjectRoot", &self.target_project_root)?;
-        require_trimmed("preferences.defaultShell", &self.preferences.default_shell)?;
-        require_trimmed("preferences.defaultIde", &self.preferences.default_ide)?;
-        optional_trimmed("preferences.helpLanguage", &self.preferences.help_language)?;
+        EntryLanguage::parse(&self.language)?;
 
         validate_versioned_tool("development.bun", &self.development.bun, "managed")?;
         validate_pwsh(&self.development.pwsh)?;
@@ -51,7 +48,6 @@ impl EntryProfileRecord {
         optional_trimmed("git.name", &self.git.name)?;
         optional_trimmed("git.email", &self.git.email)?;
         optional_trimmed("git.access", &self.git.access)?;
-        optional_trimmed("repository.remote", &self.repository.remote)?;
         Ok(())
     }
 
@@ -117,28 +113,9 @@ impl Default for EntryProfileRecord {
         Self {
             schema: PROFILE_SCHEMA.to_owned(),
             target_project_root: "${SWAWKIT_HOME}".to_owned(),
-            preferences: Preferences::default(),
+            language: DEFAULT_LANGUAGE.to_owned(),
             development: DevelopmentProfile::default(),
             git: GitProfile::default(),
-            repository: RepositoryProfile::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Preferences {
-    pub default_shell: String,
-    pub default_ide: String,
-    pub help_language: String,
-}
-
-impl Default for Preferences {
-    fn default() -> Self {
-        Self {
-            default_shell: "pwsh".to_owned(),
-            default_ide: "code".to_owned(),
-            help_language: String::new(),
         }
     }
 }
@@ -245,12 +222,6 @@ pub struct GitProfile {
     pub name: String,
     pub email: String,
     pub access: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RepositoryProfile {
-    pub remote: String,
 }
 
 fn validate_versioned_tool(

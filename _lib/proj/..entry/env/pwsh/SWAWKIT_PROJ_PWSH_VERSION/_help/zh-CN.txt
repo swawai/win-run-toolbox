@@ -1,7 +1,0 @@
-设置托管 PowerShell 的版本声明。
-
-用法:
-  {{INVOCATION}} <value>
-
-当 SWAWKIT_PROJ_PWSH_MODE 为 managed 时，此值必须非空，并决定 .dev.setup
-安装和发布的 PowerShell 版本。修改此值会使 .dev.setup 需要重新协调。

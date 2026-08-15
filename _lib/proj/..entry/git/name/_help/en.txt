@@ -1,0 +1,3 @@
+Set the Git identity name.
+
+Usage: {{INVOCATION}} <value>

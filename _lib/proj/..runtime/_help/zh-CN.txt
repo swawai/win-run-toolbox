@@ -1,0 +1,13 @@
+查看当前 Entry Host 与原生 Runtime Release 的聚合状态。
+
+用法：
+  {{INVOCATION}}
+  {{INVOCATION}} --json
+
+状态包含当前 selector 选中的 Release、已发布 Release 数量，以及当前 Entry Host 的 PID、
+运行 Release 和是否有新版本待重启。Host 未运行时仍可查看 Release 状态。
+
+子命令：
+  host.exit       优雅退出当前 Entry Host。
+  host.restart    重启 Host 并切换到 selector 已选中的新 Release。
+  cleanup         预览或清理未使用的旧 Runtime Release。

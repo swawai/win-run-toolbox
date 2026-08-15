@@ -1,0 +1,4 @@
+设置 Bun 发布归档的预期 SHA-256；空值表示不固定摘要。
+
+用法：{{INVOCATION}} <value>
+修改后需重新执行 {{COMMAND}} .dev.setup。

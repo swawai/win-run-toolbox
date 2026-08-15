@@ -29,15 +29,15 @@ if ($Mode -ieq '-File') {
     if (-not [IO.File]::Exists($Target)) {
         throw "PowerShell script does not exist: $Target"
     }
-    [string[]]$Arguments = if ($Invocation.Count -gt 2) {
-        $Invocation[2..($Invocation.Count - 1)]
-    } else {
-        @()
-    }
     Set-StrictMode -Off
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
-    & $Target @Arguments
+    if ($Invocation.Count -gt 2) {
+        [string[]]$Arguments = $Invocation[2..($Invocation.Count - 1)]
+        & $Target @Arguments
+    } else {
+        & $Target
+    }
 } elseif ($Mode -ieq '-Command') {
     $CommandText = [string]::Join(
         ' ',

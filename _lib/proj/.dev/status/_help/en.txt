@@ -1,0 +1,6 @@
+Show development-environment installation and source-verification state.
+
+Usage:
+  {{INVOCATION}}
+
+The command reads only local declarations and installation metadata. It does not access the network or mutate project data.

@@ -1,7 +1,0 @@
-设置 Go 工具链模式。
-
-用法:
-  {{INVOCATION}} <value>
-
-V0 仅接受 disabled；Go 的托管安装模块尚未启用。版本与摘要字段目前只作为
-Profile 声明保留，不会触发安装。

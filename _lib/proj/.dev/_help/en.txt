@@ -1,0 +1,14 @@
+Manage the portable development environment bound to the project.
+
+Important commands:
+  {{COMMAND}} .dev.setup              Install and publish implemented environment modules
+  {{COMMAND}} .dev.status             Show installation and source-verification state
+  {{COMMAND}} .dev.bun                Run managed Bun
+  {{COMMAND}} .dev.rust.cargo         Run the project-pinned Cargo
+  {{COMMAND}} .dev.rust.rustc         Run the project-pinned Rustc
+  {{COMMAND}} .dev.msvc.cl            Run the managed MSVC compiler
+  {{COMMAND}} .dev.exec               Run an executable in the complete environment
+  {{COMMAND}} .dev.cmd                Run one CMD command
+  {{COMMAND}} .dev.pwsh               Run a PowerShell 7 script or command
+
+Tool settings are written atomically to the Entry Profile. SWAWKIT_PROJ_* variables exist only at command execution boundaries; the system does not modify user or system PATH.

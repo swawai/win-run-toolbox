@@ -1,0 +1,7 @@
+Run a script or command with the PowerShell 7 selected and verified by the current Entry Profile.
+
+Usage:
+  {{INVOCATION}} -File <path.ps1> [arguments...]
+  {{INVOCATION}} -Command <script...>
+
+Managed mode uses .dev.setup PowerShell; system mode requires a probed PowerShell 7+; disabled mode rejects this command and all run.ps1 entries. The adapter does not fall back to Windows PowerShell 5.1, load user Profiles, or accept interactive input.

@@ -1,0 +1,3 @@
+Set the Git identity email address.
+
+Usage: {{INVOCATION}} <value>

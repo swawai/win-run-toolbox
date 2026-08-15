@@ -304,13 +304,9 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
         -Message 'Launcher did not support the SWAWKIT_HOME root layout'
 
     $Profile = [ordered]@{
-        schema = 'swawkit.entry-profile/v1'
+        schema = 'swawkit.entry-profile/v2'
         targetProjectRoot = $TargetRoot
-        preferences = [ordered]@{
-            defaultShell = 'pwsh'
-            defaultIde = 'code'
-            helpLanguage = ''
-        }
+        language = 'zh-CN'
         development = [ordered]@{
             bun = [ordered]@{
                 mode = 'disabled'; version = '1.2.15'; sha256 = ''
@@ -339,7 +335,6 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
             cursor = [ordered]@{ mode = 'system' }
         }
         git = [ordered]@{ name = ''; email = ''; access = '' }
-        repository = [ordered]@{ remote = '' }
     }
     [IO.File]::WriteAllText(
         (Join-Path $DataRoot '_profile.json'),

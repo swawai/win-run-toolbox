@@ -1,4 +1,7 @@
-use crate::{context::EntryContext, profile::EntryProfile};
+use crate::{
+    context::EntryContext,
+    profile::{EntryLanguage, EntryProfile},
+};
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::fs;
@@ -8,6 +11,7 @@ use std::path::{Path, PathBuf};
 mod address;
 mod entry;
 mod filesystem;
+mod module_contract;
 mod view;
 
 use address::{child_address, parent_address};
@@ -16,10 +20,14 @@ use filesystem::{
     FileCandidate, absolute_path, assert_command_root, child_directories, directory_files,
 };
 pub(crate) use filesystem::{NamedDirectory, named_directories};
+use module_contract::read_local_module_contract;
+pub use module_contract::{
+    CommandModuleContract, MODULE_CONTRACT_PROTOCOL, ModuleProvision, ModuleRequirement,
+};
 use view::read_local_web_view;
 pub use view::{ChildrenColumnView, ColumnWidth, CommandView, RunOperationView, RunView};
 
-pub const CATALOG_PROTOCOL: &str = "swawkit.command-catalog/v4";
+pub const CATALOG_PROTOCOL: &str = "swawkit.command-catalog/v6";
 
 pub const HELP_ADDRESS: &str = ".help";
 pub const HELP_MARKERS: [&str; 4] = [HELP_ADDRESS, ".h", "-h", "--help"];
@@ -33,6 +41,7 @@ pub fn is_help_marker(value: &str) -> bool {
 pub struct CatalogSnapshot {
     pub protocol: &'static str,
     pub entry_name: String,
+    pub language: &'static str,
     pub commands: Vec<CommandNode>,
 }
 
@@ -46,11 +55,13 @@ impl CatalogSnapshot {
             Some(_) => PwshAvailability::Enabled,
             None => PwshAvailability::ProfileUnavailable,
         };
+        let language = profile.map(EntryProfile::language).unwrap_or_default();
         Self::discover_optional_roots(
             &context.kernel_root(),
             action_root.as_deref(),
             &context.entry_name,
             pwsh,
+            language,
         )
     }
 
@@ -64,6 +75,23 @@ impl CatalogSnapshot {
             Some(action_root),
             entry_name,
             PwshAvailability::Enabled,
+            EntryLanguage::default(),
+        )
+    }
+
+    #[cfg(test)]
+    fn discover_roots_in_language(
+        kernel_root: &Path,
+        action_root: &Path,
+        entry_name: &str,
+        language: EntryLanguage,
+    ) -> io::Result<Self> {
+        Self::discover_optional_roots(
+            kernel_root,
+            Some(action_root),
+            entry_name,
+            PwshAvailability::Enabled,
+            language,
         )
     }
 
@@ -72,6 +100,7 @@ impl CatalogSnapshot {
         action_root: Option<&Path>,
         entry_name: &str,
         pwsh: PwshAvailability,
+        language: EntryLanguage,
     ) -> io::Result<Self> {
         assert_command_root(kernel_root)?;
 
@@ -95,7 +124,7 @@ impl CatalogSnapshot {
         let mut commands = Vec::new();
         while let Some(current) = pending.pop_front() {
             if current.source == CommandSource::Kernel || !current.is_root {
-                commands.push(scan_node(&current, entry_name, pwsh));
+                commands.push(scan_node(&current, entry_name, pwsh, language));
             }
 
             for child in child_directories(&current.path)? {
@@ -120,6 +149,7 @@ impl CatalogSnapshot {
         Ok(Self {
             protocol: CATALOG_PROTOCOL,
             entry_name: entry_name.to_owned(),
+            language: language.as_str(),
             commands,
         })
     }
@@ -136,6 +166,7 @@ pub struct CommandNode {
     pub entry: Option<String>,
     pub adapter: Option<String>,
     pub handler: Option<String>,
+    pub module: Option<CommandModuleContract>,
     pub help: Option<HelpDocument>,
     pub view: Option<CommandView>,
     pub diagnostic: Option<String>,
@@ -181,8 +212,20 @@ enum PwshAvailability {
     ProfileUnavailable,
 }
 
-fn scan_node(pending: &PendingDirectory, entry_name: &str, pwsh: PwshAvailability) -> CommandNode {
+fn scan_node(
+    pending: &PendingDirectory,
+    entry_name: &str,
+    pwsh: PwshAvailability,
+    language: EntryLanguage,
+) -> CommandNode {
     let mut diagnostics = Vec::new();
+    let (module, module_valid) = match read_local_module_contract(&pending.path) {
+        Ok(module) => (module, true),
+        Err(error) => {
+            diagnostics.push(error.to_string());
+            (None, false)
+        }
+    };
     let entry = match resolve_entry(&pending.path) {
         Ok(entry) => entry,
         Err(error) => {
@@ -196,7 +239,7 @@ fn scan_node(pending: &PendingDirectory, entry_name: &str, pwsh: PwshAvailabilit
                 && !entry.has_valid_core_owner(pending.source, &pending.address) =>
         {
             diagnostics.push(
-                "run.core.json is restricted to Control Plane commands (addresses beginning with '..') and exact built-in Kernel meta commands"
+                "run.core.json is restricted to Entry commands, exact built-in Kernel meta commands, and declared .dev Profile settings"
                     .to_owned(),
             );
             None
@@ -232,7 +275,7 @@ fn scan_node(pending: &PendingDirectory, entry_name: &str, pwsh: PwshAvailabilit
                 && matches!(pwsh, PwshAvailability::Disabled) =>
         {
             diagnostics.push(
-                "run.ps1 is disabled by the current Entry Profile; set SWAWKIT_PROJ_PWSH_MODE to managed or system and run .dev.setup"
+                "run.ps1 is disabled by the current Entry Profile; run '.dev.pwsh.mode managed' or '.dev.pwsh.mode system', then run .dev.setup"
                     .to_owned(),
             );
             None
@@ -250,20 +293,21 @@ fn scan_node(pending: &PendingDirectory, entry_name: &str, pwsh: PwshAvailabilit
             if !matches!(entry.adapter, CommandAdapter::Core)
                 && pending.source == CommandSource::Control =>
         {
-            diagnostics.push("Control Plane commands must use a run.core.json entry".to_owned());
+            diagnostics.push("Entry commands must use a run.core.json entry".to_owned());
             None
         }
-        entry => entry,
+        entry if module_valid => entry,
+        _ => None,
     };
-    let (help, help_diagnostic) = match read_local_help(&pending.path, entry_name, &pending.address)
-    {
-        Ok(help) => (help, None),
-        Err(error) => {
-            let diagnostic = error.to_string();
-            diagnostics.push(diagnostic.clone());
-            (None, Some(diagnostic))
-        }
-    };
+    let (help, help_diagnostic) =
+        match read_local_help(&pending.path, entry_name, &pending.address, language) {
+            Ok(help) => (help, None),
+            Err(error) => {
+                let diagnostic = error.to_string();
+                diagnostics.push(diagnostic.clone());
+                (None, Some(diagnostic))
+            }
+        };
     let view = match read_local_web_view(&pending.path) {
         Ok(view) => view,
         Err(error) => {
@@ -283,6 +327,7 @@ fn scan_node(pending: &PendingDirectory, entry_name: &str, pwsh: PwshAvailabilit
             .as_ref()
             .map(|entry| entry.adapter.as_str().to_owned()),
         handler: entry.and_then(|entry| entry.handler),
+        module,
         help,
         view,
         diagnostic: (!diagnostics.is_empty()).then(|| diagnostics.join("; ")),
@@ -305,6 +350,7 @@ fn read_local_help(
     command_directory: &Path,
     entry_name: &str,
     address: &str,
+    language: EntryLanguage,
 ) -> io::Result<Option<HelpDocument>> {
     let directories = named_directories(command_directory, "_help")?;
     if directories.len() > 1 {
@@ -329,25 +375,14 @@ fn read_local_help(
         ));
     }
 
-    let files: Vec<FileCandidate> = directory_files(&help_directory.path)?
-        .into_iter()
-        .filter(|file| file.name.eq_ignore_ascii_case("zh-CN.txt"))
-        .collect();
-    if files.len() > 1 {
-        return invalid_data(format!(
-            "help file name collision below '{}'",
-            help_directory.path.display()
-        ));
+    let files = directory_files(&help_directory.path)?;
+    let mut help_file = find_help_file(&help_directory.path, &files, language.help_file_name())?;
+    if help_file.is_none() && language == EntryLanguage::En {
+        help_file = find_help_file(&help_directory.path, &files, "zh-CN.txt")?;
     }
-    let Some(help_file) = files.first() else {
+    let Some(help_file) = help_file else {
         return Ok(None);
     };
-    if help_file.name != "zh-CN.txt" {
-        return invalid_data(format!(
-            "non-canonical help file '{}'; expected 'zh-CN.txt'",
-            help_file.name
-        ));
-    }
     if help_file.reparse_point {
         return invalid_data(format!(
             "help file cannot be a reparse point: {}",
@@ -376,6 +411,33 @@ fn read_local_help(
         summary: expand_help(summary, entry_name, address, &invocation),
         text: expand_help(&text, entry_name, address, &invocation),
     }))
+}
+
+fn find_help_file<'a>(
+    help_directory: &Path,
+    files: &'a [FileCandidate],
+    expected_name: &str,
+) -> io::Result<Option<&'a FileCandidate>> {
+    let matches: Vec<&FileCandidate> = files
+        .iter()
+        .filter(|file| file.name.eq_ignore_ascii_case(expected_name))
+        .collect();
+    if matches.len() > 1 {
+        return invalid_data(format!(
+            "help file name collision below '{}'",
+            help_directory.display()
+        ));
+    }
+    let Some(help_file) = matches.first().copied() else {
+        return Ok(None);
+    };
+    if help_file.name != expected_name {
+        return invalid_data(format!(
+            "non-canonical help file '{}'; expected '{expected_name}'",
+            help_file.name
+        ));
+    }
+    Ok(Some(help_file))
 }
 
 fn expand_help(text: &str, entry_name: &str, address: &str, invocation: &str) -> String {

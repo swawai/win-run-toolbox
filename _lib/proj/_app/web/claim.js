@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 const CLAIM_URL = "/api/v2/data-root/claim";
 const CLAIM_PROTOCOL = "swawkit.data-root-claim/v2";
 
@@ -43,7 +45,10 @@ export async function readDataRootClaim(fetchClaim = fetch) {
   }
   if (!response.ok) {
     throw new DataRootClaimError(
-      await readApiError(response, `Host 返回 HTTP ${response.status}`),
+      await readApiError(
+        response,
+        t(`Host 返回 HTTP ${response.status}`, `Host returned HTTP ${response.status}`),
+      ),
       response.status,
     );
   }
@@ -57,7 +62,10 @@ export async function readDataRootClaim(fetchClaim = fetch) {
 export async function confirmDataRootClaim(pending, confirmation, fetchClaim = fetch) {
   if (!matchesClaimConfirmation(pending.claim, confirmation)) {
     throw new DataRootClaimError(
-      `请输入完整名称“${pending.claim.entryName}”后再确认。`,
+      t(
+        `请输入完整名称“${pending.claim.entryName}”后再确认。`,
+        `Enter the full name “${pending.claim.entryName}” to confirm.`,
+      ),
       422,
     );
   }
@@ -72,7 +80,10 @@ export async function confirmDataRootClaim(pending, confirmation, fetchClaim = f
     body: JSON.stringify({ confirmation }),
   });
   if (!response.ok) {
-    const message = await readApiError(response, `Host 返回 HTTP ${response.status}`);
+    const message = await readApiError(
+      response,
+      t(`Host 返回 HTTP ${response.status}`, `Host returned HTTP ${response.status}`),
+    );
     if (response.status === 409) {
       throw new DataRootClaimConflictError(message);
     }
@@ -80,7 +91,10 @@ export async function confirmDataRootClaim(pending, confirmation, fetchClaim = f
   }
   if (response.status !== 204) {
     throw new DataRootClaimError(
-      "Host 返回了无效的 DataRoot 认领结果。",
+      t(
+        "Host 返回了无效的 DataRoot 认领结果。",
+        "Host returned an invalid DataRoot claim result.",
+      ),
       response.status,
     );
   }
@@ -143,7 +157,10 @@ export function createDataRootClaimView(
     }
     render(next);
     onClaimRequired();
-    setFeedback("认领信息已经变化，请重新核对并输入名称。", "error");
+    setFeedback(t(
+      "认领信息已经变化，请重新核对并输入名称。",
+      "Claim details changed. Review them and enter the name again.",
+    ), "error");
     elements.claimConfirmation.focus();
   }
 
@@ -153,32 +170,43 @@ export function createDataRootClaimView(
     }
     const confirmation = elements.claimConfirmation.value;
     if (!matchesClaimConfirmation(pending.claim, confirmation)) {
-      setFeedback(`请输入完整名称“${pending.claim.entryName}”后再确认。`, "error");
+      setFeedback(t(
+        `请输入完整名称“${pending.claim.entryName}”后再确认。`,
+        `Enter the full name “${pending.claim.entryName}” to confirm.`,
+      ), "error");
       updateSubmitState();
       return;
     }
 
     submitting = true;
     updateSubmitState();
-    setFeedback("正在重新核对并认领 DataRoot…");
+    setFeedback(t("正在重新核对并认领 DataRoot…", "Rechecking and claiming DataRoot…"));
     try {
       await confirmDataRootClaim(pending, confirmation, fetchClaim);
       pending = null;
       await onReady();
     } catch (error) {
       if (error instanceof DataRootClaimConflictError) {
-        setFeedback("认领信息已经变化，正在刷新…");
+        setFeedback(t("认领信息已经变化，正在刷新…", "Claim details changed; refreshing…"));
         try {
           await refreshAfterConflict();
         } catch (refreshError) {
           const message = refreshError instanceof Error
             ? refreshError.message
-            : "刷新认领信息时发生未知错误。";
-          setFeedback(`认领信息刷新失败：${message}`, "error");
+            : t(
+              "刷新认领信息时发生未知错误。",
+              "An unknown error occurred while refreshing claim details.",
+            );
+          setFeedback(t(`认领信息刷新失败：${message}`, `Failed to refresh claim details: ${message}`), "error");
         }
       } else {
         setFeedback(
-          error instanceof Error ? error.message : "认领 DataRoot 时发生未知错误。",
+          error instanceof Error
+            ? error.message
+            : t(
+              "认领 DataRoot 时发生未知错误。",
+              "An unknown error occurred while claiming DataRoot.",
+            ),
           "error",
         );
       }
@@ -202,10 +230,16 @@ export function createDataRootClaimView(
 
 function validateClaimDocument(document, revision) {
   if (!document || document.status !== "claimRequired" || !document.claim) {
-    throw new DataRootClaimError("Host 返回了无效的 DataRoot 认领状态。");
+    throw new DataRootClaimError(t(
+      "Host 返回了无效的 DataRoot 认领状态。",
+      "Host returned invalid DataRoot claim state.",
+    ));
   }
   if (document.protocol !== CLAIM_PROTOCOL) {
-    throw new DataRootClaimError(`Host 不支持 DataRoot 认领协议 ${CLAIM_PROTOCOL}。`);
+    throw new DataRootClaimError(t(
+      `Host 不支持 DataRoot 认领协议 ${CLAIM_PROTOCOL}。`,
+      `Host does not support DataRoot claim protocol ${CLAIM_PROTOCOL}.`,
+    ));
   }
   for (const field of [
     "kind",
@@ -217,7 +251,10 @@ function validateClaimDocument(document, revision) {
     "reason",
   ]) {
     if (typeof document.claim[field] !== "string" || !document.claim[field]) {
-      throw new DataRootClaimError(`DataRoot 认领状态缺少 ${field}。`);
+      throw new DataRootClaimError(t(
+        `DataRoot 认领状态缺少 ${field}。`,
+        `DataRoot claim state is missing ${field}.`,
+      ));
     }
   }
   if (
@@ -225,10 +262,16 @@ function validateClaimDocument(document, revision) {
     && document.claim.sourceDataRoot !== undefined
     && typeof document.claim.sourceDataRoot !== "string"
   ) {
-    throw new DataRootClaimError("DataRoot 认领状态包含无效的 sourceDataRoot。");
+    throw new DataRootClaimError(t(
+      "DataRoot 认领状态包含无效的 sourceDataRoot。",
+      "DataRoot claim state contains an invalid sourceDataRoot.",
+    ));
   }
   if (typeof revision !== "string" || !revision) {
-    throw new DataRootClaimError("Host 未提供 DataRoot 认领版本，无法安全确认。");
+    throw new DataRootClaimError(t(
+      "Host 未提供 DataRoot 认领版本，无法安全确认。",
+      "Host did not provide a DataRoot claim revision, so the claim cannot be confirmed safely.",
+    ));
   }
 }
 

@@ -12,7 +12,8 @@
   {{COMMAND}} -h <command-address>
   {{COMMAND}} --help <command-address>
 
-每个命令模块可在自身目录提供 _help/zh-CN.txt，选择由 Proj 处理上述帮助选择器。
+每个命令模块可在自身目录提供 _help/zh-CN.txt 与 _help/en.txt，Proj 根据 Entry
+Profile 的 language 选择帮助；英文译文尚未提供时回退到简体中文。
 首个非空行作为父级命令列表中的摘要，完整文件作为该节点的详细帮助。
 
 `<command-address> --help` 属于目标命令自己的参数，不会被 Proj 拦截。

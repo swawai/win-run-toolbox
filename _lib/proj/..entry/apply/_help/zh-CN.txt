@@ -3,5 +3,5 @@
 用法:
   {{INVOCATION}} --file <profile.json>
 
-相对路径以调用目录为基准。输入必须符合 swawkit.entry-profile/v1；验证失败时
+相对路径以调用目录为基准。输入必须符合 swawkit.entry-profile/v2；验证失败时
 保留现有 Profile，不发布半成品。

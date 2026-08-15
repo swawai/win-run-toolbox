@@ -1,0 +1,1 @@
+维护项目使用系统 Visual Studio Code 的声明；当前不负责安装 VS Code。

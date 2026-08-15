@@ -16,13 +16,13 @@ describe("command URL contract", () => {
       .toBe("/commands/kernel/dev/setup");
     expect(commandPath({ source: "kernel", address: "" }))
       .toBe("/commands/kernel");
-    expect(commandPath({ source: "control", address: "..entry.env.rust" }))
-      .toBe("/commands/control/entry/env/rust");
+    expect(commandPath({ source: "kernel", address: ".dev.rust" }))
+      .toBe("/commands/kernel/dev/rust");
     expect(commandPath({
-      source: "control",
-      address: "..entry.env.rust.SWAWKIT_PROJ_RUST_MODE",
+      source: "kernel",
+      address: ".dev.rust.mode",
     })).toBe(
-      "/commands/control/entry/env/rust/SWAWKIT_PROJ_RUST_MODE",
+      "/commands/kernel/dev/rust/mode",
     );
   });
 
@@ -34,10 +34,10 @@ describe("command URL contract", () => {
     expect(parseCommandPath("/commands/control/entry"))
       .toEqual({ source: "control", address: "..entry" });
     expect(parseCommandPath(
-      "/commands/control/entry/env/rust/SWAWKIT_PROJ_RUST_MODE",
+      "/commands/kernel/dev/rust/mode",
     )).toEqual({
-      source: "control",
-      address: "..entry.env.rust.SWAWKIT_PROJ_RUST_MODE",
+      source: "kernel",
+      address: ".dev.rust.mode",
     });
     expect(parseCommandPath("/commands/kernel"))
       .toEqual({ source: "kernel", address: "" });
@@ -48,6 +48,9 @@ describe("command URL contract", () => {
     expect(() => parseCommandPath("/other/action/demo")).toThrow("不是有效");
     expect(() => parseCommandPath("/commands/action")).toThrow("缺少");
     expect(() => parseCommandPath("/commands/action/Bad")).toThrow("无效");
+    expect(() => parseCommandPath(
+      "/commands/control/entry/env/SWAWKIT_PROJ_BUN_MODE",
+    )).toThrow("无效");
     const catalog = {
       commandByAddress: new Map([
         ["demo", { source: "action", address: "demo" }],

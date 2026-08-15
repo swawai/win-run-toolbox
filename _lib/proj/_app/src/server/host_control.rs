@@ -4,7 +4,6 @@ use axum::{
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
-use serde::Serialize;
 use std::sync::{
     Arc,
     atomic::{AtomicU8, Ordering},
@@ -13,27 +12,14 @@ use tokio::sync::watch;
 
 use super::ServerState;
 use crate::host_runtime::{HOST_BOOT_HEADER, HOST_ENTRY_HEADER};
+use crate::runtime_control::HostStatusDocument;
 
 const CONTROL_HEADER: &str = "x-swawkit-control";
 const SHUTDOWN_COMMAND: &str = "shutdown";
 const RESTART_COMMAND: &str = "restart";
-pub(super) const HOST_STATUS_PROTOCOL: &str = "swawkit.host-status/v1";
 const RUNNING: u8 = 0;
 const PREPARING_RESTART: u8 = 1;
 const STOPPING: u8 = 2;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HostStatusDocument {
-    protocol: &'static str,
-    entry_key_sha256: String,
-    boot_id: String,
-    pid: u32,
-    url: String,
-    running_release_id: String,
-    selected_release_id: String,
-    update_available: bool,
-}
 
 #[derive(Clone)]
 pub(super) struct HostControl {
@@ -117,17 +103,18 @@ pub(super) async fn get_host(State(state): State<ServerState>) -> Response {
                 .into_response();
         }
     };
-    Json(HostStatusDocument {
-        protocol: HOST_STATUS_PROTOCOL,
-        entry_key_sha256: state.host_runtime.entry_key_sha256,
-        boot_id: state.host_runtime.boot_id,
-        pid: state.host_runtime.pid,
-        url: state.host_runtime.url,
-        update_available: state.context.release_id != selected_release_id,
-        running_release_id: state.context.release_id,
+    match HostStatusDocument::new(
+        &state.host_runtime,
+        state.context.release_id,
         selected_release_id,
-    })
-    .into_response()
+    ) {
+        Ok(document) => Json(document).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("cannot compose Host runtime status: {error}\n"),
+        )
+            .into_response(),
+    }
 }
 
 pub(super) async fn post_shutdown(

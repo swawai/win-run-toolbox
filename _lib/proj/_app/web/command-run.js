@@ -12,11 +12,15 @@ import {
 } from "./command-run-model.js";
 import { createCommandRunOutput } from "./command-run-output.js";
 import { createCommandRunOperations } from "./command-run-operations.js";
+import { t } from "./i18n.js";
 
 export const ACTIVE_COMMAND_RUN_KEY = "swawkit.command-run.active.v1";
 
 function contractError(message) {
-  return new CommandRunError(`命令执行协议无效：${message}`);
+  return new CommandRunError(t(
+    `命令执行协议无效：${message}`,
+    `Invalid command-run protocol: ${message}`,
+  ));
 }
 
 function isRetryableReadError(error) {
@@ -79,8 +83,11 @@ export function createCommandRunView(elements, options = {}) {
   function updateArgumentRows() {
     const rows = [...inputs()];
     for (const [index, input] of rows.entries()) {
-      input.setAttribute("aria-label", `参数 ${index + 1}`);
-      input.nextElementSibling?.setAttribute("aria-label", `删除参数 ${index + 1}`);
+      input.setAttribute("aria-label", t(`参数 ${index + 1}`, `Argument ${index + 1}`));
+      input.nextElementSibling?.setAttribute(
+        "aria-label",
+        t(`删除参数 ${index + 1}`, `Remove argument ${index + 1}`),
+      );
     }
     elements.commandRunEmpty.hidden = rows.length !== 0;
   }
@@ -140,7 +147,7 @@ export function createCommandRunView(elements, options = {}) {
     elements.commandRunResult.hidden = snapshot === null;
     elements.commandRunAddress.textContent = snapshot?.address ?? "";
     elements.commandRunExitCode.textContent = snapshot?.state === "exited"
-      ? `退出码 ${snapshot.exitCode}`
+      ? t(`退出码 ${snapshot.exitCode}`, `Exit code ${snapshot.exitCode}`)
       : "";
     commandOutput.render(snapshot?.truncated === true);
   }
@@ -155,7 +162,10 @@ export function createCommandRunView(elements, options = {}) {
 
   function adoptSnapshot(next, { reset = false } = {}) {
     if (snapshot && (snapshot.id !== next.id || snapshot.address !== next.address)) {
-      throw contractError("轮询响应与当前执行不匹配。");
+      throw contractError(t(
+        "轮询响应与当前执行不匹配。",
+        "The poll response does not match the current run.",
+      ));
     }
     if (reset) {
       resetOutput();
@@ -170,7 +180,7 @@ export function createCommandRunView(elements, options = {}) {
     if (snapshot.state === "failed" && snapshot.error) {
       setFeedback(snapshot.error, "error");
     } else if (snapshot.state === "canceling") {
-      setFeedback("Host 正在终止进程树…");
+      setFeedback(t("Host 正在终止进程树…", "Host is terminating the process tree…"));
     } else {
       setFeedback();
     }
@@ -215,13 +225,15 @@ export function createCommandRunView(elements, options = {}) {
           ...expected,
           state: "failed",
           exitCode: null,
-          error: "Host 中的执行记录已失效。",
+          error: t("Host 中的执行记录已失效。", "The run record in Host is no longer available."),
           events: [],
         });
         return;
       }
       setFeedback(
-        error instanceof Error ? `读取执行状态失败：${error.message}` : "读取执行状态失败。",
+        error instanceof Error
+          ? t(`读取执行状态失败：${error.message}`, `Failed to read run state: ${error.message}`)
+          : t("读取执行状态失败。", "Failed to read run state."),
         "error",
       );
       if (isRetryableReadError(error)) {
@@ -229,8 +241,14 @@ export function createCommandRunView(elements, options = {}) {
       } else {
         setFeedback(
           error instanceof Error
-            ? `无法继续确认执行状态：${error.message}。请刷新页面后重新确认。`
-            : "无法继续确认执行状态。请刷新页面后重新确认。",
+            ? t(
+              `无法继续确认执行状态：${error.message}。请刷新页面后重新确认。`,
+              `Cannot continue checking run state: ${error.message}. Reload the page to verify it again.`,
+            )
+            : t(
+              "无法继续确认执行状态。请刷新页面后重新确认。",
+              "Cannot continue checking run state. Reload the page to verify it again.",
+            ),
           "error",
         );
       }
@@ -249,7 +267,7 @@ export function createCommandRunView(elements, options = {}) {
       return;
     }
     submitting = true;
-    setFeedback("正在启动…");
+    setFeedback(t("正在启动…", "Starting…"));
     render();
     try {
       const arguments_ = explicitArguments === undefined
@@ -257,7 +275,10 @@ export function createCommandRunView(elements, options = {}) {
         : [...explicitArguments];
       const next = await startCommandRun(command.address, arguments_, fetchRun);
       if (next.address !== command.address) {
-        throw contractError("创建响应返回了不同的命令地址。");
+        throw contractError(t(
+          "创建响应返回了不同的命令地址。",
+          "The create response returned a different command address.",
+        ));
       }
       pollVersion += 1;
       stopTimer();
@@ -268,7 +289,9 @@ export function createCommandRunView(elements, options = {}) {
       }
     } catch (error) {
       setFeedback(
-        error instanceof Error ? error.message : "启动命令时发生未知错误。",
+        error instanceof Error
+          ? error.message
+          : t("启动命令时发生未知错误。", "An unknown error occurred while starting the command."),
         "error",
       );
     } finally {
@@ -291,13 +314,15 @@ export function createCommandRunView(elements, options = {}) {
       if (snapshot?.id === expected.id && isCommandRunActive(snapshot)) {
         snapshot = { ...snapshot, state: "canceling" };
         rememberRun();
-        setFeedback("Host 正在终止进程树…");
+        setFeedback(t("Host 正在终止进程树…", "Host is terminating the process tree…"));
         render();
         schedulePoll(version, 0);
       }
     } catch (error) {
       setFeedback(
-        error instanceof Error ? error.message : "终止命令时发生未知错误。",
+        error instanceof Error
+          ? error.message
+          : t("终止命令时发生未知错误。", "An unknown error occurred while canceling the command."),
         "error",
       );
       if (snapshot?.id === expected.id && isCommandRunActive(snapshot)) {
@@ -338,15 +363,21 @@ export function createCommandRunView(elements, options = {}) {
         storageRemove();
         restoring = false;
         recoveryUncertain = false;
-        setFeedback("上次执行记录已失效。", "error");
+        setFeedback(t("上次执行记录已失效。", "The previous run record is no longer available."), "error");
         render();
         return;
       }
       if (isRetryableReadError(error)) {
         setFeedback(
           error instanceof Error
-            ? `恢复执行暂时失败：${error.message}。Host 恢复后将自动重试。`
-            : "恢复执行暂时失败。Host 恢复后将自动重试。",
+            ? t(
+              `恢复执行暂时失败：${error.message}。Host 恢复后将自动重试。`,
+              `Temporarily failed to restore the run: ${error.message}. It will retry when Host recovers.`,
+            )
+            : t(
+              "恢复执行暂时失败。Host 恢复后将自动重试。",
+              "Temporarily failed to restore the run. It will retry when Host recovers.",
+            ),
           "error",
         );
         render();
@@ -357,8 +388,14 @@ export function createCommandRunView(elements, options = {}) {
       recoveryUncertain = true;
       setFeedback(
         error instanceof Error
-          ? `无法确认上次执行：${error.message}。请刷新页面后重新确认。`
-          : "无法确认上次执行。请刷新页面后重新确认。",
+          ? t(
+            `无法确认上次执行：${error.message}。请刷新页面后重新确认。`,
+            `Cannot verify the previous run: ${error.message}. Reload the page to verify it again.`,
+          )
+          : t(
+            "无法确认上次执行。请刷新页面后重新确认。",
+            "Cannot verify the previous run. Reload the page to verify it again.",
+          ),
         "error",
       );
       render();
@@ -373,7 +410,7 @@ export function createCommandRunView(elements, options = {}) {
     restoring = true;
     recoveryUncertain = false;
     const version = ++pollVersion;
-    setFeedback("正在恢复上次执行…");
+    setFeedback(t("正在恢复上次执行…", "Restoring the previous run…"));
     render();
     await restoreAttempt(id, version);
   }

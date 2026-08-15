@@ -1,0 +1,6 @@
+Run one Windows CMD command in the current project environment.
+
+Usage:
+  {{INVOCATION}} <command...>
+
+The project root is the working directory. The command inherits the verified Entry context and development-tool PATH. It is non-interactive and does not modify user or system PATH.

@@ -217,17 +217,16 @@ try {
     $Bound = Invoke-ProjJournalEntry `
         -EntryPath $EntryPath `
         -Arguments @(
-            '..entry.env.project.SWAWKIT_PROJ_TARGET_PROJECT_ROOT',
+            '..entry.project.root',
             '${SWAWKIT_HOME}'
         )
     Assert-ProjJournalAbandonment `
         -Condition ($Bound.ExitCode -eq 0) `
         -Message "cannot bind the isolated Entry: $($Bound.Text)"
-    foreach ($Tool in @('bun', 'pwsh', 'msvc', 'rust', 'go', 'python', 'uv')) {
-        $Variable = 'SWAWKIT_PROJ_{0}_MODE' -f $Tool.ToUpperInvariant()
+    foreach ($Tool in @('bun', 'pwsh', 'msvc', 'rust')) {
         $Disabled = Invoke-ProjJournalEntry `
             -EntryPath $EntryPath `
-            -Arguments @("..entry.env.$Tool.$Variable", 'disabled')
+            -Arguments @(".dev.$Tool.mode", 'disabled')
         Assert-ProjJournalAbandonment `
             -Condition ($Disabled.ExitCode -eq 0) `
             -Message "cannot disable ${Tool}: $($Disabled.Text)"

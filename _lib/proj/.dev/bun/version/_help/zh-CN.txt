@@ -1,0 +1,4 @@
+设置受管 Bun 版本。
+
+用法：{{INVOCATION}} <value>
+修改后需重新执行 {{COMMAND}} .dev.setup。

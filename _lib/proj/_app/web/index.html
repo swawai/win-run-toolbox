@@ -15,38 +15,30 @@
         <section class="catalog-canvas" aria-labelledby="browser-title">
           <h1 class="sr-only" id="browser-title">Swaw Kit Project Console</h1>
 
-          <header class="console-bar">
-            <nav class="breadcrumb" id="breadcrumb" aria-label="当前命令路径">
-              <span class="breadcrumb-home">控制台</span>
-            </nav>
-            <div class="host-summary" aria-label="Host 状态与控制">
-              <span class="host-indicator" id="host-indicator" data-state="loading"
-                aria-hidden="true"></span>
-              <span id="host-status" role="status">正在读取 Host 状态…</span>
-              <button class="host-action" id="host-restart" type="button" hidden>重启更新</button>
-              <button class="host-action" id="host-quit" type="button">退出 Host</button>
-            </div>
-          </header>
-
           <div class="explorer-frame" id="explorer-frame">
             <div class="finder-state" id="loading-state">
               <span class="spinner" aria-hidden="true"></span>
-              <p>正在从 Host 读取命令目录</p>
+              <p data-i18n-zh="正在从 Host 读取命令目录"
+                data-i18n-en="Loading the command catalog from Host">正在从 Host 读取命令目录</p>
             </div>
 
             <div class="finder-state" id="error-state" hidden>
               <span class="state-symbol" aria-hidden="true">!</span>
-              <h2>命令目录暂时不可用</h2>
+              <h2 data-i18n-zh="命令目录暂时不可用"
+                data-i18n-en="The command catalog is unavailable">命令目录暂时不可用</h2>
               <p id="error-message">无法连接 Host。</p>
-              <button class="secondary-button" id="retry-button" type="button">重新加载</button>
+              <button class="secondary-button" id="retry-button" type="button"
+                data-i18n-zh="重新加载" data-i18n-en="Reload">重新加载</button>
             </div>
 
             <section class="claim-state" id="claim-state" aria-labelledby="claim-title" hidden>
               <article class="claim-card">
                 <header class="claim-heading">
                   <p class="claim-eyebrow">DataRoot Claim</p>
-                  <h2 id="claim-title">确认这个入口的数据归属</h2>
-                  <p>入口文件的身份已经变化。认领前请核对以下信息；确认后，现有 DataRoot 将归属于这个入口。</p>
+                  <h2 id="claim-title" data-i18n-zh="确认这个入口的数据归属"
+                    data-i18n-en="Confirm data ownership for this Entry">确认这个入口的数据归属</h2>
+                  <p data-i18n-zh="入口文件的身份已经变化。认领前请核对以下信息；确认后，现有 DataRoot 将归属于这个入口。"
+                    data-i18n-en="The Entry file identity changed. Review the details before claiming; the existing DataRoot will then belong to this Entry.">入口文件的身份已经变化。认领前请核对以下信息；确认后，现有 DataRoot 将归属于这个入口。</p>
                 </header>
 
                 <dl class="claim-details">
@@ -86,23 +78,29 @@
 
                 <form class="claim-form" id="claim-form">
                   <label for="claim-confirmation">
-                    输入 <code id="claim-confirmation-name">—</code> 以确认认领
+                    <span data-i18n-zh="输入以下完整名称以确认认领："
+                      data-i18n-en="Enter the full name below to confirm the claim:">输入以下完整名称以确认认领：</span>
+                    <code id="claim-confirmation-name">—</code>
                   </label>
                   <div class="claim-controls">
                     <input id="claim-confirmation" name="confirmation" type="text" required
                       autocomplete="off" autocapitalize="none" spellcheck="false">
-                    <button class="claim-submit" id="claim-submit" type="submit" disabled>确认认领</button>
+                    <button class="claim-submit" id="claim-submit" type="submit" disabled
+                      data-i18n-zh="确认认领" data-i18n-en="Confirm claim">确认认领</button>
                   </div>
-                  <p class="claim-note">名称必须完全一致；大小写和空格都会参与校验。</p>
+                  <p class="claim-note" data-i18n-zh="名称必须完全一致；大小写和空格都会参与校验。"
+                    data-i18n-en="The name must match exactly, including case and spaces.">名称必须完全一致；大小写和空格都会参与校验。</p>
                   <p class="claim-feedback" id="claim-feedback" aria-live="polite"></p>
                 </form>
               </article>
             </section>
 
             <div class="explorer-flow" id="explorer-flow" hidden>
-              <div class="finder-columns" id="finder-columns" aria-label="命令层级"></div>
+              <div class="finder-columns" id="finder-columns" aria-label="命令层级"
+                data-i18n-aria-label-zh="命令层级" data-i18n-aria-label-en="Command hierarchy"></div>
 
-              <aside class="detail-panel" id="detail-panel" tabindex="-1" aria-label="详情">
+              <aside class="detail-panel" id="detail-panel" tabindex="-1" aria-label="详情"
+                data-i18n-aria-label-zh="详情" data-i18n-aria-label-en="Details">
                 <p class="sr-only" id="selection-status" aria-live="polite"></p>
 
                 <article class="entry-profile-detail" id="entry-profile-detail" hidden>
@@ -117,15 +115,16 @@
 
                   <form class="profile-form" id="profile-form">
                     <section class="detail-section">
-                      <h3>变量值</h3>
+                      <h3 data-i18n-zh="设置值" data-i18n-en="Setting value">设置值</h3>
                       <div class="form-field">
-                        <label for="profile-value"><code id="profile-variable-name"></code></label>
+                        <label for="profile-value"><code id="profile-setting-address"></code></label>
                         <input id="profile-value" name="value" type="text"
                           autocomplete="off" spellcheck="false">
                       </div>
                     </section>
                     <div class="profile-actions">
-                      <button class="secondary-button" id="profile-save-button" type="submit">保存变量</button>
+                      <button class="secondary-button" id="profile-save-button" type="submit"
+                        data-i18n-zh="保存设置" data-i18n-en="Save setting">保存设置</button>
                       <p class="profile-feedback" id="profile-feedback" aria-live="polite"></p>
                     </div>
                   </form>
@@ -135,53 +134,136 @@
                   <div class="command-activity-content">
                     <article class="command-detail command-activity-pane" id="command-detail"
                       tabindex="-1" hidden>
-                      <header class="detail-heading">
-                        <h2 id="detail-address"></h2>
-                        <p id="detail-summary"></p>
-                      </header>
+                      <div id="generic-command-overview">
+                        <header class="detail-heading">
+                          <h2 id="detail-address"></h2>
+                          <p id="detail-summary"></p>
+                        </header>
 
-                      <section class="issue-card" id="issue-card" hidden>
-                        <span aria-hidden="true">!</span>
-                        <div>
-                          <h3>协议问题</h3>
-                          <p id="detail-issue"></p>
-                        </div>
-                      </section>
-
-                      <section class="detail-section" id="invocation-section" aria-labelledby="invocation-title">
-                        <h3 id="invocation-title">CLI 调用</h3>
-                        <div class="command-copy">
-                          <code id="cli-command"></code>
-                          <button id="copy-button" type="button" aria-label="复制 CLI 调用">
-                            <span class="copy-label" id="copy-label">复制</span>
-                          </button>
-                        </div>
-                        <p class="copy-feedback" id="copy-feedback" aria-live="polite"></p>
-                      </section>
-
-                      <section class="detail-section" aria-labelledby="properties-title">
-                        <h3 id="properties-title">命令属性</h3>
-                        <dl class="properties">
+                        <section class="issue-card" id="issue-card" hidden>
+                          <span aria-hidden="true">!</span>
                           <div>
-                            <dt>Address</dt>
-                            <dd><code id="property-address"></code></dd>
+                            <h3 data-i18n-zh="协议问题" data-i18n-en="Protocol issue">协议问题</h3>
+                            <p id="detail-issue"></p>
                           </div>
-                          <div id="property-entry-row">
-                            <dt>Entry</dt>
-                            <dd><code id="property-entry"></code></dd>
+                        </section>
+
+                        <section class="detail-section" id="invocation-section" aria-labelledby="invocation-title">
+                          <h3 id="invocation-title" data-i18n-zh="CLI 调用"
+                            data-i18n-en="CLI invocation">CLI 调用</h3>
+                          <div class="command-copy">
+                            <code id="cli-command"></code>
+                            <button id="copy-button" type="button" aria-label="复制 CLI 调用"
+                              data-i18n-aria-label-zh="复制 CLI 调用"
+                              data-i18n-aria-label-en="Copy CLI invocation">
+                              <span class="copy-label" id="copy-label" data-i18n-zh="复制"
+                                data-i18n-en="Copy">复制</span>
+                            </button>
                           </div>
-                        </dl>
-                      </section>
+                          <p class="copy-feedback" id="copy-feedback" aria-live="polite"></p>
+                        </section>
+
+                        <section class="detail-section" aria-labelledby="properties-title">
+                          <h3 id="properties-title" data-i18n-zh="命令属性"
+                            data-i18n-en="Command properties">命令属性</h3>
+                          <dl class="properties">
+                            <div>
+                              <dt>Address</dt>
+                              <dd><code id="property-address"></code></dd>
+                            </div>
+                            <div id="property-entry-row">
+                              <dt>Entry</dt>
+                              <dd><code id="property-entry"></code></dd>
+                            </div>
+                          </dl>
+                        </section>
+
+                        <section class="detail-section module-contract" id="module-contract-section"
+                          aria-labelledby="module-contract-title" hidden>
+                          <h3 id="module-contract-title" data-i18n-zh="模块契约"
+                            data-i18n-en="Module contract">模块契约</h3>
+                          <div class="module-contract-grid">
+                            <div>
+                              <h4 data-i18n-zh="依赖" data-i18n-en="Requires">依赖</h4>
+                              <ul id="module-requires"></ul>
+                            </div>
+                            <div>
+                              <h4 data-i18n-zh="提供产物" data-i18n-en="Provides">提供产物</h4>
+                              <ul id="module-provides"></ul>
+                            </div>
+                          </div>
+                          <p><code>swawkit .check &lt;command-address&gt;</code>
+                            <span data-i18n-zh="可检查当前状态。"
+                              data-i18n-en="checks the current state.">可检查当前状态。</span></p>
+                        </section>
+                      </div>
+
+                      <div class="runtime-control" id="runtime-control" hidden>
+                        <header class="detail-heading">
+                          <h2 id="runtime-title">..runtime</h2>
+                          <p id="runtime-description" data-i18n-zh="查看 Runtime 与 Host 状态，并执行明确的生命周期控制。"
+                            data-i18n-en="Inspect Runtime and Host state and perform explicit lifecycle operations.">查看 Runtime 与 Host 状态，并执行明确的生命周期控制。</p>
+                        </header>
+
+                        <section class="runtime-card" id="runtime-host-section" aria-labelledby="runtime-host-title">
+                          <div class="runtime-card-heading">
+                            <div>
+                              <h3 id="runtime-host-title">Host</h3>
+                              <p class="runtime-connection" id="runtime-host-connection" data-state="loading">
+                                <span class="runtime-status-dot" aria-hidden="true"></span>
+                                <span id="runtime-host-status" role="status" data-i18n-zh="正在读取状态…"
+                                  data-i18n-en="Loading status…">正在读取状态…</span>
+                              </p>
+                            </div>
+                            <span class="runtime-release-count" id="runtime-release-count"></span>
+                          </div>
+                          <dl class="runtime-properties" id="runtime-host-properties" hidden>
+                            <div><dt>PID</dt><dd><code id="runtime-host-pid"></code></dd></div>
+                            <div><dt data-i18n-zh="运行版本" data-i18n-en="Running release">运行版本</dt><dd><code id="runtime-running-release"></code></dd></div>
+                            <div><dt data-i18n-zh="选中版本" data-i18n-en="Selected release">选中版本</dt><dd><code id="runtime-selected-release"></code></dd></div>
+                          </dl>
+                          <div class="runtime-actions">
+                            <button class="secondary-button" id="runtime-host-restart" type="button" hidden
+                              data-i18n-zh="重启并切换版本" data-i18n-en="Restart and switch release">重启并切换版本</button>
+                            <button class="danger-button" id="runtime-host-exit" type="button"
+                              data-i18n-zh="退出 Host" data-i18n-en="Exit Host">退出 Host</button>
+                          </div>
+                          <p class="runtime-feedback" id="runtime-host-feedback" aria-live="polite"></p>
+                        </section>
+
+                        <section class="runtime-card" id="runtime-cleanup-section" aria-labelledby="runtime-cleanup-title">
+                          <div class="runtime-card-heading">
+                            <div>
+                              <h3 id="runtime-cleanup-title" data-i18n-zh="Runtime Release 清理"
+                                data-i18n-en="Runtime release cleanup">Runtime Release 清理</h3>
+                              <p data-i18n-zh="先预览，再显式删除未被选中、也未被进程占用的旧版本。"
+                                data-i18n-en="Preview first, then explicitly remove old releases that are neither selected nor in use.">先预览，再显式删除未被选中、也未被进程占用的旧版本。</p>
+                            </div>
+                          </div>
+                          <div class="runtime-actions">
+                            <button class="secondary-button" id="runtime-cleanup-preview" type="button"
+                              data-i18n-zh="预览" data-i18n-en="Preview">预览</button>
+                            <button class="danger-button" id="runtime-cleanup-apply" type="button"
+                              data-i18n-zh="应用清理" data-i18n-en="Apply cleanup">应用清理</button>
+                          </div>
+                          <p class="runtime-feedback" id="runtime-cleanup-feedback" aria-live="polite"></p>
+                          <div class="runtime-cleanup-result" id="runtime-cleanup-result" hidden>
+                            <dl class="runtime-cleanup-summary" id="runtime-cleanup-summary"></dl>
+                            <ul class="runtime-cleanup-list" id="runtime-cleanup-list"></ul>
+                          </div>
+                        </section>
+                      </div>
                     </article>
 
                     <article class="command-help-activity command-activity-pane"
                       id="command-help-activity" tabindex="-1" hidden>
                       <header class="detail-heading">
-                        <h2>帮助</h2>
+                        <h2 data-i18n-zh="帮助" data-i18n-en="Help">帮助</h2>
                         <p><code id="command-help-address"></code></p>
                       </header>
                       <section class="detail-section help-section" aria-labelledby="help-title">
-                        <h3 id="help-title">命令说明</h3>
+                        <h3 id="help-title" data-i18n-zh="命令说明"
+                          data-i18n-en="Command help">命令说明</h3>
                         <pre id="detail-help"></pre>
                       </section>
                     </article>
@@ -192,8 +274,10 @@
                         aria-labelledby="command-run-title" hidden>
                         <header class="command-run-heading">
                           <div>
-                            <h3 id="command-run-title">Web 执行</h3>
-                            <p>非交互执行；不提供 stdin 或终端会话，结束时会清理全部子进程。每一行都是一个原始参数。输出协议为 UTF-8；非 UTF-8 字节会显示为替换字符。</p>
+                            <h3 id="command-run-title" data-i18n-zh="Web 执行"
+                              data-i18n-en="Web run">Web 执行</h3>
+                            <p data-i18n-zh="非交互执行；不提供 stdin 或终端会话，结束时会清理全部子进程。每一行都是一个原始参数。输出协议为 UTF-8；非 UTF-8 字节会显示为替换字符。"
+                              data-i18n-en="Runs non-interactively without stdin or a terminal session. All child processes are cleaned up when the run ends. Each line is one raw argument. Output uses UTF-8; invalid bytes appear as replacement characters.">非交互执行；不提供 stdin 或终端会话，结束时会清理全部子进程。每一行都是一个原始参数。输出协议为 UTF-8；非 UTF-8 字节会显示为替换字符。</p>
                           </div>
                           <span class="command-run-state" id="command-run-state" aria-live="polite"></span>
                         </header>
@@ -201,48 +285,57 @@
                         <form class="command-run-form" id="command-run-form">
                           <div id="command-run-editor">
                             <div class="command-run-arguments-heading">
-                              <span>参数</span>
+                              <span data-i18n-zh="参数" data-i18n-en="Arguments">参数</span>
                               <button class="secondary-button command-run-add" id="command-run-add" type="button">
-                                添加参数
+                                <span data-i18n-zh="添加参数" data-i18n-en="Add argument">添加参数</span>
                               </button>
                             </div>
                             <div class="command-run-arguments" id="command-run-arguments"></div>
-                            <p class="command-run-empty" id="command-run-empty">当前不传递参数。</p>
+                            <p class="command-run-empty" id="command-run-empty"
+                              data-i18n-zh="当前不传递参数。" data-i18n-en="No arguments will be passed.">当前不传递参数。</p>
                           </div>
 
                           <section class="command-run-operations" id="command-run-operations"
                             aria-labelledby="command-run-operations-title" hidden>
-                            <h4 id="command-run-operations-title">可用操作</h4>
+                            <h4 id="command-run-operations-title" data-i18n-zh="可用操作"
+                              data-i18n-en="Available operations">可用操作</h4>
                             <div class="command-run-operation-list" id="command-run-operation-list"></div>
                             <div class="command-run-confirmation" id="command-run-confirmation" role="alert" hidden>
                               <p id="command-run-confirmation-text"></p>
                               <div>
-                                <button class="command-run-confirm" id="command-run-confirm" type="button">确认执行</button>
-                                <button class="secondary-button" id="command-run-confirm-dismiss" type="button">返回</button>
+                                <button class="command-run-confirm" id="command-run-confirm" type="button"
+                                  data-i18n-zh="确认执行" data-i18n-en="Confirm run">确认执行</button>
+                                <button class="secondary-button" id="command-run-confirm-dismiss" type="button"
+                                  data-i18n-zh="返回" data-i18n-en="Back">返回</button>
                               </div>
                             </div>
                           </section>
 
                           <div class="command-run-actions" id="command-run-actions">
-                            <button class="command-run-submit" id="command-run-submit" type="submit">执行</button>
+                            <button class="command-run-submit" id="command-run-submit" type="submit"
+                              data-i18n-zh="执行" data-i18n-en="Run">执行</button>
                             <button class="secondary-button command-run-cancel" id="command-run-cancel"
                               type="button" hidden>
-                              终止进程
+                              <span data-i18n-zh="终止进程" data-i18n-en="Terminate process">终止进程</span>
                             </button>
                           </div>
                           <p class="command-run-feedback" id="command-run-feedback" aria-live="polite"></p>
                         </form>
 
-                        <section class="command-run-result" id="command-run-result" aria-label="执行输出" hidden>
+                        <section class="command-run-result" id="command-run-result" aria-label="执行输出" hidden
+                          data-i18n-aria-label-zh="执行输出" data-i18n-aria-label-en="Run output">
                           <header>
                             <code id="command-run-address"></code>
                             <span id="command-run-exit-code"></span>
                           </header>
-                          <span class="sr-only" id="command-run-stream-stdout">标准输出</span>
-                          <span class="sr-only" id="command-run-stream-stderr">标准错误</span>
+                          <span class="sr-only" id="command-run-stream-stdout" data-i18n-zh="标准输出"
+                            data-i18n-en="Standard output">标准输出</span>
+                          <span class="sr-only" id="command-run-stream-stderr" data-i18n-zh="标准错误"
+                            data-i18n-en="Standard error">标准错误</span>
                           <pre class="command-run-output" id="command-run-output" role="log" aria-live="off" tabindex="0"></pre>
                           <p class="command-run-truncated" id="command-run-truncated" role="status" aria-live="polite" hidden>
-                            输出已达到 Host 保留上限；超出部分不会显示，但不会因此终止进程。
+                            <span data-i18n-zh="输出已达到 Host 保留上限；超出部分不会显示，但不会因此终止进程。"
+                              data-i18n-en="Output reached the Host retention limit. Additional output is not shown, but the process is not terminated.">输出已达到 Host 保留上限；超出部分不会显示，但不会因此终止进程。</span>
                           </p>
                         </section>
                       </section>
@@ -253,32 +346,39 @@
                       <section class="command-journal-index" aria-labelledby="command-journal-title">
                         <header class="command-journal-heading">
                           <div>
-                            <h2 id="command-journal-title">运行记录</h2>
+                            <h2 id="command-journal-title" data-i18n-zh="运行记录"
+                              data-i18n-en="Run history">运行记录</h2>
                             <p><code id="command-journal-address"></code></p>
                           </div>
                           <button class="secondary-button command-journal-refresh"
-                            id="command-journal-refresh" type="button">刷新</button>
+                            id="command-journal-refresh" type="button" data-i18n-zh="刷新"
+                            data-i18n-en="Refresh">刷新</button>
                         </header>
                         <p class="command-journal-feedback" id="command-journal-feedback"
                           aria-live="polite"></p>
-                        <p class="command-journal-empty" id="command-journal-empty">尚无历史运行。</p>
+                        <p class="command-journal-empty" id="command-journal-empty"
+                          data-i18n-zh="尚无历史运行。" data-i18n-en="No run history yet.">尚无历史运行。</p>
                         <ol class="command-journal-list" id="command-journal-list"></ol>
                       </section>
-                      <section class="command-journal-content" aria-label="单次运行日志">
+                      <section class="command-journal-content" aria-label="单次运行日志"
+                        data-i18n-aria-label-zh="单次运行日志" data-i18n-aria-label-en="Run log">
                         <p class="command-journal-detail-empty" id="command-journal-detail-empty">
-                          选择一次运行查看日志。
+                          <span data-i18n-zh="选择一次运行查看日志。"
+                            data-i18n-en="Select a run to view its log.">选择一次运行查看日志。</span>
                         </p>
                         <section class="command-journal-detail" id="command-journal-detail"
-                          aria-label="持久运行日志" hidden>
+                          aria-label="持久运行日志" hidden data-i18n-aria-label-zh="持久运行日志"
+                          data-i18n-aria-label-en="Persistent run log">
                           <header>
                             <div>
-                              <h2>日志内容</h2>
+                              <h2 data-i18n-zh="日志内容" data-i18n-en="Log content">日志内容</h2>
                               <span class="command-journal-meta" id="command-journal-meta"></span>
                             </div>
                             <div class="command-journal-detail-actions">
                               <span class="command-journal-state" id="command-journal-state"></span>
                               <button class="secondary-button command-journal-open"
-                                id="command-journal-open" type="button">打开目录</button>
+                                id="command-journal-open" type="button" data-i18n-zh="打开目录"
+                                data-i18n-en="Open folder">打开目录</button>
                             </div>
                           </header>
                           <p class="command-journal-directory-feedback"
@@ -288,7 +388,8 @@
                           <pre class="command-journal-output" id="command-journal-output"
                             role="log" aria-live="off" tabindex="0"></pre>
                           <p class="command-journal-truncated" id="command-journal-truncated" hidden>
-                            日志已达到保留或响应上限；这里只显示仍被保留的部分。
+                            <span data-i18n-zh="日志已达到保留或响应上限；这里只显示仍被保留的部分。"
+                              data-i18n-en="The log reached a retention or response limit; only the retained portion is shown.">日志已达到保留或响应上限；这里只显示仍被保留的部分。</span>
                           </p>
                         </section>
                       </section>

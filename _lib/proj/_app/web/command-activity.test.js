@@ -30,13 +30,13 @@ describe("command activities", () => {
   test("presents the dedicated Profile editor through the common activity model", () => {
     expect(commandActivities({
       source: "control",
-      address: "..entry.env.default-shell",
+      address: "..entry.language",
       handler: "entry.profile.set",
       runnable: true,
     })).toEqual(["edit", "overview", "help"]);
     expect(defaultCommandView({
       source: "control",
-      address: "..entry.env.default-shell",
+      address: "..entry.language",
       handler: "entry.profile.set",
       runnable: true,
     })).toBe("edit");
@@ -55,6 +55,18 @@ describe("command activities", () => {
     expect(defaultCommandView(null)).toBeNull();
   });
 
+  test("opens the stateful Runtime root on status while retaining its child view", () => {
+    const command = {
+      source: "control",
+      address: "..runtime",
+      handler: "runtime.status",
+      runnable: true,
+    };
+    expect(commandViews(command, { hasChildren: true }).map(({ name }) => name))
+      .toEqual(["children", "overview", "help"]);
+    expect(defaultCommandView(command, { hasChildren: true })).toBe("overview");
+  });
+
   test("switches a Profile setter between its dedicated and shared panes", () => {
     const pane = () => ({ hidden: false });
     const elements = {
@@ -68,7 +80,7 @@ describe("command activities", () => {
     const view = createCommandActivityView(elements);
     const command = {
       source: "control",
-      address: "..entry.env.git.SWAWKIT_PROJ_GIT_ID_NAME",
+      address: "..entry.git.name",
       handler: "entry.profile.set",
       runnable: true,
     };

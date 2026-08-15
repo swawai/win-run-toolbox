@@ -1,0 +1,3 @@
+Set the Git access declaration.
+
+Usage: {{INVOCATION}} <value>

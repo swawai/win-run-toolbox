@@ -16,8 +16,8 @@ function Get-ProjDevMsvcCommandRequirement {
     $Definition = Get-ProjDevMsvcDefinition
     if ($null -eq $Definition) {
         throw (
-            'This command requires project-managed MSVC. Enable ' +
-            'SWAWKIT_PROJ_MSVC_MODE and run ' +
+            'This command requires project-managed MSVC. Run ' +
+            "'$($Context.EntryCommand) .dev.msvc.mode managed', then " +
             "'$Repair'."
         )
     }

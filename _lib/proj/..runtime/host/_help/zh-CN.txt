@@ -1,0 +1,7 @@
+管理当前 Entry 独享的 Host 进程。
+
+子命令：
+  exit       优雅退出 Host；正在运行的 Web 命令也会被终止。
+  restart    在新 Release 已发布时安全重启 Host。
+
+启动或激活 Host 仍使用 {{COMMAND}} ..web，不维护第二套启动入口。

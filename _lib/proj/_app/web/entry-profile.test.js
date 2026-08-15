@@ -4,16 +4,17 @@ import test from "node:test";
 import {
   EntryProfileConflictError,
   createEntryProfileView,
-  putEntryProfileVariable,
+  putEntryProfileSetting,
 } from "./entry-profile.js";
 
-function profileDocument(revision, variables) {
+function profileDocument(revision, settings) {
   return {
-    protocol: "swawkit.entry-profile-state/v3",
+    protocol: "swawkit.entry-profile-state/v5",
     revision,
     status: "ready",
     requiredComplete: true,
-    variables,
+    settings,
+    profile: { language: settings["..entry.language"] },
   };
 }
 
@@ -26,21 +27,22 @@ function profileElements() {
     profileSaveButton: { disabled: false },
     profileState: { dataset: {}, textContent: "" },
     profileValue: { disabled: false, value: "" },
-    profileVariableName: text(),
+    profileSettingAddress: text(),
     selectionStatus: text(),
   };
 }
 
-test("variable updates use the command's environment name and loaded revision", async () => {
+test("setting updates use the typed command address and loaded revision", async () => {
   let request;
   const document = {
-    protocol: "swawkit.entry-profile-state/v3",
+    protocol: "swawkit.entry-profile-state/v5",
     revision: "sha256-next",
-    variables: { SWAWKIT_PROJ_DEFAULT_SHELL: "pwsh" },
+    settings: { "..entry.language": "en" },
+    profile: { language: "en" },
   };
-  const result = await putEntryProfileVariable(
-    "SWAWKIT_PROJ_DEFAULT_SHELL",
-    "pwsh",
+  const result = await putEntryProfileSetting(
+    "..entry.language",
+    "en",
     "sha256-loaded",
     async (url, options) => {
       request = { url, options };
@@ -56,16 +58,16 @@ test("variable updates use the command's environment name and loaded revision", 
 
   assert.equal(
     request.url,
-    "/api/v2/profile/variables/SWAWKIT_PROJ_DEFAULT_SHELL",
+    "/api/v2/profile/settings/..entry.language",
   );
   assert.equal(request.options.headers["If-Match"], '"sha256-loaded"');
-  assert.deepEqual(JSON.parse(request.options.body), { value: "pwsh" });
+  assert.deepEqual(JSON.parse(request.options.body), { value: "en" });
   assert.deepEqual(result, document);
 });
 
 test("profile conflicts are distinguishable from validation failures", async () => {
   await assert.rejects(
-    putEntryProfileVariable("SWAWKIT_PROJ_DEFAULT_SHELL", "pwsh", "stale", async () => ({
+    putEntryProfileSetting("..entry.language", "en", "stale", async () => ({
       ok: false,
       status: 409,
       async json() {
@@ -77,15 +79,17 @@ test("profile conflicts are distinguishable from validation failures", async () 
 });
 
 test("a completed save does not overwrite a newer Profile command selection", async () => {
-  const firstName = "SWAWKIT_PROJ_GIT_ID_NAME";
-  const secondName = "SWAWKIT_PROJ_GIT_ID_EMAIL";
+  const firstAddress = "..entry.git.name";
+  const secondAddress = "..entry.git.email";
   const initial = profileDocument("sha256-loaded", {
-    [firstName]: "Old Name",
-    [secondName]: "mail@example.test",
+    [firstAddress]: "Old Name",
+    [secondAddress]: "mail@example.test",
+    "..entry.language": "zh-CN",
   });
   const updated = profileDocument("sha256-next", {
-    [firstName]: "New Name",
-    [secondName]: "mail@example.test",
+    [firstAddress]: "New Name",
+    [secondAddress]: "mail@example.test",
+    "..entry.language": "zh-CN",
   });
   let resolveUpdate;
   const changed = [];
@@ -107,22 +111,22 @@ test("a completed save does not overwrite a newer Profile command selection", as
       changed.push(arguments_);
     },
   });
-  const command = (name) => ({
-    address: `..entry.env.git.${name}`,
+  const command = (address) => ({
+    address,
     handler: "entry.profile.set",
-    summary: name,
+    summary: address,
   });
 
   await view.loadProfile();
-  view.render(command(firstName));
+  view.render(command(firstAddress));
   elements.profileValue.value = "New Name";
   const saving = view.saveProfile();
-  view.render(command(secondName));
+  view.render(command(secondAddress));
   assert.equal(elements.profileSaveButton.disabled, true);
   resolveUpdate();
   await saving;
 
-  assert.equal(elements.entryProfileTitle.textContent, secondName);
+  assert.equal(elements.entryProfileTitle.textContent, "email");
   assert.equal(elements.profileValue.value, "mail@example.test");
   assert.equal(elements.profileSaveButton.disabled, false);
   assert.equal(elements.profileFeedback.textContent, "");

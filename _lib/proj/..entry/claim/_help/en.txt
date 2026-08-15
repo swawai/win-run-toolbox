@@ -1,0 +1,9 @@
+Inspect or confirm the DataRoot claim plan for the current Entry.
+
+Usage:
+  {{INVOCATION}}
+  {{INVOCATION}} --dry-run
+  {{INVOCATION}} --json
+  {{INVOCATION}} --yes
+
+The default and --dry-run only inspect the plan. Only --yes applies it, after rechecking Entry identity and DataRoot state. A changed plan is rejected; there is no force bypass.

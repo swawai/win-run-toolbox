@@ -1,0 +1,3 @@
+在项目固定的 Rust + MSVC 环境中运行 rustc.exe。
+
+用法：{{INVOCATION}} [rustc 参数...]

@@ -1,0 +1,6 @@
+Restart the current Entry Host into the Runtime release selected by the selector.
+
+Usage:
+  {{INVOCATION}}
+
+This is available only when the running and selected releases differ. Restart switches an already published release; it is not a publish operation.

@@ -32,6 +32,24 @@ fn control_web_command_launches_the_entry_before_profile_gating() {
 }
 
 #[test]
+fn runtime_status_is_available_before_data_root_and_profile_gating() {
+    let fixture = Fixture::new();
+    fixture.core_command("..runtime", "runtime.status");
+    let mut unexpected_claim =
+        |_claim: &DataRootClaim| Err(ClaimApprovalError::new("claim was not expected"));
+
+    let exit_code = run_with_approver(
+        &fixture.context,
+        &argv(&["..runtime", "--json"]),
+        &mut unexpected_claim,
+    )
+    .unwrap();
+
+    assert_eq!(exit_code, 0);
+    assert!(!fixture.data_root().exists());
+}
+
+#[test]
 fn host_process_uses_the_entry_launcher_as_the_process_boundary() {
     let fixture = Fixture::new();
     let command = host_process_command(&fixture.context);
@@ -49,10 +67,10 @@ fn host_process_uses_the_entry_launcher_as_the_process_boundary() {
 }
 
 #[test]
-fn entry_env_variables_are_independent_catalog_commands() {
+fn profile_settings_are_independent_typed_catalog_commands() {
     let fixture = Fixture::new();
-    for (group, name) in EntryProfileRecord::environment_variable_commands() {
-        fixture.core_command(&format!("..entry.env.{group}.{name}"), "entry.profile.set");
+    for address in EntryProfileRecord::profile_setting_addresses() {
+        fixture.core_command(address, "entry.profile.set");
     }
 
     let snapshot = CatalogSnapshot::discover(&fixture.context, None).unwrap();
@@ -62,17 +80,11 @@ fn entry_env_variables_are_independent_catalog_commands() {
         .filter(|command| command.handler.as_deref() == Some("entry.profile.set"))
         .collect::<Vec<_>>();
 
-    assert_eq!(setters.len(), 32);
+    assert_eq!(setters.len(), 18);
     assert!(setters.iter().all(|command| {
-        let Some(path) = command.address.strip_prefix("..entry.env.") else {
-            return false;
-        };
-        let Some((group, name)) = path.split_once('.') else {
-            return false;
-        };
-        let expected_parent = format!("..entry.env.{group}");
-        command.parent.as_deref() == Some(expected_parent.as_str())
-            && EntryProfileRecord::environment_variable_commands().contains(&(group, name))
+        let expected_parent = command.address.rsplit_once('.').map(|(parent, _)| parent);
+        command.parent.as_deref() == expected_parent
+            && EntryProfileRecord::is_profile_setting_address(&command.address)
     }));
 }
 
@@ -80,18 +92,16 @@ fn entry_env_variables_are_independent_catalog_commands() {
 fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
     let fixture = Fixture::new();
     fixture.core_command("..entry", "entry.profile");
-    fixture.core_command(
-        "..entry.env.git.SWAWKIT_PROJ_GIT_ID_NAME",
-        "entry.profile.set",
-    );
+    fixture.core_command("..entry.git.name", "entry.profile.set");
+    fixture.core_command(".dev.bun.mode", "entry.profile.set");
     fixture.core_command("..entry.apply", "entry.profile.apply");
-    fs::create_dir_all(fixture.context.kernel_root().join("..entry/env/_help")).unwrap();
+    fs::create_dir_all(fixture.context.kernel_root().join("..entry/git/_help")).unwrap();
     fs::write(
         fixture
             .context
             .kernel_root()
-            .join("..entry/env/_help/zh-CN.txt"),
-        "Set Entry Profile variables",
+            .join("..entry/git/_help/zh-CN.txt"),
+        "Set Entry Profile Git settings",
     )
     .unwrap();
     let global_guard = fixture.context.kernel_root().join("_global");
@@ -118,7 +128,7 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
     assert_eq!(
         run_with_approver(
             &fixture.context,
-            &argv(&["..entry.env", ".h"]),
+            &argv(&["..entry.git", ".h"]),
             &mut unexpected_claim,
         )
         .unwrap(),
@@ -129,7 +139,7 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
     assert_eq!(
         run_with_approver(
             &fixture.context,
-            &argv(&["..entry.env.git.SWAWKIT_PROJ_GIT_ID_NAME", "Fixture User",]),
+            &argv(&["..entry.git.name", "Fixture User"]),
             &mut unexpected_claim,
         )
         .unwrap(),
@@ -142,10 +152,26 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
     };
     assert_eq!(profile.record().git.name, "Fixture User");
 
+    assert_eq!(
+        run_with_approver(
+            &fixture.context,
+            &argv(&[".dev.bun.mode", "disabled"]),
+            &mut unexpected_claim,
+        )
+        .unwrap(),
+        0
+    );
+    let EntryProfileState::Ready(profile) =
+        EntryProfileStore::new(&fixture.context.swawkit_home, fixture.data_root()).read()
+    else {
+        panic!("expected ready profile");
+    };
+    assert_eq!(profile.record().development.bun.mode, "disabled");
+
     let before_invalid_update = fs::read(fixture.data_root().join("_profile.json")).unwrap();
     let invalid_update = run_with_approver(
         &fixture.context,
-        &argv(&["..entry.env.git.SWAWKIT_PROJ_UNKNOWN", "value"]),
+        &argv(&["..entry.git.unknown", "value"]),
         &mut unexpected_claim,
     )
     .unwrap_err();

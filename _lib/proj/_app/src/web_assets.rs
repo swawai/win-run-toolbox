@@ -13,11 +13,13 @@ const SHELL_CSS: &str = include_str!("../web/styles/shell.css");
 const EXPLORER_CSS: &str = include_str!("../web/styles/explorer.css");
 const DETAIL_CSS: &str = include_str!("../web/styles/detail.css");
 const ENTRY_PROFILE_CSS: &str = include_str!("../web/styles/entry-profile.css");
+const RUNTIME_CONTROL_CSS: &str = include_str!("../web/styles/runtime-control.css");
 const CLAIM_CSS: &str = include_str!("../web/styles/claim.css");
 const COMMAND_RUN_CSS: &str = include_str!("../web/styles/command-run.css");
 const COMMAND_JOURNAL_CSS: &str = include_str!("../web/styles/command-journal.css");
 
 const APP_JS: &str = include_str!("../web/app.js");
+const I18N_JS: &str = include_str!("../web/i18n.js");
 const CATALOG_MODEL_JS: &str = include_str!("../web/catalog-model.js");
 const COMMAND_ACTIVITY_JS: &str = include_str!("../web/command-activity.js");
 const COMMAND_EVENT_CLIENT_JS: &str = include_str!("../web/command-event-client.js");
@@ -26,7 +28,7 @@ const EXPLORER_JS: &str = include_str!("../web/explorer.js");
 const EXPLORER_MODEL_JS: &str = include_str!("../web/explorer-model.js");
 const DETAIL_JS: &str = include_str!("../web/detail.js");
 const ENTRY_PROFILE_JS: &str = include_str!("../web/entry-profile.js");
-const HOST_CONTROL_JS: &str = include_str!("../web/host-control.js");
+const RUNTIME_CONTROL_JS: &str = include_str!("../web/runtime-control.js");
 const CLAIM_JS: &str = include_str!("../web/claim.js");
 const COMMAND_RUN_JS: &str = include_str!("../web/command-run.js");
 const COMMAND_RUN_OPERATIONS_JS: &str = include_str!("../web/command-run-operations.js");
@@ -49,10 +51,12 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "styles/explorer.css" => Some(("text/css; charset=utf-8", EXPLORER_CSS)),
         "styles/detail.css" => Some(("text/css; charset=utf-8", DETAIL_CSS)),
         "styles/entry-profile.css" => Some(("text/css; charset=utf-8", ENTRY_PROFILE_CSS)),
+        "styles/runtime-control.css" => Some(("text/css; charset=utf-8", RUNTIME_CONTROL_CSS)),
         "styles/claim.css" => Some(("text/css; charset=utf-8", CLAIM_CSS)),
         "styles/command-run.css" => Some(("text/css; charset=utf-8", COMMAND_RUN_CSS)),
         "styles/command-journal.css" => Some(("text/css; charset=utf-8", COMMAND_JOURNAL_CSS)),
         "app.js" => Some(("text/javascript; charset=utf-8", APP_JS)),
+        "i18n.js" => Some(("text/javascript; charset=utf-8", I18N_JS)),
         "catalog-model.js" => Some(("text/javascript; charset=utf-8", CATALOG_MODEL_JS)),
         "command-activity.js" => Some(("text/javascript; charset=utf-8", COMMAND_ACTIVITY_JS)),
         "command-event-client.js" => {
@@ -63,7 +67,7 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "explorer-model.js" => Some(("text/javascript; charset=utf-8", EXPLORER_MODEL_JS)),
         "detail.js" => Some(("text/javascript; charset=utf-8", DETAIL_JS)),
         "entry-profile.js" => Some(("text/javascript; charset=utf-8", ENTRY_PROFILE_JS)),
-        "host-control.js" => Some(("text/javascript; charset=utf-8", HOST_CONTROL_JS)),
+        "runtime-control.js" => Some(("text/javascript; charset=utf-8", RUNTIME_CONTROL_JS)),
         "claim.js" => Some(("text/javascript; charset=utf-8", CLAIM_JS)),
         "command-run.js" => Some(("text/javascript; charset=utf-8", COMMAND_RUN_JS)),
         "command-run-operations.js" => {

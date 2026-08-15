@@ -1,0 +1,7 @@
+Check a module declaration, Guard, Provider requirements, and Export publication state.
+
+Usage:
+  {{INVOCATION}} <command-address>
+  {{INVOCATION}} <command-address> --json
+
+This command only reads the Catalog, _module.json, Provider State, and Export root. It does not run the target command, install dependencies, or execute Guards. Exit code 0 means the command and all declared contracts are ready; exit code 1 means at least one item is not ready.

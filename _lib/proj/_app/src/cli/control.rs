@@ -7,6 +7,8 @@ use swawkit_proj::{
     context::EntryContext,
     help::render_help,
     profile::{EntryProfileDocument, EntryProfileRecord, EntryProfileStore},
+    runtime_cleanup,
+    runtime_control::{self, HostAction, RuntimeStatusDocument},
 };
 
 use super::{CliError, write_output};
@@ -57,6 +59,24 @@ pub(super) fn dispatch_before_data_root(
             context,
             host_launcher,
         )?))),
+        Some("runtime.status") => Ok(Some(PreDataRootControl::Complete(show_runtime_status(
+            arguments, context,
+        )?))),
+        Some("host.exit") => Ok(Some(PreDataRootControl::Complete(request_host_action(
+            address,
+            arguments,
+            context,
+            HostAction::Exit,
+        )?))),
+        Some("host.restart") => Ok(Some(PreDataRootControl::Complete(request_host_action(
+            address,
+            arguments,
+            context,
+            HostAction::Restart,
+        )?))),
+        Some("runtime.cleanup") => Ok(Some(PreDataRootControl::Complete(cleanup_runtime(
+            address, arguments, context,
+        )?))),
         _ => Ok(None),
     }
 }
@@ -74,11 +94,23 @@ pub(super) fn dispatch(
     let address = address
         .to_str()
         .ok_or_else(|| CliError::new("command address is not valid Unicode"))?;
-    if !address.starts_with("..") {
+    let Some(command) = snapshot.commands.iter().find(|command| {
+        command.address == address
+            && command.adapter.as_deref() == Some("core")
+            && (command.source == CommandSource::Control
+                || command.handler.as_deref() == Some("entry.profile.set"))
+    }) else {
         return Ok(None);
+    };
+    if !command.runnable {
+        let reason = command
+            .diagnostic
+            .as_deref()
+            .unwrap_or("the command has no recognized Core entry");
+        return Err(CliError::new(format!(
+            "command '{address}' is not runnable: {reason}"
+        )));
     }
-
-    let command = resolve_control(snapshot, address)?;
     let arguments = argv.get(1..).unwrap_or_default();
     let exit_code = match command.handler.as_deref() {
         Some("host.start") => start_host(arguments, context, host_launcher)?,
@@ -141,6 +173,52 @@ fn start_host(
     host_launcher(context)
 }
 
+fn show_runtime_status(arguments: &[OsString], context: &EntryContext) -> Result<i32, CliError> {
+    let document = runtime_control::inspect(context).map_err(CliError::new)?;
+    match arguments {
+        [] => write_runtime_summary(&document)?,
+        [format] if format == "--json" => {
+            let output = serde_json::to_string_pretty(&document).map_err(|error| {
+                CliError::new(format!("cannot serialize Runtime status: {error}"))
+            })?;
+            write_output(&output)
+                .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
+        }
+        _ => return Err(CliError::new("usage: ..runtime [--json]")),
+    }
+    Ok(0)
+}
+
+fn request_host_action(
+    address: &str,
+    arguments: &[OsString],
+    context: &EntryContext,
+    action: HostAction,
+) -> Result<i32, CliError> {
+    require_no_arguments(address, arguments)?;
+    runtime_control::request_host_action(context, action).map_err(CliError::new)?;
+    let message = match action {
+        HostAction::Exit => "Entry Host exit accepted.",
+        HostAction::Restart => "Entry Host restart accepted.",
+    };
+    write_output(message)
+        .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
+    Ok(0)
+}
+
+fn cleanup_runtime(
+    address: &str,
+    arguments: &[OsString],
+    context: &EntryContext,
+) -> Result<i32, CliError> {
+    let apply = match arguments {
+        [] => false,
+        [argument] if argument == "--apply" => true,
+        _ => return Err(CliError::new(format!("usage: {address} [--apply]"))),
+    };
+    runtime_cleanup::execute_text(context, apply).map_err(CliError::new)
+}
+
 fn show_profile(
     arguments: &[OsString],
     profile_store: &EntryProfileStore,
@@ -165,25 +243,13 @@ fn set_profile(
         return Err(CliError::new(format!("usage: {address} <value>")));
     };
     let value = unicode_argument(value, "profile value")?.to_owned();
-    let command_path = address.strip_prefix("..entry.env.").ok_or_else(|| {
-        CliError::new(format!(
-            "Catalog invariant failed for '{address}': Entry Profile setter address is invalid"
-        ))
-    })?;
-    let mut segments = command_path.split('.');
-    let (Some(group), Some(variable), None) = (segments.next(), segments.next(), segments.next())
-    else {
+    if !EntryProfileRecord::is_profile_setting_address(address) {
         return Err(CliError::new(format!(
-            "Catalog invariant failed for '{address}': Entry Profile setter address is invalid"
-        )));
-    };
-    if !EntryProfileRecord::environment_variable_commands().contains(&(group, variable)) {
-        return Err(CliError::new(format!(
-            "Catalog invariant failed for '{address}': Entry Profile variable is in the wrong group"
+            "Catalog invariant failed for '{address}': Entry Profile setting address is invalid"
         )));
     }
     let document = profile_store
-        .update_environment_variable(variable, value)
+        .update_setting(address, value)
         .map_err(|error| CliError::new(error.to_string()))?;
     write_json(&document)?;
     Ok(0)
@@ -257,6 +323,30 @@ fn write_profile_summary(document: &EntryProfileDocument) -> Result<(), CliError
     if let Some(error) = &document.error {
         output.push_str("\nError: ");
         output.push_str(error);
+    }
+    write_output(&output)
+        .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))
+}
+
+fn write_runtime_summary(document: &RuntimeStatusDocument) -> Result<(), CliError> {
+    let mut output = format!(
+        "Runtime\nSelected Release: {}\nReleases: {}",
+        document.selected_release_id, document.release_count
+    );
+    match &document.host {
+        Some(host) => {
+            output.push_str(&format!(
+                "\nHost: online\nPID: {}\nRunning Release: {}\nUpdate: {}",
+                host.pid,
+                host.running_release_id,
+                if host.update_available {
+                    "new Release pending restart"
+                } else {
+                    "current"
+                }
+            ));
+        }
+        None => output.push_str("\nHost: offline"),
     }
     write_output(&output)
         .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))

@@ -1,0 +1,8 @@
+{
+  "schema": "swawkit.command-module/v1",
+  "provides": [
+    {
+      "contract": "swawkit.proj.dev-setup/v2"
+    }
+  ]
+}

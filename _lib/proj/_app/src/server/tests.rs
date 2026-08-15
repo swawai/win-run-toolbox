@@ -166,7 +166,7 @@ async fn exposes_status_and_requires_explicit_authority_for_shutdown() {
     let document: Value = serde_json::from_slice(&body).expect("Host status JSON");
     assert_eq!(
         document["protocol"],
-        crate::server::host_control::HOST_STATUS_PROTOCOL
+        crate::runtime_control::HOST_STATUS_PROTOCOL
     );
     assert_eq!(document["pid"], std::process::id());
     assert_eq!(document["runningReleaseId"], "1".repeat(64));
@@ -262,8 +262,8 @@ async fn serves_only_the_declared_local_surface() {
         "/commands",
         "/commands/action/proj/build/launcher",
         "/commands/kernel/dev/setup",
-        "/commands/control/entry/env/rust",
-        "/commands/control/entry/env/rust/SWAWKIT_PROJ_RUST_MODE",
+        "/commands/control/entry/language",
+        "/commands/kernel/dev/rust/mode",
     ] {
         let response = send(app.clone(), Method::GET, path, Some(AUTHORITY)).await;
         assert_eq!(response.status(), StatusCode::OK, "{path}");
@@ -285,6 +285,10 @@ async fn serves_only_the_declared_local_surface() {
             "/assets/styles/entry-profile.css",
             "text/css; charset=utf-8",
         ),
+        (
+            "/assets/styles/runtime-control.css",
+            "text/css; charset=utf-8",
+        ),
         ("/assets/styles/claim.css", "text/css; charset=utf-8"),
         ("/assets/styles/command-run.css", "text/css; charset=utf-8"),
         (
@@ -292,6 +296,7 @@ async fn serves_only_the_declared_local_surface() {
             "text/css; charset=utf-8",
         ),
         ("/assets/app.js", "text/javascript; charset=utf-8"),
+        ("/assets/i18n.js", "text/javascript; charset=utf-8"),
         ("/assets/catalog-model.js", "text/javascript; charset=utf-8"),
         (
             "/assets/command-activity.js",
@@ -309,7 +314,10 @@ async fn serves_only_the_declared_local_surface() {
         ),
         ("/assets/detail.js", "text/javascript; charset=utf-8"),
         ("/assets/entry-profile.js", "text/javascript; charset=utf-8"),
-        ("/assets/host-control.js", "text/javascript; charset=utf-8"),
+        (
+            "/assets/runtime-control.js",
+            "text/javascript; charset=utf-8",
+        ),
         ("/assets/claim.js", "text/javascript; charset=utf-8"),
         (
             "/assets/command-run-client.js",
@@ -360,6 +368,7 @@ async fn serves_only_the_declared_local_surface() {
     let document = catalog_document(app.clone()).await;
     assert_eq!(document["protocol"], crate::catalog::CATALOG_PROTOCOL);
     assert_eq!(document["entryName"], "swawkit");
+    assert_eq!(document["language"], "zh-CN");
     assert_eq!(document["commands"].as_array().map(Vec::len), Some(1));
     assert_eq!(
         send(app.clone(), Method::GET, "/healthz", Some(AUTHORITY))
@@ -440,6 +449,10 @@ async fn serializes_the_complete_catalog_node_contract() {
     fixture.directory("home/_lib/proj");
     fixture.file("home/_lib/proj/.dev/status/run.cmd", "");
     fixture.file(
+        "home/_lib/proj/.dev/status/_module.json",
+        r#"{"schema":"swawkit.command-module/v1","requires":[{"provider":".dev.setup","contract":"swawkit.dev/v1"}],"provides":[{"contract":"swawkit.status/v1"}]}"#,
+    );
+    fixture.file(
         "home/_lib/proj/.dev/_view/web.json",
         r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"wide"}}"#,
     );
@@ -468,6 +481,7 @@ async fn serializes_the_complete_catalog_node_contract() {
             "entry": null,
             "adapter": null,
             "handler": null,
+            "module": null,
             "help": null,
             "view": {
                 "childrenColumn": {
@@ -488,6 +502,16 @@ async fn serializes_the_complete_catalog_node_contract() {
             "entry": "run.cmd",
             "adapter": "cmd",
             "handler": null,
+            "module": {
+                "schema": "swawkit.command-module/v1",
+                "requires": [{
+                    "provider": ".dev.setup",
+                    "contract": "swawkit.dev/v1"
+                }],
+                "provides": [{
+                    "contract": "swawkit.status/v1"
+                }]
+            },
             "help": {
                 "summary": "Show .dev.status",
                 "text": "Show .dev.status\nUse swawkit .dev.status"

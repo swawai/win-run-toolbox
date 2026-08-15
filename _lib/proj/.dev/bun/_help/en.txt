@@ -1,0 +1,3 @@
+Run project-managed Bun and maintain its declaration through subcommands.
+
+Usage: {{INVOCATION}} [bun arguments...]

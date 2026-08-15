@@ -69,7 +69,7 @@ try {
     $Setup = Invoke-ProjClaimEntry `
         -EntryPath $EntryPath `
         -Arguments @(
-            '..entry.env.project.SWAWKIT_PROJ_TARGET_PROJECT_ROOT',
+            '..entry.project.root',
             '${SWAWKIT_HOME}'
         )
     Assert-ProjClaimEntry `
@@ -143,7 +143,7 @@ try {
 
     $Help = Invoke-ProjClaimEntry -EntryPath $EntryPath -Arguments @('--help')
     Assert-ProjClaimEntry `
-        -Condition ($Help.ExitCode -eq 0 -and $Help.Text.Contains('Control Plane:')) `
+        -Condition ($Help.ExitCode -eq 0 -and $Help.Text.Contains("${EntryName}:")) `
         -Message "claimed Entry did not resume normal CLI operation: $($Help.Text)"
 } finally {
     Remove-ProjCandidateRuntimeFixture -Path $TemporaryRoot

@@ -1,7 +1,0 @@
-设置当前 Entry 的默认 Shell 标识符。
-
-用法:
-  {{INVOCATION}} <value>
-
-该值必须非空且不能带首尾空白，例如 pwsh。它是 Entry 偏好声明，
-由支持默认 Shell 的命令读取。

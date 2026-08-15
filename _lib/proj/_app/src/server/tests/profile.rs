@@ -2,10 +2,10 @@ use super::*;
 use crate::binding::SWAWKIT_HOME_PLACEHOLDER;
 use crate::profile::EntryProfileState;
 
-async fn send_variable(app: Router, name: &str, value: &str, revision: Option<&str>) -> Response {
+async fn send_setting(app: Router, address: &str, value: &str, revision: Option<&str>) -> Response {
     let mut request = Request::builder()
         .method(Method::PUT)
-        .uri(format!("/api/v2/profile/variables/{name}"))
+        .uri(format!("/api/v2/profile/settings/{address}"))
         .header(HOST, AUTHORITY)
         .header(CONTENT_TYPE, "application/json");
     if let Some(revision) = revision {
@@ -28,7 +28,7 @@ async fn response_document(response: Response) -> Value {
 }
 
 #[tokio::test]
-async fn publishes_one_validated_variable_and_enables_actions() {
+async fn publishes_one_validated_setting_and_enables_actions() {
     let fixture = Fixture::new();
     fixture.directory("home/_lib/proj");
     fixture.file("home/.swaw/demo/run.ps1", "");
@@ -44,20 +44,23 @@ async fn publishes_one_validated_variable_and_enables_actions() {
         Some("\"missing\"")
     );
     let document = response_document(before).await;
-    assert_eq!(document["protocol"], "swawkit.entry-profile-state/v3");
+    assert_eq!(
+        document["protocol"],
+        crate::profile::PROFILE_DOCUMENT_PROTOCOL
+    );
     let initial_revision = document["revision"].as_str().expect("profile revision");
     assert_eq!(document["status"], "setupRequired");
     assert_eq!(document["requiredComplete"], false);
     assert_eq!(
-        document["variables"]["SWAWKIT_PROJ_TARGET_PROJECT_ROOT"],
+        document["settings"]["..entry.project.root"],
         SWAWKIT_HOME_PLACEHOLDER
     );
-    assert_eq!(document["variables"].as_object().unwrap().len(), 32);
+    assert_eq!(document["settings"].as_object().unwrap().len(), 18);
     assert!(command(&catalog_document(app.clone()).await, "demo").is_none());
 
-    let invalid = send_variable(
+    let invalid = send_setting(
         app.clone(),
-        "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
+        "..entry.project.root",
         "relative/project",
         Some(initial_revision),
     )
@@ -69,9 +72,9 @@ async fn publishes_one_validated_variable_and_enables_actions() {
             .is_some_and(|error| error.contains("must be absolute"))
     );
 
-    let saved = send_variable(
+    let saved = send_setting(
         app.clone(),
-        "SWAWKIT_PROJ_TARGET_PROJECT_ROOT",
+        "..entry.project.root",
         SWAWKIT_HOME_PLACEHOLDER,
         Some(initial_revision),
     )
@@ -81,7 +84,7 @@ async fn publishes_one_validated_variable_and_enables_actions() {
     assert_eq!(document["status"], "ready");
     assert_eq!(document["requiredComplete"], true);
     assert_eq!(
-        document["variables"]["SWAWKIT_PROJ_TARGET_PROJECT_ROOT"],
+        document["settings"]["..entry.project.root"],
         SWAWKIT_HOME_PLACEHOLDER
     );
     assert_eq!(
@@ -91,13 +94,13 @@ async fn publishes_one_validated_variable_and_enables_actions() {
 }
 
 #[tokio::test]
-async fn requires_a_revision_and_rejects_a_stale_variable_without_overwriting() {
+async fn requires_a_revision_and_rejects_a_stale_setting_without_overwriting() {
     let fixture = Fixture::new();
     fixture.directory("home/_lib/proj");
     let app = fixture.app();
 
     let missing_precondition =
-        send_variable(app.clone(), "SWAWKIT_PROJ_GIT_ID_NAME", "Web Writer", None).await;
+        send_setting(app.clone(), "..entry.git.name", "Web Writer", None).await;
     assert_eq!(
         missing_precondition.status(),
         StatusCode::PRECONDITION_REQUIRED
@@ -106,9 +109,9 @@ async fn requires_a_revision_and_rejects_a_stale_variable_without_overwriting() 
     let initial = send(app.clone(), Method::GET, "/api/v2/profile", Some(AUTHORITY)).await;
     let initial = response_document(initial).await;
     let initial_revision = initial["revision"].as_str().unwrap();
-    let saved = send_variable(
+    let saved = send_setting(
         app.clone(),
-        "SWAWKIT_PROJ_GIT_ID_NAME",
+        "..entry.git.name",
         "Web Writer",
         Some(initial_revision),
     )
@@ -119,12 +122,12 @@ async fn requires_a_revision_and_rejects_a_stale_variable_without_overwriting() 
 
     fixture
         .profile_store()
-        .update_environment_variable("SWAWKIT_PROJ_GIT_ID_NAME", "CLI Writer".to_owned())
+        .update_setting("..entry.git.name", "CLI Writer".to_owned())
         .expect("concurrent CLI update");
 
-    let conflict = send_variable(
+    let conflict = send_setting(
         app,
-        "SWAWKIT_PROJ_GIT_ID_EMAIL",
+        "..entry.git.email",
         "web@example.com",
         Some(stale_revision),
     )
@@ -142,6 +145,32 @@ async fn requires_a_revision_and_rejects_a_stale_variable_without_overwriting() 
 }
 
 #[tokio::test]
+async fn entry_language_selects_the_catalog_help_document() {
+    let fixture = Fixture::new();
+    fixture.file("home/_lib/proj/_help/zh-CN.txt", "中文帮助");
+    fixture.file("home/_lib/proj/_help/en.txt", "English help");
+    let app = fixture.app();
+
+    let initial = send(app.clone(), Method::GET, "/api/v2/profile", Some(AUTHORITY)).await;
+    let initial = response_document(initial).await;
+    let saved = send_setting(
+        app.clone(),
+        "..entry.language",
+        "en",
+        initial["revision"].as_str(),
+    )
+    .await;
+    assert_eq!(saved.status(), StatusCode::OK);
+
+    let catalog = catalog_document(app).await;
+    assert_eq!(catalog["language"], "en");
+    assert_eq!(
+        command(&catalog, "").and_then(|node| node["help"]["summary"].as_str()),
+        Some("English help")
+    );
+}
+
+#[tokio::test]
 async fn web_profile_updates_share_the_provider_invalidation_transaction() {
     let fixture = Fixture::new();
     fixture.directory("home/_lib/proj");
@@ -149,9 +178,9 @@ async fn web_profile_updates_share_the_provider_invalidation_transaction() {
     let initial = send(app.clone(), Method::GET, "/api/v2/profile", Some(AUTHORITY)).await;
     let initial = response_document(initial).await;
 
-    let created = send_variable(
+    let created = send_setting(
         app.clone(),
-        "SWAWKIT_PROJ_GIT_ID_NAME",
+        "..entry.git.name",
         "Web Writer",
         initial["revision"].as_str(),
     )
@@ -163,9 +192,9 @@ async fn web_profile_updates_share_the_provider_invalidation_transaction() {
         .join("home/data/proj.swawkit/modules/kernel/.dev/setup/_state.json");
     let first_state = fs::read(&state_path).expect("read initial provider state");
 
-    let non_provider = send_variable(
+    let non_provider = send_setting(
         app.clone(),
-        "SWAWKIT_PROJ_GIT_ID_EMAIL",
+        "..entry.git.email",
         "web@example.com",
         created["revision"].as_str(),
     )
@@ -174,9 +203,9 @@ async fn web_profile_updates_share_the_provider_invalidation_transaction() {
     let non_provider = response_document(non_provider).await;
     assert_eq!(fs::read(&state_path).unwrap(), first_state);
 
-    let provider = send_variable(
+    let provider = send_setting(
         app.clone(),
-        "SWAWKIT_PROJ_BUN_VERSION",
+        ".dev.bun.version",
         "1.2.16",
         non_provider["revision"].as_str(),
     )
@@ -189,9 +218,9 @@ async fn web_profile_updates_share_the_provider_invalidation_transaction() {
     assert_eq!(state["inputRevision"], profile.environment_input_revision());
     let state_after_provider_update = fs::read(&state_path).unwrap();
 
-    let stale = send_variable(
+    let stale = send_setting(
         app,
-        "SWAWKIT_PROJ_BUN_VERSION",
+        ".dev.bun.version",
         "1.2.17",
         non_provider["revision"].as_str(),
     )

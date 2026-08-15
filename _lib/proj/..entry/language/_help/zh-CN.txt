@@ -1,0 +1,10 @@
+设置 Entry 的帮助与界面语言。
+
+用法：
+  {{INVOCATION}} <value>
+
+可选值：
+  zh-CN
+  en
+
+语言是 Entry Profile 的一部分。保存后，CLI 帮助与 Web 界面会使用新语言；尚无对应译文的模块帮助暂时回退到简体中文。

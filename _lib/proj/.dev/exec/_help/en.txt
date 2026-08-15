@@ -1,0 +1,6 @@
+Run an executable directly in the complete development environment for this Entry.
+
+Usage:
+  {{INVOCATION}} <executable> [arguments...]
+
+This command does not invoke cmd.exe or interpret pipes, redirection, or Shell metacharacters. Use {{COMMAND}} .dev.cmd for CMD syntax and prefer the dedicated Bun, Cargo, Rustc, or CL commands when applicable.

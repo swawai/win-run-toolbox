@@ -1,0 +1,6 @@
+Compile C or C++ with the project-managed MSVC cl.exe.
+
+Usage:
+  {{INVOCATION}} [cl arguments...]
+
+Arguments and exit code are passed through unchanged, and the invocation directory remains the working directory. This command never falls back to a compiler from system PATH.

@@ -20,6 +20,17 @@ pub(crate) enum Operation {
         archive: PathBuf,
         destination: PathBuf,
     },
+    RuntimeCleanup {
+        swawkit_home: PathBuf,
+        apply: bool,
+        format: RuntimeCleanupFormat,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RuntimeCleanupFormat {
+    Text,
+    Json,
 }
 
 pub(crate) fn parse(arguments: impl Iterator<Item = OsString>) -> Result<Operation, String> {
@@ -71,6 +82,23 @@ pub(crate) fn parse(arguments: impl Iterator<Item = OsString>) -> Result<Operati
             archive: PathBuf::from(&values[2]),
             destination: PathBuf::from(&values[3]),
         }),
+        "runtime-cleanup-v1" if values.len() == 4 => {
+            let apply = match unicode(&values[2], "Runtime cleanup action")? {
+                "preview" => false,
+                "apply" => true,
+                _ => return Err("Runtime cleanup action must be preview or apply".to_owned()),
+            };
+            let format = match unicode(&values[3], "Runtime cleanup format")? {
+                "text" => RuntimeCleanupFormat::Text,
+                "json" => RuntimeCleanupFormat::Json,
+                _ => return Err("Runtime cleanup format must be text or json".to_owned()),
+            };
+            Ok(Operation::RuntimeCleanup {
+                swawkit_home: PathBuf::from(&values[1]),
+                apply,
+                format,
+            })
+        }
         _ => Err(usage()),
     }
 }
@@ -84,7 +112,8 @@ fn unicode<'a>(value: &'a OsStr, label: &str) -> Result<&'a str, String> {
 fn usage() -> String {
     "expected one exact Toolchain V1 operation:\n  command-v1 <handler> [arguments...]\n  download-v1 <controlled-root> <source> \
      <destination> <progress-id>\n  zip-test-v1 <archive>\n  zip-extract-v1 \
-     <controlled-root> <archive> <destination>"
+     <controlled-root> <archive> <destination>\n  runtime-cleanup-v1 \
+     <swawkit-home> <preview|apply> <text|json>"
         .to_owned()
 }
 
@@ -112,6 +141,26 @@ mod tests {
         ));
         assert!(parse(["command-v1", "../status"].into_iter().map(OsString::from)).is_err());
         assert!(parse([OsString::from("download")].into_iter()).is_err());
+        assert!(matches!(
+            parse(
+                ["runtime-cleanup-v1", "C:\\home", "preview", "json"]
+                    .into_iter()
+                    .map(OsString::from)
+            ),
+            Ok(Operation::RuntimeCleanup {
+                apply: false,
+                format: RuntimeCleanupFormat::Json,
+                ..
+            })
+        ));
+        assert!(
+            parse(
+                ["runtime-cleanup-v1", "C:\\home", "delete", "json"]
+                    .into_iter()
+                    .map(OsString::from)
+            )
+            .is_err()
+        );
         assert!(
             parse(
                 ["download-v1", "r", "s", "d", "bad id"]

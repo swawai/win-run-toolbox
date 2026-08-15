@@ -148,6 +148,7 @@ function New-ProjCandidateRuntimeFixture {
     foreach ($RelativeDirectory in @(
         '..entry',
         '..web',
+        '.check',
         '.dev',
         '.help',
         '.info',

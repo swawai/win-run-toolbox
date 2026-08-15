@@ -1,0 +1,6 @@
+Validate and atomically replace the current Entry Profile from a JSON file.
+
+Usage:
+  {{INVOCATION}} --file <profile.json>
+
+Relative paths resolve from the invocation directory. Input must conform to swawkit.entry-profile/v2. Validation failures preserve the existing Profile.

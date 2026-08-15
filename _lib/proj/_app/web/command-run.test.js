@@ -28,14 +28,14 @@ describe("command run view", () => {
         const id = `run-${bodies.length}`;
         return response(201, snapshot({
           id,
-          address: ".runtime.cleanup",
+          address: ".cache.prune",
           state: "exited",
           exitCode: 0,
         }), `/api/v2/command-runs/${id}`);
       },
     });
     view.select({
-      address: ".runtime.cleanup",
+      address: ".cache.prune",
       runnable: true,
       source: "kernel",
       runOperations: [

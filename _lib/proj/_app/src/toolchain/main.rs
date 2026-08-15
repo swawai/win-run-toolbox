@@ -9,10 +9,11 @@ mod command;
 mod download;
 mod event;
 mod path;
+mod runtime_cleanup;
 
 use std::process::ExitCode;
 
-use args::{Operation, parse};
+use args::{Operation, RuntimeCleanupFormat, parse};
 
 fn main() -> ExitCode {
     match run() {
@@ -39,5 +40,20 @@ fn run() -> Result<(), String> {
             archive,
             destination,
         } => archive::extract(&controlled_root, &archive, &destination),
+        Operation::RuntimeCleanup {
+            swawkit_home,
+            apply,
+            format,
+        } => {
+            let document = runtime_cleanup::run(&swawkit_home, apply)?;
+            match format {
+                RuntimeCleanupFormat::Text => println!("{}", document.render_text()),
+                RuntimeCleanupFormat::Json => swawkit_proj::runtime_cleanup::write_json(
+                    &document,
+                    &mut std::io::stdout().lock(),
+                )?,
+            }
+            Ok(())
+        }
     }
 }

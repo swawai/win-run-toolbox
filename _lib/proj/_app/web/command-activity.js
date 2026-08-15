@@ -2,40 +2,44 @@ import {
   isCommandJournalSupported,
   isCommandRunSupported,
 } from "./command-run-model.js";
+import { t } from "./i18n.js";
 
 const PROFILE_SETTER_HANDLER = "entry.profile.set";
-const viewPresentation = {
-  children: {
-    icon: "⌑",
-    label: "子命令",
-    summary: "继续浏览下一级命令",
-  },
-  edit: {
-    icon: "✎",
-    label: "设置",
-    summary: "修改并保存变量值",
-  },
-  overview: {
-    icon: "i",
-    label: "概览",
-    summary: "查看调用与命令属性",
-  },
-  help: {
-    icon: "?",
-    label: "帮助",
-    summary: "阅读命令说明",
-  },
-  run: {
-    icon: "▶",
-    label: "执行",
-    summary: "设置参数并启动命令",
-  },
-  logs: {
-    icon: "≡",
-    label: "日志",
-    summary: "查看 CLI 与 Web 历史运行",
-  },
-};
+const RUNTIME_STATUS_HANDLER = "runtime.status";
+function viewPresentation() {
+  return {
+    children: {
+      icon: "⌑",
+      label: t("子命令", "Subcommands"),
+      summary: t("继续浏览下一级命令", "Browse the next command level"),
+    },
+    edit: {
+      icon: "✎",
+      label: t("设置", "Setting"),
+      summary: t("修改并保存配置值", "Edit and save a configuration value"),
+    },
+    overview: {
+      icon: "i",
+      label: t("概览", "Overview"),
+      summary: t("查看调用与命令属性", "Inspect invocation and command properties"),
+    },
+    help: {
+      icon: "?",
+      label: t("帮助", "Help"),
+      summary: t("阅读命令说明", "Read command help"),
+    },
+    run: {
+      icon: "▶",
+      label: t("执行", "Run"),
+      summary: t("设置参数并启动命令", "Set arguments and start the command"),
+    },
+    logs: {
+      icon: "≡",
+      label: t("日志", "Logs"),
+      summary: t("查看 CLI 与 Web 历史运行", "View CLI and Web run history"),
+    },
+  };
+}
 
 export function commandActivities(command) {
   if (!command) {
@@ -62,11 +66,15 @@ export function commandViews(command, { hasChildren = false } = {}) {
     ...(hasChildren ? ["children"] : []),
     ...commandActivities(command),
   ];
-  return names.map((name) => ({ name, ...viewPresentation[name] }));
+  const presentation = viewPresentation();
+  return names.map((name) => ({ name, ...presentation[name] }));
 }
 
 export function defaultCommandView(command, options = {}) {
   const views = commandViews(command, options);
+  if (command?.handler === RUNTIME_STATUS_HANDLER) {
+    return views.find((view) => view.name === "overview")?.name ?? null;
+  }
   return views.find((view) => view.name === "children")?.name
     ?? views[0]?.name
     ?? null;

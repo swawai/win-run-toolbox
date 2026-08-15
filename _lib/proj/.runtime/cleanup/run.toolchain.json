@@ -1,4 +1,0 @@
-{
-  "schema": "swawkit.toolchain-command/v1",
-  "handler": "runtime.cleanup"
-}

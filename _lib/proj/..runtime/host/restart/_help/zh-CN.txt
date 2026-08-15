@@ -1,0 +1,7 @@
+重启当前 Entry Host 并切换到 selector 已选中的新 Runtime Release。
+
+用法：
+  {{INVOCATION}}
+
+仅当 Host 运行 Release 与 selector Release 不同时可用。短生命周期协调进程会先固定旧
+Host，再释放单实例租约并通过原 Entry Launcher 启动新 Release；不会把“重启”误作发布更新。

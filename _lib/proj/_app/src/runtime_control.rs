@@ -208,12 +208,26 @@ fn read_live_host(
 
 fn host_agent() -> Agent {
     Agent::config_builder()
+        // The Host endpoint is an exact IPv4 loopback address. Routing this
+        // private control channel through an inherited proxy is both incorrect
+        // and capable of making a healthy local Host appear unavailable.
+        .proxy(None)
         .timeout_global(Some(Duration::from_secs(3)))
         .timeout_connect(Some(Duration::from_millis(500)))
         .max_redirects(0)
         .http_status_as_error(false)
         .build()
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn private_host_control_never_inherits_a_proxy() {
+        assert!(host_agent().config().proxy().is_none());
+    }
 }
 
 fn read_body(response: &mut ureq::http::Response<ureq::Body>) -> Result<Vec<u8>, String> {

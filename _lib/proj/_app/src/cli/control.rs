@@ -24,7 +24,6 @@ pub(super) enum PreDataRootControl {
 pub(super) fn dispatch_before_data_root(
     context: &EntryContext,
     argv: &[OsString],
-    host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
 ) -> Result<Option<PreDataRootControl>, CliError> {
     let Some(address) = argv.first() else {
         return Ok(None);
@@ -54,11 +53,6 @@ pub(super) fn dispatch_before_data_root(
             snapshot,
             address: address.to_owned(),
         })),
-        Some("host.start") => Ok(Some(PreDataRootControl::Complete(start_host(
-            arguments,
-            context,
-            host_launcher,
-        )?))),
         Some("runtime.status") => Ok(Some(PreDataRootControl::Complete(show_runtime_status(
             arguments, context,
         )?))),
@@ -86,7 +80,6 @@ pub(super) fn dispatch(
     argv: &[OsString],
     context: &EntryContext,
     profile_store: &EntryProfileStore,
-    host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
 ) -> Result<Option<i32>, CliError> {
     let Some(address) = argv.first() else {
         return Ok(None);
@@ -113,7 +106,6 @@ pub(super) fn dispatch(
     }
     let arguments = argv.get(1..).unwrap_or_default();
     let exit_code = match command.handler.as_deref() {
-        Some("host.start") => start_host(arguments, context, host_launcher)?,
         Some("entry.profile") => show_profile(arguments, profile_store)?,
         Some("entry.profile.set") => set_profile(address, arguments, profile_store)?,
         Some("entry.profile.apply") => apply_profile(arguments, context, profile_store)?,
@@ -162,15 +154,6 @@ fn control_node<'a>(
         .iter()
         .find(|node| node.source == CommandSource::Control && node.address == address)
         .ok_or_else(|| CliError::new(format!("command not found: {address}")))
-}
-
-fn start_host(
-    arguments: &[OsString],
-    context: &EntryContext,
-    host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
-) -> Result<i32, CliError> {
-    require_no_arguments("..web", arguments)?;
-    host_launcher(context)
 }
 
 fn show_runtime_status(arguments: &[OsString], context: &EntryContext) -> Result<i32, CliError> {

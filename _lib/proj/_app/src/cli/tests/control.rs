@@ -1,37 +1,6 @@
 use super::*;
 
 #[test]
-fn control_web_command_launches_the_entry_before_profile_gating() {
-    let fixture = Fixture::new();
-    fixture.core_command("..web", "host.start");
-    fs::create_dir_all(fixture.data_root()).unwrap();
-    let mut unexpected_claim =
-        |_claim: &DataRootClaim| Err(ClaimApprovalError::new("claim was not expected"));
-    let mut launched = false;
-    let mut launch_host = |context: &EntryContext| {
-        launched = context.entry_file == fixture.context.entry_file;
-        Ok(0)
-    };
-
-    let exit_code = run_with_host_launcher(
-        &fixture.context,
-        &argv(&["..web"]),
-        &mut unexpected_claim,
-        &mut launch_host,
-    )
-    .unwrap();
-
-    assert_eq!(exit_code, 0);
-    assert!(launched);
-    assert!(
-        read_entry_record(&fixture.data_root())
-            .valid_record()
-            .is_none()
-    );
-    assert!(!fixture.data_root().join("_profile.json").exists());
-}
-
-#[test]
 fn runtime_status_is_available_before_data_root_and_profile_gating() {
     let fixture = Fixture::new();
     fixture.core_command("..runtime", "runtime.status");
@@ -47,23 +16,6 @@ fn runtime_status_is_available_before_data_root_and_profile_gating() {
 
     assert_eq!(exit_code, 0);
     assert!(!fixture.data_root().exists());
-}
-
-#[test]
-fn host_process_uses_the_entry_launcher_as_the_process_boundary() {
-    let fixture = Fixture::new();
-    let command = host_process_command(&fixture.context);
-    assert_eq!(
-        command.get_program(),
-        fixture.context.entry_file.as_os_str()
-    );
-    assert_eq!(
-        command.get_current_dir(),
-        Some(fixture.context.invocation_directory.as_path())
-    );
-    assert_eq!(command.get_args().count(), 0);
-
-    assert_eq!(command.get_envs().count(), 0);
 }
 
 #[test]
@@ -108,7 +60,7 @@ fn entry_control_commands_create_and_update_a_profile_before_profile_gating() {
     fs::create_dir_all(&global_guard).unwrap();
     fs::write(
         global_guard.join("run.core.json"),
-        r#"{"schema":"swawkit.core-command/v1","handler":"host.start"}"#,
+        r#"{"schema":"swawkit.core-command/v1","handler":"runtime.status"}"#,
     )
     .unwrap();
     let mut unexpected_claim =

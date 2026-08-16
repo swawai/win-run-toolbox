@@ -194,8 +194,8 @@ export function runtimeRootPresentation(document) {
 function handlerPresentation(handler) {
   return {
     "runtime.status": ["..runtime", t(
-      "查看 Runtime 与 Host 状态，并执行明确的生命周期控制。",
-      "Inspect Runtime and Host state and perform explicit lifecycle operations.",
+      "查看 Runtime 与 Host 的聚合状态。",
+      "Inspect aggregate Runtime and Host state.",
     )],
     "host.exit": ["..runtime.host.exit", t(
       "退出当前 Entry 的 Host；正在运行的 Web 命令也会终止。",
@@ -247,9 +247,8 @@ export function createRuntimeControlView(
     elements.runtimeHostProperties.hidden = !host;
     elements.runtimeHostExit.disabled = hostBusy || !host;
     elements.runtimeHostRestart.disabled = hostBusy || !host?.updateAvailable;
-    elements.runtimeHostRestart.hidden = selectedHandler === "host.exit"
-      || (selectedHandler === "runtime.status" && !host?.updateAvailable);
-    elements.runtimeHostExit.hidden = selectedHandler === "host.restart";
+    elements.runtimeHostRestart.hidden = selectedHandler !== "host.restart";
+    elements.runtimeHostExit.hidden = selectedHandler !== "host.exit";
 
     if (!statusDocument) {
       elements.runtimeHostConnection.dataset.state = "loading";
@@ -314,8 +313,9 @@ export function createRuntimeControlView(
     elements.runtimeTitle.textContent = title;
     elements.runtimeDescription.textContent = description;
     elements.runtimeHostSection.hidden = selectedHandler === "runtime.cleanup";
-    elements.runtimeCleanupSection.hidden = selectedHandler === "host.exit"
-      || selectedHandler === "host.restart";
+    elements.runtimeHostActions.hidden = selectedHandler === "runtime.status";
+    elements.runtimeHostFeedback.hidden = selectedHandler === "runtime.status";
+    elements.runtimeCleanupSection.hidden = selectedHandler !== "runtime.cleanup";
     renderStatus();
     void load();
     return true;
@@ -323,6 +323,12 @@ export function createRuntimeControlView(
 
   function setHostBusy(busy) {
     hostBusy = busy;
+    elements.runtimeHostExit.dataset.busy = String(
+      busy && selectedHandler === "host.exit",
+    );
+    elements.runtimeHostRestart.dataset.busy = String(
+      busy && selectedHandler === "host.restart",
+    );
     renderStatus();
   }
 
@@ -425,6 +431,8 @@ export function createRuntimeControlView(
     }
     elements.runtimeCleanupPreview.disabled = true;
     elements.runtimeCleanupApply.disabled = true;
+    elements.runtimeCleanupPreview.dataset.busy = String(!apply);
+    elements.runtimeCleanupApply.dataset.busy = String(apply);
     elements.runtimeCleanupFeedback.textContent = apply
       ? t("正在应用清理…", "Applying cleanup…")
       : t("正在生成预览…", "Generating preview…");
@@ -450,6 +458,8 @@ export function createRuntimeControlView(
     } finally {
       elements.runtimeCleanupPreview.disabled = false;
       elements.runtimeCleanupApply.disabled = false;
+      elements.runtimeCleanupPreview.dataset.busy = "false";
+      elements.runtimeCleanupApply.dataset.busy = "false";
     }
   }
 

@@ -18,9 +18,10 @@ Core 固定按 _global → 命令 _guard → 命令 run.* 执行；Guard 不接�
 直接运行 _lib\proj\build.ps1，它会准备固定 Bootstrap 工具链并构建 App 与 Launcher
 候选；只写入 data/proj_cache/bootstrap/build，不替换任何发布制品。
 
-以两个点开头的地址属于当前 Entry，例如 {{COMMAND}} ..entry、
-{{COMMAND}} ..web 与 {{COMMAND}} ..runtime；它们管理 Entry 自身生命周期，
-不属于 Kernel 命令，也不执行项目 Guard。Runtime 状态与控制统一位于：
+以两个点开头的地址属于当前 Entry，例如 {{COMMAND}} ..entry 与
+{{COMMAND}} ..runtime；它们管理 Entry 自身生命周期，不属于 Kernel 命令，
+也不执行项目 Guard。不带参数启动 {{COMMAND}} 会启动或激活本地 Web 控制台。
+Runtime 状态与控制统一位于：
 {{COMMAND}} ..runtime
 {{COMMAND}} ..runtime.host.exit
 {{COMMAND}} ..runtime.host.restart

@@ -9,4 +9,4 @@ Core executes _global, the command _guard, and the command run.* in that order. 
 
 The thin EXE Launcher owns Entry identity, Host/CLI routing, and the native argv boundary. Run _lib\proj\build.ps1 to build App and Launcher candidates with the pinned Bootstrap toolchain; this writes only below data/proj_cache/bootstrap/build and does not replace published artifacts.
 
-Addresses beginning with two dots belong to the current Entry, including {{COMMAND}} ..entry, {{COMMAND}} ..web, and {{COMMAND}} ..runtime. They do not execute project Guards.
+Addresses beginning with two dots belong to the current Entry, including {{COMMAND}} ..entry and {{COMMAND}} ..runtime. They do not execute project Guards. Launch {{COMMAND}} without arguments to start or activate the local Web console.

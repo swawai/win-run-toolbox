@@ -8,8 +8,6 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::fmt;
 use std::io::{self, Write};
-use std::os::windows::process::CommandExt;
-use std::process::{Command, Stdio};
 
 use swawkit_proj::{
     catalog::{CatalogSnapshot, is_help_marker},
@@ -19,7 +17,6 @@ use swawkit_proj::{
     help::render_help,
     profile::{EntryProfileState, EntryProfileStore},
 };
-use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 pub fn run(
     context: &EntryContext,
@@ -46,15 +43,7 @@ fn run_with_cancellation(
 ) -> Result<i32, CliError> {
     let mut approver =
         |pending: &swawkit_proj::data_root::DataRootClaim| Err(claim::rejection(context, pending));
-    let mut host_launcher = launch_entry_host;
-    run_with_dependencies(
-        context,
-        argv,
-        process_mode,
-        cancellation,
-        &mut approver,
-        &mut host_launcher,
-    )
+    run_with_dependencies(context, argv, process_mode, cancellation, &mut approver)
 }
 
 #[cfg(test)]
@@ -63,31 +52,12 @@ fn run_with_approver(
     argv: &[OsString],
     approver: &mut impl DataRootClaimApprover,
 ) -> Result<i32, CliError> {
-    let mut host_launcher = launch_entry_host;
     run_with_dependencies(
         context,
         argv,
         CommandProcessMode::InheritConsole,
         None,
         approver,
-        &mut host_launcher,
-    )
-}
-
-#[cfg(test)]
-fn run_with_host_launcher(
-    context: &EntryContext,
-    argv: &[OsString],
-    approver: &mut impl DataRootClaimApprover,
-    host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
-) -> Result<i32, CliError> {
-    run_with_dependencies(
-        context,
-        argv,
-        CommandProcessMode::InheritConsole,
-        None,
-        approver,
-        host_launcher,
     )
 }
 
@@ -97,9 +67,8 @@ fn run_with_dependencies(
     process_mode: CommandProcessMode,
     cancellation: Option<&ConsoleCancellation>,
     approver: &mut impl DataRootClaimApprover,
-    host_launcher: &mut impl FnMut(&EntryContext) -> Result<i32, CliError>,
 ) -> Result<i32, CliError> {
-    match control::dispatch_before_data_root(context, argv, host_launcher)? {
+    match control::dispatch_before_data_root(context, argv)? {
         Some(control::PreDataRootControl::Claim { snapshot, address }) => {
             return claim::run(context, argv, &snapshot, &address);
         }
@@ -139,9 +108,7 @@ fn run_with_dependencies(
     {
         return Ok(exit_code);
     }
-    if let Some(exit_code) =
-        control::dispatch(&snapshot, argv, context, &profile_store, host_launcher)?
-    {
+    if let Some(exit_code) = control::dispatch(&snapshot, argv, context, &profile_store)? {
         return Ok(exit_code);
     }
     CommandExecutor::preflight(&context.kernel_root(), &snapshot, argv)
@@ -150,7 +117,7 @@ fn run_with_dependencies(
         EntryProfileState::Ready(profile) => profile,
         EntryProfileState::Missing { path } => {
             return Err(CliError::new(format!(
-                "this entry has no profile: {}. Run '{} ..entry' or '{} ..web' to complete initial setup",
+                "this entry has no profile: {}. Run '{} ..entry' or launch '{}' without arguments to complete initial setup",
                 path.display(),
                 context.entry_name,
                 context.entry_name,
@@ -174,28 +141,6 @@ fn run_with_dependencies(
         CommandProcessMode::NoWindow => executor.execute(argv),
     }
     .map_err(|error| CliError::new(error.to_string()))
-}
-
-fn launch_entry_host(context: &EntryContext) -> Result<i32, CliError> {
-    let mut command = host_process_command(context);
-    command.spawn().map_err(|error| {
-        CliError::new(format!(
-            "cannot start the Entry Host for '{}': {error}",
-            context.entry_file.display()
-        ))
-    })?;
-    Ok(0)
-}
-
-fn host_process_command(context: &EntryContext) -> Command {
-    let mut command = Command::new(&context.entry_file);
-    command
-        .current_dir(&context.invocation_directory)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW);
-    command
 }
 
 fn protocol_help(

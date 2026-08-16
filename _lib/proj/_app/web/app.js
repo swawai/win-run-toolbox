@@ -120,6 +120,7 @@ const elements = {
   runtimeControl: document.querySelector("#runtime-control"),
   runtimeDescription: document.querySelector("#runtime-description"),
   runtimeHostConnection: document.querySelector("#runtime-host-connection"),
+  runtimeHostActions: document.querySelector("#runtime-host-actions"),
   runtimeHostExit: document.querySelector("#runtime-host-exit"),
   runtimeHostFeedback: document.querySelector("#runtime-host-feedback"),
   runtimeHostPid: document.querySelector("#runtime-host-pid"),

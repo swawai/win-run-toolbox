@@ -1,8 +1,0 @@
-Start the local Web console owned by the current Entry.
-
-Usage:
-  {{INVOCATION}}
-
-This Control Plane command follows the same zero-argument Launcher path as {{COMMAND}} and remains available before the first Profile is saved. Host listens on a random 127.0.0.1 port, opens the default browser, and remains in the system tray.
-
-Each Entry has one Host instance. Starting it again activates the existing instance instead of duplicating long-lived state.

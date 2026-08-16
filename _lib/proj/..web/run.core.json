@@ -1,4 +1,0 @@
-{
-  "schema": "swawkit.core-command/v1",
-  "handler": "host.start"
-}

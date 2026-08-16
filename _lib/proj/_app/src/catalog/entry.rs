@@ -17,7 +17,7 @@ const ENTRY_PROTOCOL: [(&str, CommandAdapter); 7] = [
     ("run.ps1", CommandAdapter::Pwsh),
     ("run.cmd", CommandAdapter::Cmd),
 ];
-const CORE_HANDLERS: [&str; 21] = [
+const CORE_HANDLERS: [&str; 20] = [
     "context.add",
     "context.delete",
     "context.list",
@@ -33,7 +33,6 @@ const CORE_HANDLERS: [&str; 21] = [
     "entry.profile.set",
     "host.exit",
     "host.restart",
-    "host.start",
     "meta.check",
     "meta.help",
     "meta.logs",

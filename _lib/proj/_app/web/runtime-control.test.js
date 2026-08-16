@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   RuntimeControlError,
+  createRuntimeControlView,
   readRuntimeStatus,
   requestHostRestart,
   requestHostShutdown,
@@ -19,6 +20,42 @@ function hostStatus(updateAvailable = true) {
     runningReleaseId: "1".repeat(64),
     selectedReleaseId: updateAvailable ? "2".repeat(64) : "1".repeat(64),
     updateAvailable,
+  };
+}
+
+function runtimeElements() {
+  const element = () => ({
+    dataset: {},
+    disabled: false,
+    hidden: false,
+    textContent: "",
+    addEventListener() {},
+    replaceChildren() {},
+  });
+  return {
+    genericCommandOverview: element(),
+    runtimeCleanupApply: element(),
+    runtimeCleanupFeedback: element(),
+    runtimeCleanupList: element(),
+    runtimeCleanupPreview: element(),
+    runtimeCleanupResult: element(),
+    runtimeCleanupSection: element(),
+    runtimeCleanupSummary: element(),
+    runtimeControl: element(),
+    runtimeDescription: element(),
+    runtimeHostActions: element(),
+    runtimeHostConnection: element(),
+    runtimeHostExit: element(),
+    runtimeHostFeedback: element(),
+    runtimeHostPid: element(),
+    runtimeHostProperties: element(),
+    runtimeHostRestart: element(),
+    runtimeHostSection: element(),
+    runtimeHostStatus: element(),
+    runtimeReleaseCount: element(),
+    runtimeRunningRelease: element(),
+    runtimeSelectedRelease: element(),
+    runtimeTitle: element(),
   };
 }
 
@@ -73,6 +110,40 @@ describe("Runtime control client", () => {
         headers: { "X-SwawKit-Control": "restart" },
       }],
     ]);
+  });
+
+  test("keeps the Runtime root read-only and actions local to their subcommands", async () => {
+    const elements = runtimeElements();
+    const document = {
+      protocol: "swawkit.runtime-status/v1",
+      selectedReleaseId: "1".repeat(64),
+      releaseCount: 3,
+      host: hostStatus(false),
+    };
+    const view = createRuntimeControlView(elements, {
+      fetchImpl: async () => ({ ok: true, json: async () => document }),
+    });
+
+    expect(view.select({ handler: "runtime.status" })).toBe(true);
+    await view.load();
+    expect(elements.runtimeHostSection.hidden).toBe(false);
+    expect(elements.runtimeHostActions.hidden).toBe(true);
+    expect(elements.runtimeHostFeedback.hidden).toBe(true);
+    expect(elements.runtimeHostExit.hidden).toBe(true);
+    expect(elements.runtimeHostRestart.hidden).toBe(true);
+    expect(elements.runtimeCleanupSection.hidden).toBe(true);
+
+    expect(view.select({ handler: "host.restart" })).toBe(true);
+    await view.load();
+    expect(elements.runtimeHostActions.hidden).toBe(false);
+    expect(elements.runtimeHostExit.hidden).toBe(true);
+    expect(elements.runtimeHostRestart.hidden).toBe(false);
+    expect(elements.runtimeHostRestart.disabled).toBe(true);
+    expect(elements.runtimeHostRestart.dataset.busy).not.toBe("true");
+
+    expect(view.select({ handler: "runtime.cleanup" })).toBe(true);
+    expect(elements.runtimeHostSection.hidden).toBe(true);
+    expect(elements.runtimeCleanupSection.hidden).toBe(false);
   });
 
   test("keeps cleanup preview and apply explicit in the protocol", async () => {

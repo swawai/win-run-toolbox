@@ -27,7 +27,7 @@ describe("command run model", () => {
   });
 
   test("keeps Entry commands on their dedicated Web APIs", () => {
-    expect(isCommandRunSupported({ address: "..web", runnable: true, source: "control" })).toBe(false);
+    expect(isCommandRunSupported({ address: "..entry", runnable: true, source: "control" })).toBe(false);
     expect(isCommandRunSupported({ address: "", runnable: true, source: "kernel" })).toBe(false);
     expect(isCommandRunSupported({ address: ".dev", runnable: true, source: "kernel" })).toBe(true);
     expect(isCommandRunSupported({ address: "build", runnable: true, source: "action" })).toBe(true);

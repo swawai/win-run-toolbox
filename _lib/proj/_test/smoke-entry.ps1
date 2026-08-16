@@ -218,15 +218,15 @@ try {
         ) `
         -Message ".info did not expose the Core command context: $($Info.Text)"
 
-    $LegacyWeb = Invoke-ProjEntrySmoke `
+    $RemovedWeb = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `
-        -Arguments @('.web')
+        -Arguments @('..web')
     Assert-ProjEntrySmoke `
         -Condition (
-            $LegacyWeb.ExitCode -eq 1 -and
-            $LegacyWeb.Text.Contains('command not found: .web')
+            $RemovedWeb.ExitCode -eq 1 -and
+            $RemovedWeb.Text.Contains('command not found: ..web')
         ) `
-        -Message '.web remained a public command after the ..web migration'
+        -Message '..web remained a public command after its removal'
 
     Assert-ProjEntrySmoke `
         -Condition ([IO.File]::Exists((Join-Path $DataRoot '_profile.json'))) `

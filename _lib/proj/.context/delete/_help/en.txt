@@ -1,0 +1,5 @@
+Delete an entire Context.
+
+Usage: {{INVOCATION}} <context-id>
+
+This differs from .context.remove, which removes command references inside a Context.

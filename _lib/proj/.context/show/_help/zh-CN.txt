@@ -1,0 +1,5 @@
+显示 Context 的持久化结构。
+
+用法：{{INVOCATION}} <context-id>
+
+输出格式为 `swawkit.context/v1` JSON。需要 Agent Markdown 时使用 `.context.render`。

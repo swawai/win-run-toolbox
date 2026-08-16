@@ -1,5 +1,5 @@
 {
-  "schema": "swawkit.command-module/v1",
+  "schema": "swawkit.command-module/v4",
   "provides": [
     {
       "contract": "swawkit.proj.dev-setup/v2"

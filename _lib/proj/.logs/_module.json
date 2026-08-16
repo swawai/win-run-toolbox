@@ -1,0 +1,79 @@
+{
+  "schema": "swawkit.command-module/v4",
+  "facets": [
+    {
+      "id": "runs",
+      "kind": "collection",
+      "renderer": "collection",
+      "icon": "◆",
+      "label": {
+        "zh-CN": "运行",
+        "en": "Runs"
+      },
+      "summary": {
+        "zh-CN": "浏览所有命令最近的持久运行",
+        "en": "Browse recent persisted runs across commands"
+      },
+      "subjectKind": {
+        "kind": "run",
+        "provider": {
+          "type": "command",
+          "source": "kernel",
+          "address": ".logs"
+        }
+      },
+      "resolver": {
+        "type": "command",
+        "address": ".logs",
+        "arguments": ["--json"],
+        "returns": "swawkit.subject-collection/v2"
+      }
+    }
+  ],
+  "subjectKinds": [
+    {
+      "kind": "run",
+      "facets": [
+        {
+          "id": "overview",
+          "kind": "projection",
+          "renderer": "overview",
+          "icon": "i",
+          "label": {
+            "zh-CN": "概览",
+            "en": "Overview"
+          },
+          "summary": {
+            "zh-CN": "查看运行状态和事件",
+            "en": "Inspect run state and events"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".logs",
+            "arguments": ["--run", { "bind": "subject.id" }],
+            "returns": "swawkit.command-run-journal/v1"
+          }
+        },
+        {
+          "id": "open",
+          "kind": "operation",
+          "renderer": "run",
+          "icon": "↗",
+          "label": {
+            "zh-CN": "打开目录",
+            "en": "Open directory"
+          },
+          "summary": {
+            "zh-CN": "在资源管理器中打开这次运行的目录",
+            "en": "Open this run directory in File Explorer"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".logs",
+            "arguments": ["--open", { "bind": "subject.id" }]
+          }
+        }
+      ]
+    }
+  ]
+}

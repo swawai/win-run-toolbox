@@ -5,7 +5,8 @@ use std::io;
 use std::sync::{Arc, Mutex};
 
 use crate::entry_runner::{
-    EntryRunObserver, EntryRunOutcome, EntryRunSpec, EntryRunner, NativeEntryRunner,
+    EntryQueryOutput, EntryRunObserver, EntryRunOutcome, EntryRunSpec, EntryRunner,
+    NativeEntryRunner, run_entry_query,
 };
 use crate::run_journal::{RunJournal, StartRunJournal};
 
@@ -91,6 +92,29 @@ impl CommandRuns {
         self.inner.run(id)?.cancel().map_err(RegistryError::Cancel)
     }
 
+    pub fn query(&self, spec: EntryRunSpec) -> Result<EntryQueryOutput, String> {
+        let _slot = self.reserve_query()?;
+        run_entry_query(Arc::clone(&self.inner.runner), spec)
+    }
+
+    fn reserve_query(&self) -> Result<QuerySlot, String> {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "command run registry is unavailable".to_owned())?;
+        if !state.accepting {
+            return Err("command run registry is shutting down".to_owned());
+        }
+        if state.active >= MAX_ACTIVE_RUNS {
+            return Err("too many command runs are active".to_owned());
+        }
+        state.active += 1;
+        Ok(QuerySlot {
+            inner: Arc::clone(&self.inner),
+        })
+    }
+
     pub fn shutdown(&self) -> Result<(), String> {
         let runs = {
             let mut state = self
@@ -128,6 +152,16 @@ impl CommandRuns {
 struct RegistryInner {
     runner: Arc<dyn EntryRunner>,
     state: Mutex<RegistryState>,
+}
+
+struct QuerySlot {
+    inner: Arc<RegistryInner>,
+}
+
+impl Drop for QuerySlot {
+    fn drop(&mut self) {
+        self.inner.completed();
+    }
 }
 
 impl RegistryInner {

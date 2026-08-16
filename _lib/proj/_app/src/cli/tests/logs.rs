@@ -3,11 +3,16 @@ use super::*;
 #[test]
 fn logs_read_history_and_latest_after_the_target_stops_being_runnable() {
     let fixture = Fixture::new();
-    fixture.command(
+    let logs_directory = fixture.command(
         ".logs",
         "run.core.json",
         r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
     );
+    fs::write(
+        logs_directory.join("_module.json"),
+        include_str!("../../../../.logs/_module.json"),
+    )
+    .expect("write Logs module contract");
     let command_directory = fixture.command(
         ".demo",
         "run.cmd",
@@ -35,6 +40,9 @@ fn logs_read_history_and_latest_after_the_target_stops_being_runnable() {
     fs::remove_file(command_directory.join("run.cmd")).unwrap();
 
     for arguments in [
+        vec![".logs", "--json"],
+        vec![".logs", "--json", "kernel/.demo"],
+        vec![".logs", "--run", &run_id],
         vec![".logs", ".demo"],
         vec![".logs", ".demo", "--latest", "1"],
         vec![".logs", ".demo", "--latest", "1..3"],

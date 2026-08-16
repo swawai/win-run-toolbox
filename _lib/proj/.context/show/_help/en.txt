@@ -1,0 +1,5 @@
+Show the persisted Context structure.
+
+Usage: {{INVOCATION}} <context-id>
+
+The output is `swawkit.context/v1` JSON. Use `.context.render` for Agent Markdown.

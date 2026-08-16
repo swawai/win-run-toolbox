@@ -2,7 +2,8 @@ import { t } from "./i18n.js";
 
 const COMMAND_ROUTE_ROOT = "/commands";
 const COMMAND_SOURCES = new Set(["action", "kernel", "control"]);
-const COMMAND_VIEWS = new Set(["children", "edit", "overview", "help", "run", "logs"]);
+const FACET_ID = /^[a-z][a-z0-9-]{0,31}$/;
+const SUBJECT_REF = /^::[a-z][a-z0-9-]{0,31}\/[a-z0-9][a-z0-9-]{0,127}$/;
 const NORMAL_SEGMENT = /^[a-z][a-z0-9-]*$/;
 
 function isCommandSegment(segment) {
@@ -96,41 +97,111 @@ export function commandAtPath(
   return command;
 }
 
-export function parseCommandView(search = "") {
+export function parseCommandSelection(search = "") {
   const params = new URLSearchParams(search);
-  const unknown = [...params.keys()].find((name) => name !== "view");
+  const allowed = new Set(["facet", "subject", "subject-facet"]);
+  const unknown = [...params.keys()].find((name) => !allowed.has(name));
   if (unknown) {
     throw new Error(t(
-      `URL 包含未知的命令视图参数：${unknown}。`,
-      `The URL contains an unknown command-view parameter: ${unknown}.`,
+      `URL 包含未知的 Subject 选择参数：${unknown}。`,
+      `The URL contains an unknown Subject-selection parameter: ${unknown}.`,
     ));
   }
-  const values = params.getAll("view");
-  if (values.length > 1) {
-    throw new Error(t("URL 只能声明一个命令视图。", "The URL may declare only one command view."));
+  const facets = params.getAll("facet");
+  if (facets.length > 1) {
+    throw new Error(t("URL 只能声明一个命令 Facet。", "The URL may declare only one command Facet."));
   }
-  const view = values[0] ?? null;
-  if (view !== null && !COMMAND_VIEWS.has(view)) {
+  const facet = facets[0] ?? null;
+  if (facet !== null && !FACET_ID.test(facet)) {
     throw new Error(t(
-      `URL 包含未知的命令视图：${view || "<empty>"}。`,
-      `The URL contains an unknown command view: ${view || "<empty>"}.`,
+      `URL 包含无效的命令 Facet 标识：${facet || "<empty>"}。`,
+      `The URL contains an invalid command-Facet identifier: ${facet || "<empty>"}.`,
     ));
   }
-  return view;
+  const subjects = params.getAll("subject");
+  if (subjects.length > 1) {
+    throw new Error(t("URL 只能声明一个 Subject。", "The URL may declare only one Subject."));
+  }
+  const subject = subjects[0] ?? null;
+  if (subject !== null && !SUBJECT_REF.test(subject)) {
+    throw new Error(t(
+      `URL 包含无效的 Subject 引用：${subject || "<empty>"}。`,
+      `The URL contains an invalid Subject reference: ${subject || "<empty>"}.`,
+    ));
+  }
+  const subjectFacets = params.getAll("subject-facet");
+  if (subjectFacets.length > 1) {
+    throw new Error(t("URL 只能声明一个 Subject Facet。", "The URL may declare only one Subject Facet."));
+  }
+  const subjectFacet = subjectFacets[0] ?? null;
+  if (subjectFacet !== null && !FACET_ID.test(subjectFacet)) {
+    throw new Error(t(
+      `URL 包含无效的 Subject Facet 标识：${subjectFacet || "<empty>"}。`,
+      `The URL contains an invalid Subject-Facet identifier: ${subjectFacet || "<empty>"}.`,
+    ));
+  }
+  if (subject !== null && facet === null) {
+    throw new Error(t("Subject 深链必须声明其集合 Facet。", "A Subject deep link must declare its collection Facet."));
+  }
+  if (subjectFacet !== null && subject === null) {
+    throw new Error(t("Subject Facet 缺少 Subject。", "A Subject Facet requires a Subject."));
+  }
+  return { facet, subject, subjectFacet };
+}
+
+export function parseCommandFacet(search = "") {
+  return parseCommandSelection(search).facet;
+}
+
+export async function restoreCommandSelection({
+  collectionFacet,
+  loadCollection,
+  ownerAddress,
+  selectOwner,
+  selectSubject,
+  subjectFacet,
+  subjectRef,
+}) {
+  const ownerSelected = selectOwner();
+  if (!subjectRef || ownerSelected === false) {
+    return ownerSelected !== false;
+  }
+  const collection = await loadCollection(ownerAddress, collectionFacet);
+  if (!collection) {
+    return null;
+  }
+  return selectSubject(ownerAddress, collectionFacet, subjectRef, {
+    facet: subjectFacet,
+  });
 }
 
 export function updateCommandPath(
   history,
   location,
   command,
-  { defaultView = null, mode = "push", view = null } = {},
+  {
+    defaultFacet = null,
+    defaultSubjectFacet = null,
+    facet = null,
+    mode = "push",
+    subject = null,
+    subjectFacet = null,
+  } = {},
 ) {
   if (mode === "none") {
     return;
   }
-  const query = view && view !== defaultView
-    ? `?view=${encodeURIComponent(view)}`
-    : "";
+  const params = new URLSearchParams();
+  if (facet && (subject || facet !== defaultFacet)) {
+    params.set("facet", facet);
+  }
+  if (subject) {
+    params.set("subject", subject);
+  }
+  if (subjectFacet && subjectFacet !== defaultSubjectFacet) {
+    params.set("subject-facet", subjectFacet);
+  }
+  const query = params.size > 0 ? `?${params}` : "";
   const path = `${commandPath(command)}${query}`;
   const current = `${location.pathname}${location.search ?? ""}`;
   if (mode === "push" && current === path) {

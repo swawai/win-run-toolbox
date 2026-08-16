@@ -4,9 +4,12 @@ import {
   commandAtPath,
   commandPath,
   parseCommandPath,
-  parseCommandView,
+  parseCommandSelection,
+  parseCommandFacet,
+  restoreCommandSelection,
   updateCommandPath,
 } from "./navigation.js";
+import { createSubjectFacetView } from "./subject-facet.js";
 
 describe("command URL contract", () => {
   test("maps every command source to a namespaced path", () => {
@@ -85,14 +88,16 @@ describe("command URL contract", () => {
     ]);
   });
 
-  test("round-trips non-default views without encoding default UI state", () => {
-    expect(parseCommandView("")).toBeNull();
-    expect(parseCommandView("?view=help")).toBe("help");
-    expect(parseCommandView("?view=edit")).toBe("edit");
-    expect(parseCommandView("?view=logs")).toBe("logs");
-    expect(() => parseCommandView("?view=unknown")).toThrow("未知");
-    expect(() => parseCommandView("?view=help&view=run")).toThrow("只能");
-    expect(() => parseCommandView("?view=help&draft=1")).toThrow("参数");
+  test("round-trips non-default Facets without encoding default UI state", () => {
+    expect(parseCommandFacet("")).toBeNull();
+    expect(parseCommandFacet("?facet=help")).toBe("help");
+    expect(parseCommandFacet("?facet=edit")).toBe("edit");
+    expect(parseCommandFacet("?facet=logs")).toBe("logs");
+    expect(parseCommandFacet("?facet=runs")).toBe("runs");
+    expect(parseCommandFacet("?facet=validate")).toBe("validate");
+    expect(() => parseCommandFacet("?facet=Invalid")).toThrow("无效");
+    expect(() => parseCommandFacet("?facet=help&facet=run")).toThrow("只能");
+    expect(() => parseCommandFacet("?facet=help&draft=1")).toThrow("参数");
 
     const calls = [];
     const history = {
@@ -106,16 +111,127 @@ describe("command URL contract", () => {
     const command = { source: "action", address: "proj.build" };
 
     updateCommandPath(history, location, command, {
-      defaultView: "children",
-      view: "help",
+      defaultFacet: "children",
+      facet: "help",
     });
     updateCommandPath(history, location, command, {
-      defaultView: "children",
-      view: "children",
+      defaultFacet: "children",
+      facet: "children",
+    });
+    updateCommandPath(history, location, command, {
+      defaultFacet: "children",
+      facet: "runs",
     });
 
     expect(calls).toEqual([
-      "/commands/action/proj/build?view=help",
+      "/commands/action/proj/build?facet=help",
+      "/commands/action/proj/build?facet=runs",
+    ]);
+  });
+
+  test("keeps typed Subject identity and both Facets in query state", () => {
+    expect(parseCommandSelection("?facet=runs&subject=%3A%3Arun%2F20260816-001&subject-facet=cancel"))
+      .toEqual({
+        facet: "runs",
+        subject: "::run/20260816-001",
+        subjectFacet: "cancel",
+      });
+    expect(() => parseCommandSelection("?subject=%3A%3Arun%2Frun-01"))
+      .toThrow("Facet");
+    expect(() => parseCommandSelection("?facet=runs&subject=run-01"))
+      .toThrow("无效");
+    for (const invalid of ["::run/Bad", "::run/has/slash", "::run/has space"]) {
+      expect(() => parseCommandSelection(`?facet=runs&subject=${encodeURIComponent(invalid)}`))
+        .toThrow("无效");
+    }
+    expect(() => parseCommandSelection("?facet=runs&subject=%3A%3Arun%2Fone&subject=%3A%3Arun%2Ftwo"))
+      .toThrow("只能");
+
+    expect(parseCommandSelection("?facet=runs")).toEqual({
+      facet: "runs",
+      subject: null,
+      subjectFacet: null,
+    });
+
+    const calls = [];
+    const history = {
+      pushState(_state, _title, path) { calls.push(path); },
+      replaceState() {},
+    };
+    updateCommandPath(
+      history,
+      { pathname: "/commands/kernel/context", search: "" },
+      { source: "kernel", address: ".context" },
+      {
+        defaultSubjectFacet: "overview",
+        facet: "runs",
+        subject: "::run/run-01",
+        subjectFacet: "cancel",
+      },
+    );
+    expect(calls).toEqual([
+      "/commands/kernel/context?facet=runs&subject=%3A%3Arun%2Frun-01&subject-facet=cancel",
+    ]);
+  });
+
+  test("restores the owner before an asynchronous collection and its Subject", async () => {
+    const events = [];
+    const facetView = createSubjectFacetView();
+    let finishCollection;
+    let loadedCollection = null;
+    const restored = restoreCommandSelection({
+      collectionFacet: "contexts",
+      loadCollection(owner, facet) {
+        events.push(["load", owner, facet]);
+        return new Promise((resolve) => {
+          finishCollection = (collection) => {
+            loadedCollection = collection;
+            resolve(collection);
+          };
+        });
+      },
+      ownerAddress: ".context",
+      selectOwner() {
+        events.push(["owner", ".context", "contexts"]);
+        return true;
+      },
+      selectSubject(owner, facet, subject, options) {
+        const selected = loadedCollection.subjects.find(
+          (candidate) => candidate.canonicalRef === subject,
+        );
+        const selectedFacet = facetView.select(selected, options).selectedFacet;
+        events.push(["subject", owner, facet, subject, selectedFacet]);
+        return Boolean(selected);
+      },
+      subjectFacet: null,
+      subjectRef: "::context/test",
+    });
+
+    expect(events).toEqual([
+      ["owner", ".context", "contexts"],
+      ["load", ".context", "contexts"],
+    ]);
+    finishCollection({
+      subjects: [{
+        canonicalRef: "::context/test",
+        facets: [{
+          icon: "i",
+          id: "overview",
+          kind: "projection",
+          label: "Overview",
+          renderer: "overview",
+          resolver: null,
+          summary: "Inspect Context",
+        }],
+      }],
+    });
+    expect(await restored).toBeTrue();
+    expect(events[2]).toEqual([
+      "subject",
+      ".context",
+      "contexts",
+      "::context/test",
+      "overview",
     ]);
   });
 });

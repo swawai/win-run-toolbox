@@ -323,7 +323,7 @@ pub(crate) fn command_data_root(
     )
 }
 
-pub(crate) fn catalog_command_data_root(
+pub fn catalog_command_data_root(
     context: &EntryContext,
     data_root: &Path,
     binding: Option<&ProjectBinding>,

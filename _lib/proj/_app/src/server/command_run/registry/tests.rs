@@ -157,3 +157,22 @@ fn observer_does_not_keep_a_dropped_run_control_alive() {
     observer.output(EntryOutputStream::Stdout, "ignored".to_owned());
     observer.completed(EntryRunOutcome::Exited(0));
 }
+
+#[test]
+fn query_slots_share_the_command_run_capacity_limit() {
+    let registry = CommandRuns::native();
+    let slots = (0..MAX_ACTIVE_RUNS)
+        .map(|_| registry.reserve_query().expect("reserve query slot"))
+        .collect::<Vec<_>>();
+
+    let error = match registry.reserve_query() {
+        Ok(_) => panic!("capacity must be enforced"),
+        Err(error) => error,
+    };
+    assert!(error.contains("too many command runs"));
+    drop(slots);
+    assert_eq!(
+        registry.inner.state.lock().expect("registry state").active,
+        0
+    );
+}

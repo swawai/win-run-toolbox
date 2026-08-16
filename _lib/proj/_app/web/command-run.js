@@ -43,6 +43,7 @@ export function createCommandRunView(elements, options = {}) {
   const setTimer = options.setTimer ?? globalThis.setTimeout;
   const clearTimer = options.clearTimer ?? globalThis.clearTimeout;
   const pollDelay = options.pollDelay ?? 400;
+  const onCompleted = options.onCompleted ?? (() => {});
   const commandOutput = createCommandRunOutput(elements, options);
   const commandOperations = createCommandRunOperations(elements, {
     document: documentObject,
@@ -57,7 +58,11 @@ export function createCommandRunView(elements, options = {}) {
   let canceling = false;
   let restoring = false;
   let recoveryUncertain = false;
-  let editorAddress = null;
+  let selectedFixedArguments = [];
+  let selectedAcceptsTail = true;
+  let selectedEditorKey = null;
+  let editorKey = null;
+  const completedRunIds = new Set();
 
   function storageGet() {
     try { return storage?.getItem(ACTIVE_COMMAND_RUN_KEY) || ""; } catch { return ""; }
@@ -94,11 +99,14 @@ export function createCommandRunView(elements, options = {}) {
 
   function clearArguments() {
     elements.commandRunArguments.replaceChildren();
-    editorAddress = selectedCommand?.address ?? null;
+    for (const argument of selectedFixedArguments) {
+      addArgument(argument, { fixed: true, focus: false });
+    }
+    editorKey = selectedEditorKey;
     updateArgumentRows();
   }
 
-  function addArgument(value = "") {
+  function addArgument(value = "", { fixed = false, focus = true } = {}) {
     const row = documentObject.createElement("div");
     const input = documentObject.createElement("input");
     const remove = documentObject.createElement("button");
@@ -108,6 +116,11 @@ export function createCommandRunView(elements, options = {}) {
     input.value = value;
     input.autocomplete = "off";
     input.spellcheck = false;
+    input.readOnly = fixed;
+    input.dataset.fixed = String(fixed);
+    if (fixed) {
+      row.dataset.fixed = "true";
+    }
     remove.className = "secondary-button command-run-remove";
     remove.type = "button";
     remove.textContent = "−";
@@ -115,10 +128,15 @@ export function createCommandRunView(elements, options = {}) {
       row.remove();
       updateArgumentRows();
     });
-    row.append(input, remove);
+    row.append(input);
+    if (!fixed) {
+      row.append(remove);
+    }
     elements.commandRunArguments.append(row);
     updateArgumentRows();
-    input.focus();
+    if (focus) {
+      input.focus();
+    }
   }
 
   function resetOutput() {
@@ -135,11 +153,13 @@ export function createCommandRunView(elements, options = {}) {
     elements.commandRunState.textContent = status.label;
     elements.commandRunState.dataset.state = status.tone;
     elements.commandRunSubmit.disabled = !runnable || editorBlocked;
-    elements.commandRunAdd.disabled = !runnable || editorBlocked;
+    elements.commandRunAdd.disabled = !runnable || editorBlocked || !selectedAcceptsTail;
     commandOperations.render({ blocked: editorBlocked, runnable });
     for (const input of inputs()) {
       input.disabled = editorBlocked;
-      input.nextElementSibling.disabled = editorBlocked;
+      if (input.nextElementSibling) {
+        input.nextElementSibling.disabled = editorBlocked;
+      }
     }
     elements.commandRunCancel.hidden = !active;
     elements.commandRunActions.hidden = commandOperations.usesOperations() && !active;
@@ -174,7 +194,7 @@ export function createCommandRunView(elements, options = {}) {
     cursor = next.nextCursor;
     snapshot = { ...next, events: [] };
     rememberRun();
-    if (!isCommandRunActive(snapshot) && selectedCommand?.address !== editorAddress) {
+    if (!isCommandRunActive(snapshot) && selectedEditorKey !== editorKey) {
       clearArguments();
     }
     if (snapshot.state === "failed" && snapshot.error) {
@@ -185,6 +205,14 @@ export function createCommandRunView(elements, options = {}) {
       setFeedback();
     }
     render();
+    if (
+      snapshot.state === "exited"
+      && snapshot.exitCode === 0
+      && !completedRunIds.has(snapshot.id)
+    ) {
+      completedRunIds.add(snapshot.id);
+      onCompleted(snapshot);
+    }
   }
 
   function stopTimer() {
@@ -415,11 +443,43 @@ export function createCommandRunView(elements, options = {}) {
     await restoreAttempt(id, version);
   }
 
-  function select(command) {
-    const previous = selectedCommand?.address ?? null;
+  function select(
+    command,
+    {
+      acceptsTail = true,
+      arguments: arguments_ = [],
+      confirmation = null,
+      key = null,
+      label = null,
+      useOperations = true,
+    } = {},
+  ) {
+    const previous = selectedEditorKey;
     selectedCommand = command ?? null;
-    commandOperations.select(selectedCommand);
-    if (!isCommandRunActive(snapshot) && previous !== selectedCommand?.address) {
+    selectedFixedArguments = [...arguments_];
+    selectedAcceptsTail = acceptsTail;
+    selectedEditorKey = selectedCommand
+      ? key ?? `${selectedCommand.address}\u0000${JSON.stringify({
+        acceptsTail: selectedAcceptsTail,
+        arguments: selectedFixedArguments,
+        confirmation,
+      })}`
+      : null;
+    const confirmationCommand = selectedCommand && confirmation
+      ? {
+        ...selectedCommand,
+        runOperations: [{
+          arguments: selectedFixedArguments,
+          confirmation,
+          id: key ?? "invoke",
+          label: label ?? selectedCommand.address,
+        }],
+      }
+      : null;
+    commandOperations.select(
+      confirmationCommand ?? (useOperations ? selectedCommand : null),
+    );
+    if (!isCommandRunActive(snapshot) && previous !== selectedEditorKey) {
       clearArguments();
     }
     render();

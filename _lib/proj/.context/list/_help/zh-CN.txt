@@ -1,0 +1,7 @@
+按 ID 列出当前 Entry 的 Context。
+
+用法：
+  {{INVOCATION}}
+  {{INVOCATION}} --json
+
+默认逐行输出 Context ID；--json 输出 swawkit.subject-collection/v2，供 Facet resolver 和自动化消费。

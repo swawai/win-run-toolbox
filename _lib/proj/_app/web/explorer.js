@@ -11,9 +11,10 @@ import {
   commandDisabledDuringSetup,
   commandHasChoices,
   commandMenuExpanded,
-  selectedCommandView,
+  selectedCommandFacet,
 } from "./explorer-model.js";
 import { t } from "./i18n.js";
+import { appendSubjectSection } from "./subject-explorer.js";
 
 export {
   availableCommand,
@@ -49,13 +50,33 @@ export function restoreColumnScrollOffsets(columns, offsets) {
 export function createExplorerView({
   columns,
   detailPanel,
-  getCommandViews = () => [],
+  getCommandFacets = () => [],
+  getSubjectFacets = () => [],
   onSelectCommand,
+  onSelectSubject = () => {},
 }) {
   let catalog = null;
   let selectedPath = [];
+  let selectedSubjectRef = null;
+  let selectedSubjectCollection = null;
   let setupRequired = false;
   const commandStates = new Map();
+  const subjectCollections = new Map();
+  const subjectCollectionErrors = new Map();
+
+  function collectionKey(owner, facet) {
+    return `${owner}#${facet}`;
+  }
+
+  function facetsFor(command) {
+    return getCommandFacets(command);
+  }
+
+  function isCollectionFacet(command, facet) {
+    return facetsFor(command).some((candidate) => (
+      candidate.name === facet && candidate.kind === "collection"
+    ));
+  }
 
   function createCommandRow(command, depth) {
     const item = document.createElement("li");
@@ -64,10 +85,9 @@ export function createExplorerView({
     const copy = document.createElement("span");
     const name = document.createElement("span");
     const summary = document.createElement("span");
-    const chevron = document.createElement("span");
     const group = isGroup(catalog, command);
-    const views = getCommandViews(command);
-    const expandable = commandHasChoices(catalog, command, views);
+    const facets = facetsFor(command);
+    const expandable = commandHasChoices(catalog, command, facets);
     const selected = selectedPath[depth] === command.address;
     const menuExpanded = commandMenuExpanded(
       selectedPath,
@@ -93,8 +113,8 @@ export function createExplorerView({
     }
     if (expandable) {
       button.setAttribute("aria-expanded", String(selected));
-      if (menuExpanded && views.length > 0) {
-        button.setAttribute("aria-controls", `command-view-menu-${depth}`);
+      if (menuExpanded && facets.length > 0) {
+        button.setAttribute("aria-controls", `command-facet-menu-${depth}`);
       } else if (selected && group) {
         button.setAttribute("aria-controls", `finder-column-${depth + 1}`);
       }
@@ -122,11 +142,7 @@ export function createExplorerView({
               : t("不可运行", "Not runnable")
     );
     copy.append(name, summary);
-    chevron.className = "row-chevron";
-    chevron.textContent = expandable ? "›" : "";
-    chevron.setAttribute("aria-hidden", "true");
-
-    button.append(icon, copy, chevron);
+    button.append(icon, copy);
     button.addEventListener("click", (event) => {
       selectCommand(command.address, depth, {
         focusDetail: event.detail === 0,
@@ -135,57 +151,60 @@ export function createExplorerView({
     });
     item.className = "command-item";
     item.append(button);
-    if (menuExpanded && views.length > 0) {
-      item.append(createCommandViewMenu(command, depth, views));
+    if (menuExpanded && facets.length > 0) {
+      item.append(createCommandFacetMenu(command, depth, facets));
     }
     return item;
   }
 
-  function createCommandViewRow(command, depth, view) {
+  function createCommandFacetRow(command, depth, facet) {
     const item = document.createElement("li");
     const button = document.createElement("button");
     const icon = document.createElement("span");
     const name = document.createElement("span");
 
     button.type = "button";
-    button.className = "finder-choice command-view-row";
-    button.dataset.view = view.name;
+    button.className = "finder-choice command-facet-row";
+    button.dataset.facet = facet.name;
     button.dataset.parentAddress = command.address;
     button.dataset.parentDepth = String(depth);
-    button.dataset.navigationKey = `${command.address}#${view.name}`;
-    button.setAttribute("aria-pressed", String(view.selected));
-    button.title = view.summary;
+    button.dataset.navigationKey = `${command.address}#${facet.name}`;
+    button.setAttribute("aria-pressed", String(facet.selected));
+    button.title = facet.summary;
 
-    icon.className = "row-icon view-icon";
-    icon.textContent = view.icon;
+    icon.className = "row-icon facet-icon";
+    icon.textContent = facet.icon;
     icon.setAttribute("aria-hidden", "true");
     name.className = "row-name";
-    name.textContent = view.label;
+    name.textContent = facet.label;
 
     button.append(icon, name);
     button.addEventListener("click", () => {
       selectCommand(command.address, depth, {
-        focusDetail: view.name !== "children",
+        focusDetail: facet.kind !== "collection",
         history: "push",
-        view: view.name,
+        facet: facet.name,
       });
     });
     item.append(button);
     return item;
   }
 
-  function createCommandViewMenu(command, depth, views) {
+  function createCommandFacetMenu(command, depth, facets) {
+    const group = document.createElement("div");
     const list = document.createElement("ul");
-    list.className = "command-view-menu";
-    list.id = `command-view-menu-${depth}`;
+    group.className = "command-facet-group";
+    list.className = "command-facet-menu";
+    list.id = `command-facet-menu-${depth}`;
     list.setAttribute(
       "aria-label",
-      t(`${command.address} 视图`, `${command.address} views`),
+      t(`${command.address} 能力面`, `${command.address} facets`),
     );
-    for (const view of views) {
-      list.append(createCommandViewRow(command, depth, view));
+    for (const facet of facets) {
+      list.append(createCommandFacetRow(command, depth, facet));
     }
-    return list;
+    group.append(list);
+    return group;
   }
 
   function appendSection(column, label, commands, depth) {
@@ -236,26 +255,39 @@ export function createExplorerView({
     return column;
   }
 
-  function createChoiceColumn(parentAddress, depth) {
+  function createChoiceColumn(parentAddress, depth, mode) {
     const column = document.createElement("div");
     const parent = catalog.commandByAddress.get(parentAddress);
-    const children = childrenOf(catalog, parentAddress);
+    const facet = facetsFor(parent).find(({ name }) => name === mode);
     column.className = "finder-column";
     column.id = `finder-column-${depth}`;
     column.dataset.depth = String(depth);
-    column.dataset.scrollKey = `choices:${parentAddress}`;
+    column.dataset.scrollKey = `${mode}:${parentAddress}`;
     column.dataset.width = childrenColumnWidth(parent);
     column.setAttribute("role", "group");
     column.setAttribute(
       "aria-label",
-      t(`${parent.address} 子命令`, `${parent.address} subcommands`),
+      facet?.label ?? t(`${parent.address} 集合`, `${parent.address} collection`),
     );
-    appendSection(
-      column,
-      t("子命令", "Subcommands"),
-      children,
-      depth,
-    );
+    if (facet?.resolver?.type === "catalog" && facet.resolver.relation === "children") {
+      appendSection(
+        column,
+        facet.label,
+        childrenOf(catalog, parentAddress),
+        depth,
+      );
+    } else {
+      const key = collectionKey(parentAddress, mode);
+      appendSubjectSection({
+        collection: subjectCollections.get(key),
+        column,
+        error: subjectCollectionErrors.get(key),
+        getSubjectFacets,
+        label: facet?.label,
+        onSelect: selectSubjectRecord,
+        selectedSubjectRef,
+      });
+    }
     return column;
   }
 
@@ -265,16 +297,17 @@ export function createExplorerView({
     const models = choiceColumnModels(
       catalog,
       selectedPath,
-      getCommandViews,
+      facetsFor,
+      selectedSubjectCollection,
     );
-    for (const { command, depth } of models) {
-      columns.append(createChoiceColumn(command.address, depth));
+    for (const { command, depth, mode } of models) {
+      columns.append(createChoiceColumn(command.address, depth, mode));
     }
     restoreColumnScrollOffsets(columns, scrollOffsets);
 
     requestAnimationFrame(() => {
       const focusTarget = focusKey
-        ? [...columns.querySelectorAll(".command-row")]
+        ? [...columns.querySelectorAll(".finder-choice")]
           .find((row) => row.dataset.navigationKey === focusKey)
         : null;
       if (focusDetail) {
@@ -295,12 +328,14 @@ export function createExplorerView({
     if (!command) {
       return false;
     }
+    selectedSubjectRef = null;
+    selectedSubjectCollection = null;
     selectedPath = [...selectedPath.slice(0, depth), address];
     onSelectCommand(command, options);
-    const view = selectedCommandView(getCommandViews(command));
+    const facet = selectedCommandFacet(facetsFor(command));
     renderColumns({
       focusKey: address,
-      focusDetail: options.focusDetail === true && view !== "children",
+      focusDetail: options.focusDetail === true && !isCollectionFacet(command, facet),
     });
     return true;
   }
@@ -322,14 +357,42 @@ export function createExplorerView({
     if (!command) {
       return false;
     }
+    selectedSubjectRef = null;
+    selectedSubjectCollection = null;
     selectedPath = addressPath(address);
     onSelectCommand(command, options);
-    const view = selectedCommandView(getCommandViews(command));
+    const facet = selectedCommandFacet(facetsFor(command));
     renderColumns({
       focusKey: address,
-      focusDetail: options.focusDetail === true && view !== "children",
+      focusDetail: options.focusDetail === true && !isCollectionFacet(command, facet),
     });
     return true;
+  }
+
+  function selectSubjectRecord(subject, options = {}) {
+    const key = collectionKey(subject.owner, subject.collectionFacet);
+    const current = subjectCollections.get(key)?.subjectByRef.get(subject.canonicalRef);
+    if (!current || setupRequired) {
+      return false;
+    }
+    const owner = availableCommand(catalog, setupRequired, current.owner);
+    if (!owner) {
+      return false;
+    }
+    selectedPath = addressPath(owner.address);
+    selectedSubjectRef = current.canonicalRef;
+    selectedSubjectCollection = { facet: current.collectionFacet, owner: current.owner };
+    onSelectSubject(current, options);
+    renderColumns({
+      focusKey: current.canonicalRef,
+      focusDetail: options.focusDetail === true,
+    });
+    return true;
+  }
+
+  function selectSubject(owner, facet, reference, options = {}) {
+    const subject = subjectCollections.get(collectionKey(owner, facet))?.subjectByRef.get(reference);
+    return subject ? selectSubjectRecord(subject, options) : false;
   }
 
   function defaultCommand() {
@@ -367,18 +430,21 @@ export function createExplorerView({
     const depth = Number(button.dataset.depth);
     if (event.key === "ArrowRight") {
       const command = catalog.commandByAddress.get(button.dataset.address);
-      const views = command ? getCommandViews(command) : [];
-      if (command && commandHasChoices(catalog, command, views)) {
+      const facets = command ? facetsFor(command) : [];
+      if (
+        command
+        && commandHasChoices(catalog, command, facets)
+      ) {
         event.preventDefault();
         selectCommand(button.dataset.address, depth, { history: "push" });
         requestAnimationFrame(() => {
-          const selectedView = selectedCommandView(getCommandViews(command));
-          const target = selectedView === "children"
+          const selectedFacet = selectedCommandFacet(facetsFor(command));
+          const target = isCollectionFacet(command, selectedFacet)
             ? columns
               .querySelector(`[data-depth="${depth + 1}"]`)
               ?.querySelector(".finder-choice")
             : columns
-              .querySelector(`#command-view-menu-${depth}`)
+              .querySelector(`#command-facet-menu-${depth}`)
               ?.querySelector(".finder-choice");
           target?.focus();
         });
@@ -405,7 +471,7 @@ export function createExplorerView({
     if (preferredCommand) {
       selectAddress(preferred, {
         history: options.history ?? "none",
-        view: options.view,
+        facet: options.facet,
       });
       return;
     }
@@ -434,6 +500,60 @@ export function createExplorerView({
     }
   }
 
+  function setSubjectCollection(collection) {
+    const selected = selectedSubjectRef;
+    if (collection) {
+      const key = collectionKey(collection.owner, collection.facet);
+      subjectCollections.set(key, collection);
+      subjectCollectionErrors.delete(key);
+    }
+    if (!catalog) {
+      return;
+    }
+    if (selected) {
+      const current = [...subjectCollections.values()]
+        .flatMap(({ subjects }) => subjects)
+        .find(({ canonicalRef }) => canonicalRef === selected);
+      if (current) {
+        selectedSubjectRef = current.canonicalRef;
+      } else {
+        const owner = selectedSubjectCollection?.owner;
+        const facet = selectedSubjectCollection?.facet;
+        selectedSubjectRef = null;
+        selectedSubjectCollection = null;
+        const command = owner
+          ? availableCommand(catalog, setupRequired, owner)
+          : null;
+        if (command) {
+          selectedPath = addressPath(owner);
+          onSelectCommand(command, {
+            history: "replace",
+            facet,
+          });
+        }
+      }
+    }
+    renderColumns();
+  }
+
+  function setSubjectCollectionLoading(owner, facet) {
+    const key = collectionKey(owner, facet);
+    subjectCollections.delete(key);
+    subjectCollectionErrors.delete(key);
+    if (catalog) {
+      renderColumns();
+    }
+  }
+
+  function setSubjectCollectionError(owner, facet, message) {
+    const key = collectionKey(owner, facet);
+    subjectCollections.delete(key);
+    subjectCollectionErrors.set(key, message);
+    if (catalog) {
+      renderColumns();
+    }
+  }
+
   function setCommandState(address, state) {
     if (state) {
       commandStates.set(address, state);
@@ -449,8 +569,12 @@ export function createExplorerView({
     handleKeyboard,
     selectAddress,
     selectCommand,
+    selectSubject,
     setCatalog,
     setCommandState,
+    setSubjectCollection,
+    setSubjectCollectionError,
+    setSubjectCollectionLoading,
     setSetupRequired,
   };
 }

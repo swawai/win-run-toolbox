@@ -1,0 +1,6 @@
+Set the final Agent prompt for a Context. Running the command again replaces the prior prompt.
+
+Usage: {{INVOCATION}} <context-id> <text...>
+       {{INVOCATION}} <context-id> --stdin
+
+Ordinary text can follow the ID directly. Send multiline text or shell metacharacters through UTF-8 stdin.

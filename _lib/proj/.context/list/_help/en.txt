@@ -1,0 +1,7 @@
+List the current Entry's Contexts by ID.
+
+Usage:
+  {{INVOCATION}}
+  {{INVOCATION}} --json
+
+The default output contains one Context ID per line. --json returns swawkit.subject-collection/v2 for Facet resolvers and automation.

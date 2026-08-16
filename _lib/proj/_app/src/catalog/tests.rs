@@ -1,6 +1,10 @@
 use super::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod facets;
+mod module_contracts;
+mod subject_kinds;
+
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture {
@@ -53,7 +57,7 @@ fn discovers_control_kernel_and_action_hierarchies() {
     );
     fixture.file(
         "home/_lib/proj/..entry/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"wide"}}"#,
+        r#"{"schema":"swawkit.command-view/web/v4","childrenColumn":{"width":"wide"}}"#,
     );
     fixture.file(
         "home/_lib/proj/..entry/claim/run.core.json",
@@ -206,6 +210,18 @@ fn discovers_control_kernel_and_action_hierarchies() {
     let meta_logs = node(&snapshot, CommandSource::Kernel, ".logs");
     assert_eq!(meta_logs.adapter.as_deref(), Some("core"));
     assert_eq!(meta_logs.handler.as_deref(), Some("meta.logs"));
+    let root = node(&snapshot, CommandSource::Kernel, "");
+    assert!(root.facets.iter().all(|facet| facet.id != "run"));
+    let root_help = root
+        .facets
+        .iter()
+        .find(|facet| facet.id == "help")
+        .and_then(|facet| facet.resolver.as_ref())
+        .expect("root help facet");
+    assert!(matches!(
+        root_help,
+        FacetResolver::Command { arguments, .. } if arguments.is_empty()
+    ));
 
     let build = node(&snapshot, CommandSource::Action, "build");
     assert_eq!(build.parent.as_deref(), Some(""));
@@ -276,7 +292,7 @@ fn reports_an_invalid_parent_owned_web_view_without_stopping_discovery() {
     fixture.file("home/_lib/proj/run.ps1", "");
     fixture.file(
         "home/_lib/proj/.broken/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"480px"}}"#,
+        r#"{"schema":"swawkit.command-view/web/v4","childrenColumn":{"width":"480px"}}"#,
     );
 
     let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
@@ -298,7 +314,7 @@ fn rejects_ambiguous_web_run_operations() {
     let actions = fixture.directory("project/.swaw");
     fixture.file(
         "home/_lib/proj/.broken/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v2","run":{"operations":[{"id":"apply","label":"Apply","arguments":[]},{"id":"apply","label":"Again","arguments":[]}]}}"#,
+        r#"{"schema":"swawkit.command-view/web/v4","run":{"operations":[{"id":"apply","label":"Apply","arguments":[]},{"id":"apply","label":"Again","arguments":[]}]}}"#,
     );
 
     let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
@@ -310,6 +326,68 @@ fn rejects_ambiguous_web_run_operations() {
             .as_deref()
             .is_some_and(|message| message.contains("must be unique"))
     );
+}
+
+#[test]
+fn module_collection_facets_are_not_restricted_to_a_context_owner() {
+    let fixture = Fixture::new();
+    let kernel = fixture.directory("home/_lib/proj");
+    let actions = fixture.directory("project/.swaw");
+    fixture.file("home/_lib/proj/.context/list/run.cmd", "");
+    fixture.file("home/_lib/proj/.other/list/run.cmd", "");
+    fixture.file(
+        "home/_lib/proj/.context/_module.json",
+        r##"{"schema":"swawkit.command-module/v4","facets":[{"id":"contexts","kind":"collection","renderer":"collection","icon":"#","label":{"zh-CN":"上下文","en":"Contexts"},"summary":{"zh-CN":"浏览上下文","en":"Browse contexts"},"subjectKind":{"kind":"context","provider":{"type":"command","source":"kernel","address":".context"}},"resolver":{"type":"command","address":".context.list","arguments":["--json"],"returns":"swawkit.subject-collection/v2"}}],"subjectKinds":[{"kind":"context","facets":[{"id":"overview","kind":"operation","renderer":"run","icon":"i","label":{"zh-CN":"概览","en":"Overview"},"summary":{"zh-CN":"查看上下文","en":"Inspect context"},"resolver":{"type":"command","address":".context.list","arguments":[{"bind":"subject.id"}]}}]}]}"##,
+    );
+    fixture.file(
+        "home/_lib/proj/.other/_module.json",
+        r##"{"schema":"swawkit.command-module/v4","facets":[{"id":"items","kind":"collection","renderer":"collection","icon":"#","label":{"zh-CN":"对象","en":"Items"},"summary":{"zh-CN":"浏览对象","en":"Browse items"},"subjectKind":{"kind":"item","provider":{"type":"command","source":"kernel","address":".other"}},"resolver":{"type":"command","address":".other.list","arguments":["--json"],"returns":"swawkit.subject-collection/v2"}}],"subjectKinds":[{"kind":"item","facets":[{"id":"overview","kind":"operation","renderer":"run","icon":"i","label":{"zh-CN":"概览","en":"Overview"},"summary":{"zh-CN":"查看对象","en":"Inspect item"},"resolver":{"type":"command","address":".other.list","arguments":[{"bind":"subject.id"}]}}]}]}"##,
+    );
+
+    let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
+    let collection = node(&snapshot, CommandSource::Kernel, ".context")
+        .facets
+        .iter()
+        .find(|facet| facet.id == "contexts")
+        .expect("resolved Context collection");
+    assert_eq!(collection.kind, FacetKind::Collection);
+    let subject_kind = collection.subject_kind.as_ref().expect("Subject kind ref");
+    assert_eq!(subject_kind.kind, "context");
+    assert_eq!(
+        subject_kind.provider,
+        crate::subject::SubjectRef::Command {
+            source: CommandSource::Kernel,
+            address: ".context".to_owned(),
+        }
+    );
+    let context_kind = node(&snapshot, CommandSource::Kernel, ".context")
+        .subject_kinds
+        .iter()
+        .find(|subject_kind| subject_kind.kind == "context")
+        .expect("Context Subject kind");
+    let context_overview = context_kind
+        .instantiate("overview", "release-check")
+        .expect("instantiate Context Facet")
+        .expect("Context overview");
+    assert!(matches!(
+        context_overview.resolver,
+        Some(FacetResolver::Command { ref arguments, .. })
+            if arguments == &["release-check"]
+    ));
+    assert_eq!(
+        collection.resolver,
+        Some(FacetResolver::Command {
+            address: ".context.list".to_owned(),
+            arguments: vec!["--json".to_owned()],
+            accepts_tail: false,
+            confirmation: None,
+            returns: Some("swawkit.subject-collection/v2".to_owned()),
+        })
+    );
+    let other = node(&snapshot, CommandSource::Kernel, ".other");
+    assert!(other.facets.iter().any(|facet| facet.id == "items"));
+    assert_eq!(other.subject_kinds[0].kind, "item");
+    assert!(other.diagnostic.is_none());
 }
 
 #[test]
@@ -362,12 +440,12 @@ fn restricts_owned_entries_to_their_catalog_sources() {
         (
             CommandSource::Kernel,
             ".fake-meta",
-            "exact built-in Kernel meta commands",
+            "exact built-in Kernel commands",
         ),
         (
             CommandSource::Control,
             "..fake-meta",
-            "exact built-in Kernel meta commands",
+            "exact built-in Kernel commands",
         ),
         (
             CommandSource::Control,
@@ -438,48 +516,6 @@ fn reports_multiple_and_non_canonical_run_entries_without_stopping_discovery() {
     );
 
     assert!(node(&snapshot, CommandSource::Kernel, ".ok").runnable);
-}
-
-#[test]
-fn module_contracts_are_strict_and_invalid_declarations_disable_the_command() {
-    let fixture = Fixture::new();
-    let kernel = fixture.directory("home/_lib/proj");
-    let actions = fixture.directory("project/.swaw");
-    fixture.file("home/_lib/proj/.provider/run.exe", "");
-    fixture.file(
-        "home/_lib/proj/.provider/_module.json",
-        r#"{"schema":"swawkit.command-module/v1","provides":[{"contract":"swawkit.fixture/v1"}]}"#,
-    );
-    fixture.file("home/_lib/proj/.consumer/run.exe", "");
-    fixture.file(
-        "home/_lib/proj/.consumer/_module.json",
-        r#"{"schema":"swawkit.command-module/v1","requires":[{"provider":".provider","contract":"swawkit.fixture/v1"}]}"#,
-    );
-    fixture.file("home/_lib/proj/.broken/run.exe", "");
-    fixture.file(
-        "home/_lib/proj/.broken/_module.json",
-        r#"{"schema":"swawkit.command-module/v1","requires":[],"provides":[]}"#,
-    );
-
-    let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
-    let provider = node(&snapshot, CommandSource::Kernel, ".provider");
-    assert_eq!(
-        provider.module.as_ref().unwrap().provides[0].contract,
-        "swawkit.fixture/v1"
-    );
-    let consumer = node(&snapshot, CommandSource::Kernel, ".consumer");
-    assert_eq!(
-        consumer.module.as_ref().unwrap().requires[0].provider,
-        ".provider"
-    );
-    let broken = node(&snapshot, CommandSource::Kernel, ".broken");
-    assert!(!broken.runnable);
-    assert!(
-        broken
-            .diagnostic
-            .as_deref()
-            .is_some_and(|message| message.contains("must declare requires or provides"))
-    );
 }
 
 #[test]

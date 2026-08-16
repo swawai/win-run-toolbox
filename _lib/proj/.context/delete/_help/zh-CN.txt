@@ -1,0 +1,5 @@
+删除整个 Context。
+
+用法：{{INVOCATION}} <context-id>
+
+这与 .context.remove 不同：remove 只移除 Context 内的命令引用。

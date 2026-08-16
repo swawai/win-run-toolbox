@@ -74,6 +74,95 @@ describe("command run view", () => {
     expect(bodies[1].arguments).toEqual(["--apply"]);
   });
 
+  test("prefills the exact invocation resolved for a custom Facet", async () => {
+    const ui = elements();
+    let body;
+    const view = createCommandRunView(ui, {
+      document: documentObject(),
+      storage: storage(),
+      async fetchRun(_url, options) {
+        body = JSON.parse(options.body);
+        return response(201, snapshot({
+          address: ".check",
+          state: "exited",
+          exitCode: 0,
+        }), "/api/v2/command-runs/run-1");
+      },
+    });
+
+    view.select(
+      {
+        address: ".check",
+        runnable: true,
+        source: "kernel",
+        runOperations: [
+          { id: "other", label: "Other", arguments: [], confirmation: null },
+        ],
+      },
+      {
+        acceptsTail: false,
+        arguments: [".context.list", "--json"],
+        key: ".context.list#validate",
+        useOperations: false,
+      },
+    );
+    expect(ui.commandRunEditor.hidden).toBe(false);
+    expect(
+      ui.commandRunArguments
+        .querySelectorAll(".command-run-argument")
+        .map((input) => input.value),
+    ).toEqual([".context.list", "--json"]);
+    expect(
+      ui.commandRunArguments
+        .querySelectorAll(".command-run-argument")
+        .every((input) => input.readOnly),
+    ).toBe(true);
+    expect(ui.commandRunAdd.disabled).toBe(true);
+
+    await view.execute();
+    expect(body).toEqual({
+      address: ".check",
+      arguments: [".context.list", "--json"],
+    });
+  });
+
+  test("confirms an exact Subject operation with its fixed instance ID", async () => {
+    const ui = elements();
+    let body;
+    const view = createCommandRunView(ui, {
+      document: documentObject(),
+      storage: storage(),
+      async fetchRun(_url, options) {
+        body = JSON.parse(options.body);
+        return response(201, snapshot({
+          address: ".context.delete",
+          state: "exited",
+          exitCode: 0,
+        }), "/api/v2/command-runs/run-1");
+      },
+    });
+
+    view.select(
+      { address: ".context.delete", runnable: true, source: "kernel" },
+      {
+        acceptsTail: false,
+        arguments: ["mycontext01"],
+        confirmation: "Delete this Context?",
+        key: "::context/mycontext01#delete",
+        label: "Delete",
+        useOperations: false,
+      },
+    );
+    const [button] = ui.commandRunOperationList
+      .querySelectorAll(".command-run-operation");
+    expect(button.textContent).toBe("Delete");
+    button.dispatch("click");
+    expect(ui.commandRunConfirmation.hidden).toBe(false);
+    ui.commandRunConfirm.dispatch("click");
+    await settle();
+    expect(body.arguments).toEqual(["mycontext01"]);
+  });
+
   test("preserves argv rows, polls recursively, and renders both streams", async () => {
     const ui = elements();
     const saved = storage();

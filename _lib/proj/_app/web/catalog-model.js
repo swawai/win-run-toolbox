@@ -1,7 +1,9 @@
 import { t } from "./i18n.js";
+import { normalizeFacets as normalizeFacetDocuments } from "./facet-model.js";
+import { normalizeSubjectKinds } from "./subject-kind-model.js";
 
-const CATALOG_PROTOCOL = "swawkit.command-catalog/v6";
-const MODULE_PROTOCOL = "swawkit.command-module/v1";
+const CATALOG_PROTOCOL = "swawkit.command-catalog/v13";
+const MODULE_PROTOCOL = "swawkit.command-module/v4";
 
 function contractError(message) {
   return new Error(`${t("Catalog 协议无效", "Invalid Catalog protocol")}: ${message}`);
@@ -196,7 +198,18 @@ function normalizeCommand(value, index) {
   const help = normalizeHelp(command.help, index);
   const module = normalizeModule(command.module, index);
   const view = normalizeView(command.view, index);
+  const facets = normalizeFacetDocuments(
+    command.facets,
+    `commands[${index}].facets`,
+    contractError,
+  );
+  const subjectKinds = normalizeSubjectKinds(
+    command.subjectKinds,
+    `commands[${index}].subjectKinds`,
+    contractError,
+  );
   return {
+    facets,
     address,
     adapter: adapter ?? "",
     aliasOf: nullableString(command.aliasOf, field("aliasOf")),
@@ -213,6 +226,7 @@ function normalizeCommand(value, index) {
     runnable: command.runnable,
     setupAvailable: source === "control",
     source,
+    subjectKinds,
     summary: help?.summary ?? "",
   };
 }
@@ -236,6 +250,7 @@ export function createCatalog(document) {
   }
 
   const commandByAddress = new Map();
+  const subjectKindByKind = new Map();
   const seenAddresses = new Set();
   for (const [index, rawCommand] of payload.commands.entries()) {
     const command = normalizeCommand(rawCommand, index);
@@ -246,6 +261,58 @@ export function createCatalog(document) {
 
     if (command.address && !command.aliasOf) {
       commandByAddress.set(command.address, command);
+    }
+    for (const subjectKind of command.subjectKinds) {
+      if (subjectKindByKind.has(subjectKind.kind)) {
+        throw contractError(`Subject kind ${subjectKind.kind} is declared more than once.`);
+      }
+      subjectKindByKind.set(subjectKind.kind, { command, subjectKind });
+    }
+  }
+
+  for (const command of commandByAddress.values()) {
+    for (const facet of command.facets) {
+      if (
+        facet.subjectKind !== null
+        && (
+          !subjectKindByKind.has(facet.subjectKind.kind)
+          || subjectKindByKind.get(facet.subjectKind.kind).command.address
+            !== facet.subjectKind.provider.address
+          || subjectKindByKind.get(facet.subjectKind.kind).command.source
+            !== facet.subjectKind.provider.source
+        )
+      ) {
+        throw contractError(
+          `${command.address}.facets.${facet.id} references an unavailable Subject kind.`,
+        );
+      }
+      if (facet.resolver?.type !== "command") {
+        continue;
+      }
+      const target = commandByAddress.get(facet.resolver.address);
+      if (!target) {
+        throw contractError(
+          `${command.address}.facets.${facet.id} 引用了不存在的命令。`,
+        );
+      }
+      const controlEdit = facet.renderer === "edit"
+        && target.source === "control"
+        && target.handler === "entry.profile.set";
+      if (!target.runnable || (target.source === "control" && !controlEdit) || target.aliasOf) {
+        throw contractError(
+          `${command.address}.facets.${facet.id} 不是可由 Web 执行的精确命令。`,
+        );
+      }
+    }
+    for (const subjectKind of command.subjectKinds) {
+      for (const facet of subjectKind.facets) {
+        const target = commandByAddress.get(facet.resolver.address);
+        if (!target || !target.runnable || target.source === "control" || target.aliasOf) {
+          throw contractError(
+            `${command.address}.subjectKinds.${subjectKind.kind}.${facet.id} has an invalid resolver target.`,
+          );
+        }
+      }
     }
   }
 
@@ -288,6 +355,7 @@ export function createCatalog(document) {
     }),
     protocol: CATALOG_PROTOCOL,
     roots,
+    subjectKindByKind,
   };
 }
 

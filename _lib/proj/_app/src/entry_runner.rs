@@ -1,4 +1,5 @@
 mod environment;
+mod query;
 mod worker_boundary;
 
 use std::ffi::OsString;
@@ -18,6 +19,7 @@ use crate::launch::{
 };
 use crate::utf8_output::Utf8LossyDecoder;
 use environment::current_user_environment;
+pub(crate) use query::{EntryQueryOutput, run_entry_query};
 use worker_boundary::{WorkerBoundary, WorkerJob, WorkerReady};
 const WORKER_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const OUTPUT_READ_BUFFER_SIZE: usize = 8192;

@@ -12,13 +12,13 @@ fn module_check_uses_declared_provider_state_and_returns_a_machine_exit_code() {
     let provider = fixture.command(".provider", "run.exe", "fixture");
     fs::write(
         provider.join("_module.json"),
-        r#"{"schema":"swawkit.command-module/v1","provides":[{"contract":"swawkit.fixture/v1"}]}"#,
+        r#"{"schema":"swawkit.command-module/v4","provides":[{"contract":"swawkit.fixture/v1"}]}"#,
     )
     .unwrap();
     let consumer = fixture.command(".consumer", "run.exe", "fixture");
     fs::write(
         consumer.join("_module.json"),
-        r#"{"schema":"swawkit.command-module/v1","requires":[{"provider":".provider","contract":"swawkit.fixture/v1"}]}"#,
+        r#"{"schema":"swawkit.command-module/v4","requires":[{"provider":".provider","contract":"swawkit.fixture/v1"}]}"#,
     )
     .unwrap();
     fixture.bind();

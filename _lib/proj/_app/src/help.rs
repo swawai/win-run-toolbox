@@ -381,6 +381,8 @@ mod tests {
             handler: None,
             module: None,
             help,
+            subject_kinds: Vec::new(),
+            facets: Vec::new(),
             view: None,
             diagnostic: None,
             help_diagnostic: None,

@@ -1,0 +1,6 @@
+设置 Context 的最终 Agent 提示；再次运行会替换旧提示。
+
+用法：{{INVOCATION}} <context-id> <text...>
+      {{INVOCATION}} <context-id> --stdin
+
+普通文本可直接写在 ID 后；多行或包含 Shell 特殊字符的文本应通过 UTF-8 stdin 传入。

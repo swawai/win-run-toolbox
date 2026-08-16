@@ -6,7 +6,7 @@ use super::{
     invalid_data,
 };
 
-const WEB_VIEW_SCHEMA: &str = "swawkit.command-view/web/v2";
+const WEB_VIEW_SCHEMA: &str = "swawkit.command-view/web/v4";
 const MAX_RUN_OPERATIONS: usize = 8;
 const MAX_OPERATION_ARGUMENTS: usize = 32;
 const MAX_ARGUMENT_LENGTH: usize = 4096;
@@ -187,7 +187,6 @@ pub(super) fn read_local_web_view(command_directory: &Path) -> io::Result<Option
     if let Some(run) = &manifest.run {
         validate_run(run)?;
     }
-
     Ok(Some(CommandView {
         children_column: manifest.children_column,
         run: manifest.run,

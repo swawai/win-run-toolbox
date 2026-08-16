@@ -1,0 +1,5 @@
+新建一个空 Context。
+
+用法：{{INVOCATION}} <context-id>
+
+Context ID 必须以小写字母开头，只能包含小写字母、数字和连字符，最长 64 个字符。

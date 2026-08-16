@@ -75,7 +75,7 @@ impl RunJournal {
         let started_at_unix_ms = unix_time_ms()?;
         let mut collision = None;
         for _ in 0..CREATE_ATTEMPTS {
-            let id = next_run_id(started_at_unix_ms);
+            let id = next_run_id()?;
             let run_root = journals_root.join(&id);
             if run_root.exists() {
                 collision = Some(io::Error::new(
@@ -365,20 +365,31 @@ impl Writer {
 }
 
 pub(super) fn valid_run_id(id: &str) -> bool {
-    id.len() == 42
-        && id.as_bytes().get(16) == Some(&b'-')
-        && id.as_bytes().get(25) == Some(&b'-')
+    let separators = match id.len() {
+        42 => (16, 25),
+        58 => (32, 41),
+        _ => return false,
+    };
+    id.as_bytes().get(separators.0) == Some(&b'-')
+        && id.as_bytes().get(separators.1) == Some(&b'-')
         && id.bytes().enumerate().all(|(index, byte)| {
-            index == 16 || index == 25 || byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+            index == separators.0
+                || index == separators.1
+                || byte.is_ascii_digit()
+                || (b'a'..=b'f').contains(&byte)
         })
 }
 
-fn next_run_id(timestamp: u64) -> String {
+fn next_run_id() -> io::Result<String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_nanos();
     let sequence = NEXT_RUN.fetch_add(1, Ordering::Relaxed) + 1;
-    format!(
-        "{timestamp:016x}-{:08x}-{sequence:016x}",
+    Ok(format!(
+        "{timestamp:032x}-{:08x}-{sequence:016x}",
         std::process::id()
-    )
+    ))
 }
 
 pub(super) fn unix_time_ms() -> io::Result<u64> {

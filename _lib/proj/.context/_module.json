@@ -1,0 +1,179 @@
+{
+  "schema": "swawkit.command-module/v4",
+  "facets": [
+    {
+      "id": "contexts",
+      "kind": "collection",
+      "renderer": "collection",
+      "icon": "◆",
+      "label": {
+        "zh-CN": "上下文",
+        "en": "Contexts"
+      },
+      "summary": {
+        "zh-CN": "浏览持久化的 Agent 上下文",
+        "en": "Browse persisted Agent contexts"
+      },
+      "subjectKind": {
+        "kind": "context",
+        "provider": {
+          "type": "command",
+          "source": "kernel",
+          "address": ".context"
+        }
+      },
+      "resolver": {
+        "type": "command",
+        "address": ".context.list",
+        "arguments": ["--json"],
+        "returns": "swawkit.subject-collection/v2"
+      }
+    }
+  ],
+  "subjectKinds": [
+    {
+      "kind": "context",
+      "facets": [
+        {
+          "id": "overview",
+          "kind": "projection",
+          "renderer": "overview",
+          "icon": "i",
+          "label": {
+            "zh-CN": "概览",
+            "en": "Overview"
+          },
+          "summary": {
+            "zh-CN": "查看 Context 内容",
+            "en": "Inspect Context contents"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".context.show",
+            "arguments": [{ "bind": "subject.id" }],
+            "returns": "swawkit.context/v1"
+          }
+        },
+        {
+          "id": "render",
+          "kind": "operation",
+          "renderer": "run",
+          "icon": "#",
+          "label": {
+            "zh-CN": "渲染",
+            "en": "Render"
+          },
+          "summary": {
+            "zh-CN": "生成确定性的 Agent Markdown",
+            "en": "Generate deterministic Agent Markdown"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".context.render",
+            "arguments": [{ "bind": "subject.id" }]
+          }
+        },
+        {
+          "id": "add",
+          "kind": "operation",
+          "renderer": "run",
+          "icon": "+",
+          "label": {
+            "zh-CN": "添加命令",
+            "en": "Add commands"
+          },
+          "summary": {
+            "zh-CN": "向 Context 添加命令引用",
+            "en": "Add command references to this Context"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".context.add",
+            "arguments": [{ "bind": "subject.id" }],
+            "acceptsTail": true
+          }
+        },
+        {
+          "id": "remove",
+          "kind": "operation",
+          "renderer": "run",
+          "icon": "−",
+          "label": {
+            "zh-CN": "移除命令",
+            "en": "Remove commands"
+          },
+          "summary": {
+            "zh-CN": "从 Context 移除命令引用",
+            "en": "Remove command references from this Context"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".context.remove",
+            "arguments": [{ "bind": "subject.id" }],
+            "acceptsTail": true
+          }
+        },
+        {
+          "id": "note",
+          "kind": "operation",
+          "renderer": "run",
+          "icon": "+",
+          "label": {
+            "zh-CN": "追加说明",
+            "en": "Append note"
+          },
+          "summary": {
+            "zh-CN": "向 Context 追加一段说明",
+            "en": "Append a note to this Context"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".context.note",
+            "arguments": [{ "bind": "subject.id" }],
+            "acceptsTail": true
+          }
+        },
+        {
+          "id": "prompt",
+          "kind": "operation",
+          "renderer": "run",
+          "icon": "*",
+          "label": {
+            "zh-CN": "设置提示",
+            "en": "Set prompt"
+          },
+          "summary": {
+            "zh-CN": "设置 Context 的最终提示",
+            "en": "Set the final Context prompt"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".context.prompt",
+            "arguments": [{ "bind": "subject.id" }],
+            "acceptsTail": true
+          }
+        },
+        {
+          "id": "delete",
+          "kind": "operation",
+          "renderer": "run",
+          "icon": "×",
+          "label": {
+            "zh-CN": "删除",
+            "en": "Delete"
+          },
+          "summary": {
+            "zh-CN": "删除这个 Context",
+            "en": "Delete this Context"
+          },
+          "resolver": {
+            "type": "command",
+            "address": ".context.delete",
+            "arguments": [{ "bind": "subject.id" }],
+            "confirmation": "Delete this Context? 此操作不可撤销。"
+          }
+        }
+      ]
+    }
+  ]
+}

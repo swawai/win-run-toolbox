@@ -17,7 +17,16 @@ const ENTRY_PROTOCOL: [(&str, CommandAdapter); 7] = [
     ("run.ps1", CommandAdapter::Pwsh),
     ("run.cmd", CommandAdapter::Cmd),
 ];
-const CORE_HANDLERS: [&str; 12] = [
+const CORE_HANDLERS: [&str; 21] = [
+    "context.add",
+    "context.delete",
+    "context.list",
+    "context.new",
+    "context.note",
+    "context.prompt",
+    "context.remove",
+    "context.render",
+    "context.show",
     "entry.claim",
     "entry.profile",
     "entry.profile.apply",
@@ -51,7 +60,16 @@ impl ResolvedEntry {
             CommandSource::Kernel => {
                 matches!(
                     (address, self.handler.as_deref()),
-                    (".check", Some("meta.check"))
+                    (".context.add", Some("context.add"))
+                        | (".context.delete", Some("context.delete"))
+                        | (".context.list", Some("context.list"))
+                        | (".context.new", Some("context.new"))
+                        | (".context.note", Some("context.note"))
+                        | (".context.prompt", Some("context.prompt"))
+                        | (".context.remove", Some("context.remove"))
+                        | (".context.render", Some("context.render"))
+                        | (".context.show", Some("context.show"))
+                        | (".check", Some("meta.check"))
                         | (".help", Some("meta.help"))
                         | (".logs", Some("meta.logs"))
                 ) || (self.handler.as_deref() == Some("entry.profile.set")

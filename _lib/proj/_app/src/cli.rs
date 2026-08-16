@@ -1,5 +1,6 @@
 mod check;
 mod claim;
+mod context_commands;
 mod control;
 mod logs;
 
@@ -131,6 +132,10 @@ fn run_with_dependencies(
     }
     if let Some(exit_code) =
         logs::dispatch(&snapshot, argv, context, resolved.path(), &profile_state)?
+    {
+        return Ok(exit_code);
+    }
+    if let Some(exit_code) = context_commands::dispatch(&snapshot, argv, context, resolved.path())?
     {
         return Ok(exit_code);
     }

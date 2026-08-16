@@ -1,0 +1,72 @@
+.document-projection-pane,
+.context-projection-pane {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 24px 28px 40px;
+}
+
+.document-projection-feedback {
+  color: var(--ui-text-subtle);
+  font-size: 12px;
+}
+
+.document-projection-feedback[data-state="error"] {
+  color: var(--ui-status-error);
+}
+
+.document-projection-json {
+  max-width: 100%;
+  margin: 18px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  background: var(--ui-surface-subtle);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.context-projection-summary,
+.context-projection-empty {
+  color: var(--ui-text-subtle);
+  font-size: 12px;
+}
+
+.context-projection-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.context-projection-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  background: var(--ui-surface-subtle);
+}
+
+.context-projection-list li span {
+  color: var(--ui-text-subtle);
+  font-size: 11px;
+}
+
+.context-projection-notes li {
+  display: list-item;
+  white-space: pre-wrap;
+}
+
+.context-projection-prompt {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  background: var(--ui-surface-subtle);
+  white-space: pre-wrap;
+}

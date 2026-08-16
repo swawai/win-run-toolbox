@@ -1,0 +1,103 @@
+.run-projection-pane {
+  width: clamp(420px, 42vw, 680px);
+  min-width: 0;
+  height: 100%;
+  padding: 27px 26px;
+  overflow-y: auto;
+}
+
+.run-projection-pane > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.run-projection-pane h2,
+.run-projection-pane p {
+  margin: 0;
+}
+
+.run-projection-pane h2 {
+  font-family: var(--font-mono);
+  font-size: clamp(22px, 2.3vw, 28px);
+  overflow-wrap: anywhere;
+}
+
+.run-projection-ref,
+.run-projection-meta {
+  display: block;
+  margin-top: 7px;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.run-projection-state {
+  min-width: max-content;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.run-projection-state[data-state="success"] {
+  color: var(--ui-status-ok);
+}
+
+.run-projection-state[data-state="warning"],
+.run-projection-truncated {
+  color: var(--ui-status-warning);
+}
+
+.run-projection-state[data-state="error"],
+.run-projection-error,
+.run-projection-output [data-stream="stderr"] {
+  color: var(--ui-status-error);
+}
+
+.run-projection-error,
+.run-projection-truncated {
+  margin-bottom: 9px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.run-projection-output {
+  min-height: 180px;
+  max-height: calc(100vh - 190px);
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-control);
+  color: var(--ui-text);
+  background: var(--ui-surface-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.run-projection-output > span {
+  display: block;
+}
+
+.run-projection-output [data-kind="progress"] {
+  color: var(--ui-text-muted);
+}
+
+.run-projection-output [data-kind="progress"][data-state="completed"] {
+  color: var(--ui-status-ok);
+}
+
+.run-projection-output [data-kind="progress"][data-state="failed"] {
+  color: var(--ui-status-error);
+}
+
+@media (max-width: 560px) {
+  .run-projection-pane {
+    width: min(94vw, 520px);
+    padding: 23px 18px;
+  }
+}

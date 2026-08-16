@@ -1,0 +1,6 @@
+Append a note to a Context.
+
+Usage: {{INVOCATION}} <context-id> <text...>
+       {{INVOCATION}} <context-id> --stdin
+
+Ordinary text can follow the ID directly. Send multiline text or shell metacharacters through UTF-8 stdin.

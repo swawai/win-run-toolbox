@@ -131,8 +131,8 @@
                 </article>
 
                 <div class="command-workspace" id="command-workspace" hidden>
-                  <div class="command-activity-content">
-                    <article class="command-detail command-activity-pane" id="command-detail"
+                  <div class="command-facet-content">
+                    <article class="command-detail command-facet-pane" id="command-detail"
                       tabindex="-1" hidden>
                       <div id="generic-command-overview">
                         <header class="detail-heading">
@@ -255,8 +255,51 @@
                       </div>
                     </article>
 
-                    <article class="command-help-activity command-activity-pane"
-                      id="command-help-activity" tabindex="-1" hidden>
+                    <article class="document-projection-pane command-facet-pane"
+                      id="document-projection-pane" tabindex="-1" hidden>
+                      <header class="detail-heading">
+                        <h2 id="document-projection-title"></h2>
+                        <p><code id="document-projection-ref"></code></p>
+                        <p><code id="document-projection-protocol"></code></p>
+                      </header>
+                      <p class="document-projection-feedback" id="document-projection-feedback"
+                        aria-live="polite"></p>
+                      <pre class="document-projection-json" id="document-projection-json" hidden></pre>
+                    </article>
+
+                    <article class="context-projection-pane command-facet-pane"
+                      id="context-projection-pane" tabindex="-1" hidden>
+                      <header class="detail-heading">
+                        <h2 id="context-projection-title"></h2>
+                        <p><code id="context-projection-ref"></code></p>
+                        <p class="context-projection-summary" id="context-projection-summary"></p>
+                      </header>
+                      <section class="detail-section" aria-labelledby="context-projection-commands-title">
+                        <h3 id="context-projection-commands-title" data-i18n-zh="命令"
+                          data-i18n-en="Commands">命令</h3>
+                        <ul class="context-projection-list" id="context-projection-commands"></ul>
+                        <p class="context-projection-empty" id="context-projection-command-empty"
+                          data-i18n-zh="尚未添加命令。" data-i18n-en="No commands added yet.">尚未添加命令。</p>
+                      </section>
+                      <section class="detail-section" aria-labelledby="context-projection-notes-title">
+                        <h3 id="context-projection-notes-title" data-i18n-zh="说明"
+                          data-i18n-en="Notes">说明</h3>
+                        <ul class="context-projection-list context-projection-notes"
+                          id="context-projection-notes"></ul>
+                        <p class="context-projection-empty" id="context-projection-notes-empty"
+                          data-i18n-zh="尚未追加说明。" data-i18n-en="No notes appended yet.">尚未追加说明。</p>
+                      </section>
+                      <section class="detail-section" aria-labelledby="context-projection-prompt-title">
+                        <h3 id="context-projection-prompt-title" data-i18n-zh="最终提示"
+                          data-i18n-en="Final prompt">最终提示</h3>
+                        <pre class="context-projection-prompt" id="context-projection-prompt" hidden></pre>
+                        <p class="context-projection-empty" id="context-projection-prompt-empty"
+                          data-i18n-zh="尚未设置最终提示。" data-i18n-en="No final prompt set yet.">尚未设置最终提示。</p>
+                      </section>
+                    </article>
+
+                    <article class="command-help-pane command-facet-pane"
+                      id="command-help-pane" tabindex="-1" hidden>
                       <header class="detail-heading">
                         <h2 data-i18n-zh="帮助" data-i18n-en="Help">帮助</h2>
                         <p><code id="command-help-address"></code></p>
@@ -268,8 +311,8 @@
                       </section>
                     </article>
 
-                    <div class="command-run-activity command-activity-pane"
-                      id="command-run-activity" tabindex="-1" hidden>
+                    <div class="command-run-pane command-facet-pane"
+                      id="command-run-pane" tabindex="-1" hidden>
                       <section class="command-run-section" id="command-run-section"
                         aria-labelledby="command-run-title" hidden>
                         <header class="command-run-heading">
@@ -341,58 +384,23 @@
                       </section>
                     </div>
 
-                    <article class="command-journal-activity command-activity-pane"
-                      id="command-journal-activity" tabindex="-1" hidden>
-                      <section class="command-journal-index" aria-labelledby="command-journal-title">
-                        <header class="command-journal-heading">
-                          <div>
-                            <h2 id="command-journal-title" data-i18n-zh="运行记录"
-                              data-i18n-en="Run history">运行记录</h2>
-                            <p><code id="command-journal-address"></code></p>
-                          </div>
-                          <button class="secondary-button command-journal-refresh"
-                            id="command-journal-refresh" type="button" data-i18n-zh="刷新"
-                            data-i18n-en="Refresh">刷新</button>
-                        </header>
-                        <p class="command-journal-feedback" id="command-journal-feedback"
-                          aria-live="polite"></p>
-                        <p class="command-journal-empty" id="command-journal-empty"
-                          data-i18n-zh="尚无历史运行。" data-i18n-en="No run history yet.">尚无历史运行。</p>
-                        <ol class="command-journal-list" id="command-journal-list"></ol>
-                      </section>
-                      <section class="command-journal-content" aria-label="单次运行日志"
-                        data-i18n-aria-label-zh="单次运行日志" data-i18n-aria-label-en="Run log">
-                        <p class="command-journal-detail-empty" id="command-journal-detail-empty">
-                          <span data-i18n-zh="选择一次运行查看日志。"
-                            data-i18n-en="Select a run to view its log.">选择一次运行查看日志。</span>
-                        </p>
-                        <section class="command-journal-detail" id="command-journal-detail"
-                          aria-label="持久运行日志" hidden data-i18n-aria-label-zh="持久运行日志"
-                          data-i18n-aria-label-en="Persistent run log">
-                          <header>
-                            <div>
-                              <h2 data-i18n-zh="日志内容" data-i18n-en="Log content">日志内容</h2>
-                              <span class="command-journal-meta" id="command-journal-meta"></span>
-                            </div>
-                            <div class="command-journal-detail-actions">
-                              <span class="command-journal-state" id="command-journal-state"></span>
-                              <button class="secondary-button command-journal-open"
-                                id="command-journal-open" type="button" data-i18n-zh="打开目录"
-                                data-i18n-en="Open folder">打开目录</button>
-                            </div>
-                          </header>
-                          <p class="command-journal-directory-feedback"
-                            id="command-journal-directory-feedback" aria-live="polite"></p>
-                          <p class="command-journal-run-error" id="command-journal-error"
-                            role="status" hidden></p>
-                          <pre class="command-journal-output" id="command-journal-output"
-                            role="log" aria-live="off" tabindex="0"></pre>
-                          <p class="command-journal-truncated" id="command-journal-truncated" hidden>
-                            <span data-i18n-zh="日志已达到保留或响应上限；这里只显示仍被保留的部分。"
-                              data-i18n-en="The log reached a retention or response limit; only the retained portion is shown.">日志已达到保留或响应上限；这里只显示仍被保留的部分。</span>
-                          </p>
-                        </section>
-                      </section>
+                    <article class="run-projection-pane command-facet-pane"
+                      id="run-projection-pane" tabindex="-1" hidden>
+                      <header>
+                        <div>
+                          <h2 id="run-projection-title"></h2>
+                          <code class="run-projection-ref" id="run-projection-ref"></code>
+                          <span class="run-projection-meta" id="run-projection-meta"></span>
+                        </div>
+                        <span class="run-projection-state" id="run-projection-state"></span>
+                      </header>
+                      <p class="run-projection-error" id="run-projection-error" role="status" hidden></p>
+                      <pre class="run-projection-output" id="run-projection-output"
+                        role="log" aria-live="off" tabindex="0"></pre>
+                      <p class="run-projection-truncated" id="run-projection-truncated" hidden>
+                        <span data-i18n-zh="日志已达到保留或响应上限；这里只显示仍被保留的部分。"
+                          data-i18n-en="The log reached a retention or response limit; only the retained portion is shown.">日志已达到保留或响应上限；这里只显示仍被保留的部分。</span>
+                      </p>
                     </article>
                   </div>
                 </div>

@@ -1,9 +1,12 @@
 Query persistent command runs or open the log directory for one run.
 
 Usage:
+  {{INVOCATION}} --json [<command-locator>]
+  {{INVOCATION}} --run <run-id> [--after <cursor>]
+  {{INVOCATION}} --open <run-id>
   {{INVOCATION}} <command-address>
   {{INVOCATION}} <command-address> --latest <n|n..m>
   {{INVOCATION}} <command-address> --run <run-id> [--after <cursor>]
   {{INVOCATION}} <command-address> --open <run-id>
 
-Use a normal CLI address such as `.dev.status` or `proj.build.app`. Add `kernel/` or `action/` only when the source is ambiguous. Agents should retain stable run IDs and read them incrementally with `--run` and `--after`.
+`--json` without a locator resolves the global `.logs` `runs` collection. With a locator it resolves the selected command's Runs Facet; both forms return the same `::run/<run-id>` identities. Use a normal CLI address such as `.dev.status` or `proj.build.app` for a command-scoped query. Add `kernel/` or `action/` only when the source is ambiguous. Agents should retain stable run IDs and read them incrementally with `--run` and `--after`.

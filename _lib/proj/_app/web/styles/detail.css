@@ -15,7 +15,7 @@
 
 .entry-profile-detail,
 .command-detail,
-.command-help-activity {
+.command-help-pane {
   flex: 1;
   padding: 27px 26px;
 }
@@ -32,7 +32,7 @@
   min-width: 0;
 }
 
-.command-activity-content {
+.command-facet-content {
   min-width: 0;
   flex: 1;
   overflow-y: auto;
@@ -40,7 +40,7 @@
   scrollbar-color: var(--ui-scrollbar) var(--ui-scrollbar-track);
 }
 
-.command-activity-pane {
+.command-facet-pane {
   min-height: 100%;
 }
 
@@ -250,7 +250,7 @@
 
   .entry-profile-detail,
   .command-detail,
-  .command-help-activity {
+  .command-help-pane {
     padding: 23px 18px;
   }
 

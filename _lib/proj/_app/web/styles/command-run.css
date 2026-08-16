@@ -140,6 +140,15 @@
   gap: 7px;
 }
 
+.command-run-argument-row[data-fixed="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.command-run-argument[readonly] {
+  color: var(--ui-text-muted);
+  background: var(--ui-surface-subtle);
+}
+
 .command-run-argument {
   width: 100%;
   min-width: 0;

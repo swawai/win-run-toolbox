@@ -1,0 +1,5 @@
+将 Context 渲染为确定性的 Agent Markdown。
+
+用法：{{INVOCATION}} <context-id>
+
+该命令只读取持久化 Context，不创建 Export 或 Artifact，也不修改资源。

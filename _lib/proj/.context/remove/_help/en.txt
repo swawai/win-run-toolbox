@@ -1,0 +1,5 @@
+Remove one or more command references from a Context.
+
+Usage: {{INVOCATION}} <context-id> <command-address>...
+
+A saved reference can still be removed after its command has disappeared from the current Catalog.

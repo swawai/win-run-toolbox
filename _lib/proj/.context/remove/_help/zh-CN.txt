@@ -1,0 +1,5 @@
+从 Context 移除一个或多个命令引用。
+
+用法：{{INVOCATION}} <context-id> <command-address>...
+
+即使命令已经从当前 Catalog 删除，仍可按保存的地址移除引用。

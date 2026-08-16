@@ -2,7 +2,7 @@ use crate::{
     context::EntryContext,
     profile::{EntryLanguage, EntryProfile},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
@@ -10,12 +10,16 @@ use std::path::{Path, PathBuf};
 
 mod address;
 mod entry;
+mod facet;
 mod filesystem;
 mod module_contract;
+mod subject_kind;
 mod view;
 
+pub use crate::facet::{Facet, FacetKind, FacetRenderer, FacetResolver};
 use address::{child_address, parent_address};
 pub(crate) use entry::{CommandAdapter, resolve_entry};
+use facet::resolve_command_facets;
 use filesystem::{
     FileCandidate, absolute_path, assert_command_root, child_directories, directory_files,
 };
@@ -24,10 +28,11 @@ use module_contract::read_local_module_contract;
 pub use module_contract::{
     CommandModuleContract, MODULE_CONTRACT_PROTOCOL, ModuleProvision, ModuleRequirement,
 };
+use subject_kind::resolve_subject_kinds;
 use view::read_local_web_view;
 pub use view::{ChildrenColumnView, ColumnWidth, CommandView, RunOperationView, RunView};
 
-pub const CATALOG_PROTOCOL: &str = "swawkit.command-catalog/v6";
+pub const CATALOG_PROTOCOL: &str = "swawkit.command-catalog/v13";
 
 pub const HELP_ADDRESS: &str = ".help";
 pub const HELP_MARKERS: [&str; 4] = [HELP_ADDRESS, ".h", "-h", "--help"];
@@ -145,6 +150,8 @@ impl CatalogSnapshot {
                 .cmp(&right.source)
                 .then_with(|| left.address.cmp(&right.address))
         });
+        resolve_subject_kinds(&mut commands);
+        resolve_command_facets(&mut commands, language);
 
         Ok(Self {
             protocol: CATALOG_PROTOCOL,
@@ -168,6 +175,8 @@ pub struct CommandNode {
     pub handler: Option<String>,
     pub module: Option<CommandModuleContract>,
     pub help: Option<HelpDocument>,
+    pub subject_kinds: Vec<crate::subject_kind::SubjectKind>,
+    pub facets: Vec<Facet>,
     pub view: Option<CommandView>,
     pub diagnostic: Option<String>,
     /// Retains the Help protocol state without expanding the public Web API.
@@ -177,7 +186,7 @@ pub struct CommandNode {
     pub directory: PathBuf,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CommandSource {
     Control,
@@ -219,7 +228,7 @@ fn scan_node(
     language: EntryLanguage,
 ) -> CommandNode {
     let mut diagnostics = Vec::new();
-    let (module, module_valid) = match read_local_module_contract(&pending.path) {
+    let (module, module_valid) = match read_local_module_contract(&pending.path, language) {
         Ok(module) => (module, true),
         Err(error) => {
             diagnostics.push(error.to_string());
@@ -239,7 +248,7 @@ fn scan_node(
                 && !entry.has_valid_core_owner(pending.source, &pending.address) =>
         {
             diagnostics.push(
-                "run.core.json is restricted to Entry commands, exact built-in Kernel meta commands, and declared .dev Profile settings"
+                "run.core.json is restricted to Entry commands, exact built-in Kernel commands, and declared .dev Profile settings"
                     .to_owned(),
             );
             None
@@ -329,6 +338,8 @@ fn scan_node(
         handler: entry.and_then(|entry| entry.handler),
         module,
         help,
+        subject_kinds: Vec::new(),
+        facets: Vec::new(),
         view,
         diagnostic: (!diagnostics.is_empty()).then(|| diagnostics.join("; ")),
         help_diagnostic,

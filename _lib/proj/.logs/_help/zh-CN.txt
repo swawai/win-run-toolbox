@@ -1,12 +1,15 @@
 查询命令的持久运行记录，或在资源管理器中打开一次运行的日志目录。
 
 用法:
+  {{INVOCATION}} --json [<command-locator>]
+  {{INVOCATION}} --run <run-id> [--after <cursor>]
+  {{INVOCATION}} --open <run-id>
   {{INVOCATION}} <command-address>
   {{INVOCATION}} <command-address> --latest <n|n..m>
   {{INVOCATION}} <command-address> --run <run-id> [--after <cursor>]
   {{INVOCATION}} <command-address> --open <run-id>
 
-命令地址使用正常 CLI 地址，例如 `.dev.status` 或 `proj.build.app`。只有来源有歧义时，
+不带 locator 的 `--json` 服务于 `.logs` 的全局 `runs` Subject 集合；带 locator 的 `--json` 服务于具体命令的“运行记录” Facet，两者返回相同的 `::run/<run-id>` 身份。命令范围查询使用正常 CLI 地址，例如 `.dev.status` 或 `proj.build.app`。只有来源有歧义时，
 才需要写成 `kernel/.dev.status` 或 `action/proj.build.app`。
 
 不带操作参数时输出按时间倒序排列的 JSON 清单，`latest: 1` 表示最近一次运行。

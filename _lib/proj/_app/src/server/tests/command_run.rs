@@ -229,64 +229,6 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
     assert_eq!(exited["state"], "exited");
     assert_eq!(exited["exitCode"], 7);
 
-    std::fs::remove_file(fixture.root.join("home/_lib/proj/.demo/run.ps1"))
-        .expect("make the journal fixture command non-runnable");
-
-    let history_response = send(
-        app.clone(),
-        Method::GET,
-        "/api/v2/command-run-journals?command=kernel%2F.demo",
-        Some(AUTHORITY),
-    )
-    .await;
-    assert_eq!(history_response.status(), StatusCode::OK);
-    let history = response_json(history_response).await;
-    assert_eq!(history["protocol"], "swawkit.command-run-history/v1");
-    assert_eq!(history["runs"][0]["id"], id);
-    assert_eq!(history["runs"][0]["source"], "web");
-    assert_eq!(history["runs"][0]["state"], "exited");
-    assert_eq!(history["runs"][0]["eventCount"], 2);
-
-    let journal = response_json(
-        send(
-            app.clone(),
-            Method::GET,
-            &format!("/api/v2/command-run-journals/{id}?command=kernel%2F.demo&after=1"),
-            Some(AUTHORITY),
-        )
-        .await,
-    )
-    .await;
-    assert_eq!(journal["protocol"], "swawkit.command-run-journal/v1");
-    assert_eq!(journal["nextCursor"], 2);
-    assert_eq!(journal["events"][0]["sequence"], 2);
-    assert_eq!(journal["events"][0]["phase"], "worker");
-    assert_eq!(journal["events"][0]["kind"], "output");
-    assert_eq!(journal["events"][0]["text"], "second\n");
-    assert_eq!(journal["events"][0], all["events"][1]);
-    let open_location =
-        "/api/v2/command-run-journals/missing-run/open-directory?command=kernel/.demo";
-    assert_eq!(
-        send(app.clone(), Method::POST, open_location, Some(AUTHORITY))
-            .await
-            .status(),
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        app.oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(open_location)
-                .header(HOST, AUTHORITY)
-                .header("x-swawkit-control", "open-journal-directory")
-                .body(Body::empty())
-                .expect("valid open journal directory request"),
-        )
-        .await
-        .expect("open journal directory response")
-        .status(),
-        StatusCode::NOT_FOUND
-    );
     runs.shutdown().expect("shutdown command runs");
 }
 

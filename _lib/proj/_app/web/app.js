@@ -1,16 +1,23 @@
-import { createCatalog, hasChildren } from "./catalog-model.js";
+import { createCatalog } from "./catalog-model.js";
 import { createDataRootClaimView } from "./claim.js";
-import { createCommandActivityView } from "./command-activity.js";
+import { createSubjectFacetView } from "./subject-facet.js";
 import { createCommandRunView } from "./command-run.js";
-import { createCommandJournalView } from "./command-journal.js";
+import { createContextProjectionRenderer } from "./context-projection.js";
 import { createDetailView } from "./detail.js";
+import { createDocumentProjectionView } from "./document-projection.js";
 import { createExplorerView } from "./explorer.js";
 import { createEntryProfileView } from "./entry-profile.js";
 import { setLanguage, t } from "./i18n.js";
 import { createRuntimeControlView } from "./runtime-control.js";
+import { createRunProjectionRenderer } from "./run-projection.js";
+import {
+  createCollectionResolutionLoader,
+  resolveFacet,
+} from "./facet-resolution-client.js";
 import {
   commandAtPath,
-  parseCommandView,
+  parseCommandSelection,
+  restoreCommandSelection,
   updateCommandPath,
 } from "./navigation.js";
 
@@ -31,24 +38,9 @@ const elements = {
   claimSubmit: document.querySelector("#claim-submit"),
   claimVolumeId: document.querySelector("#claim-volume-id"),
   commandDetail: document.querySelector("#command-detail"),
-  commandHelpActivity: document.querySelector("#command-help-activity"),
+  commandHelpPane: document.querySelector("#command-help-pane"),
   commandHelpAddress: document.querySelector("#command-help-address"),
-  commandJournalActivity: document.querySelector("#command-journal-activity"),
-  commandJournalAddress: document.querySelector("#command-journal-address"),
-  commandJournalDetail: document.querySelector("#command-journal-detail"),
-  commandJournalDetailEmpty: document.querySelector("#command-journal-detail-empty"),
-  commandJournalDirectoryFeedback: document.querySelector("#command-journal-directory-feedback"),
-  commandJournalEmpty: document.querySelector("#command-journal-empty"),
-  commandJournalError: document.querySelector("#command-journal-error"),
-  commandJournalFeedback: document.querySelector("#command-journal-feedback"),
-  commandJournalList: document.querySelector("#command-journal-list"),
-  commandJournalMeta: document.querySelector("#command-journal-meta"),
-  commandJournalOutput: document.querySelector("#command-journal-output"),
-  commandJournalOpen: document.querySelector("#command-journal-open"),
-  commandJournalRefresh: document.querySelector("#command-journal-refresh"),
-  commandJournalState: document.querySelector("#command-journal-state"),
-  commandJournalTruncated: document.querySelector("#command-journal-truncated"),
-  commandRunActivity: document.querySelector("#command-run-activity"),
+  commandRunPane: document.querySelector("#command-run-pane"),
   commandRunAdd: document.querySelector("#command-run-add"),
   commandRunAddress: document.querySelector("#command-run-address"),
   commandRunActions: document.querySelector("#command-run-actions"),
@@ -72,6 +64,16 @@ const elements = {
   commandRunSubmit: document.querySelector("#command-run-submit"),
   commandRunTruncated: document.querySelector("#command-run-truncated"),
   commandWorkspace: document.querySelector("#command-workspace"),
+  contextProjectionPane: document.querySelector("#context-projection-pane"),
+  contextProjectionCommandEmpty: document.querySelector("#context-projection-command-empty"),
+  contextProjectionCommands: document.querySelector("#context-projection-commands"),
+  contextProjectionNotes: document.querySelector("#context-projection-notes"),
+  contextProjectionNotesEmpty: document.querySelector("#context-projection-notes-empty"),
+  contextProjectionPrompt: document.querySelector("#context-projection-prompt"),
+  contextProjectionPromptEmpty: document.querySelector("#context-projection-prompt-empty"),
+  contextProjectionRef: document.querySelector("#context-projection-ref"),
+  contextProjectionSummary: document.querySelector("#context-projection-summary"),
+  contextProjectionTitle: document.querySelector("#context-projection-title"),
   copyButton: document.querySelector("#copy-button"),
   copyFeedback: document.querySelector("#copy-feedback"),
   copyLabel: document.querySelector("#copy-label"),
@@ -80,6 +82,12 @@ const elements = {
   detailIssue: document.querySelector("#detail-issue"),
   detailPanel: document.querySelector("#detail-panel"),
   detailSummary: document.querySelector("#detail-summary"),
+  documentProjectionFeedback: document.querySelector("#document-projection-feedback"),
+  documentProjectionJson: document.querySelector("#document-projection-json"),
+  documentProjectionPane: document.querySelector("#document-projection-pane"),
+  documentProjectionProtocol: document.querySelector("#document-projection-protocol"),
+  documentProjectionRef: document.querySelector("#document-projection-ref"),
+  documentProjectionTitle: document.querySelector("#document-projection-title"),
   errorMessage: document.querySelector("#error-message"),
   errorState: document.querySelector("#error-state"),
   explorerFrame: document.querySelector("#explorer-frame"),
@@ -123,6 +131,14 @@ const elements = {
   runtimeRunningRelease: document.querySelector("#runtime-running-release"),
   runtimeSelectedRelease: document.querySelector("#runtime-selected-release"),
   runtimeTitle: document.querySelector("#runtime-title"),
+  runProjectionError: document.querySelector("#run-projection-error"),
+  runProjectionMeta: document.querySelector("#run-projection-meta"),
+  runProjectionOutput: document.querySelector("#run-projection-output"),
+  runProjectionPane: document.querySelector("#run-projection-pane"),
+  runProjectionRef: document.querySelector("#run-projection-ref"),
+  runProjectionState: document.querySelector("#run-projection-state"),
+  runProjectionTitle: document.querySelector("#run-projection-title"),
+  runProjectionTruncated: document.querySelector("#run-projection-truncated"),
   selectionStatus: document.querySelector("#selection-status"),
   entryProfileDetail: document.querySelector("#entry-profile-detail"),
   entryProfileSummary: document.querySelector("#entry-profile-summary"),
@@ -131,9 +147,26 @@ const elements = {
 
 let catalog = null;
 const detail = createDetailView(elements);
-const commandRun = createCommandRunView(elements);
-const commandJournal = createCommandJournalView(elements);
-const commandActivity = createCommandActivityView(elements);
+const commandRun = createCommandRunView(elements, {
+  onCompleted() {
+    if (selectedSubject) {
+      void refreshSelectedSubjectCollection();
+    }
+  },
+});
+const commandFacet = createSubjectFacetView(elements);
+const subjectFacet = createSubjectFacetView();
+const documentProjection = createDocumentProjectionView(elements, {
+  renderers: [
+    createContextProjectionRenderer(elements),
+    createRunProjectionRenderer(elements),
+  ],
+  resolveDocument(subject, facet) {
+    return resolveFacet(catalog, subject, facet, { via: subject.via });
+  },
+});
+let selectedSubject = null;
+let selectedSubjectFacet = null;
 let runtimeControl = null;
 const entryProfile = createEntryProfileView(elements, {
   async onProfileChanged(document) {
@@ -146,32 +179,122 @@ const entryProfile = createEntryProfileView(elements, {
 const explorer = createExplorerView({
   columns: elements.finderColumns,
   detailPanel: elements.detailPanel,
-  getCommandViews(command) {
-    return commandActivity.items(command, {
-      hasChildren: hasChildren(catalog, command),
-    });
+  getCommandFacets(command) {
+    return commandFacet.items(command);
+  },
+  getSubjectFacets(subject) {
+    return subjectFacet.items(subject);
   },
   onSelectCommand(command, options = {}) {
+    selectedSubject = null;
+    selectedSubjectFacet = null;
+    subjectFacet.select(null);
     entryProfile.render(command);
     detail.render(catalog, command);
     runtimeControl?.select(command);
-    commandRun.select(command);
-    const selection = commandActivity.selectCommand(command, {
-      hasChildren: hasChildren(catalog, command),
-      view: options.view,
+    const selection = commandFacet.select(command, { facet: options.facet });
+    const showsDocumentProjection = documentProjection.select(command, selection.facet);
+    const runResolver = selection.facet?.renderer === "run"
+      ? selection.facet.resolver
+      : null;
+    const runCommand = runResolver?.type === "command"
+      ? catalog.commandByAddress.get(runResolver.address) ?? null
+      : null;
+    commandRun.select(runCommand, {
+      acceptsTail: runResolver?.acceptsTail ?? true,
+      arguments: runResolver?.arguments ?? [],
+      confirmation: runResolver?.confirmation ?? null,
+      key: runResolver ? `${command.address}#${selection.facet.id}` : null,
+      label: selection.facet?.label ?? null,
+      useOperations: selection.facet?.id === "run",
     });
-    commandJournal.select(command, { active: selection.view === "logs" });
-    elements.detailPanel.dataset.view = selection.view ?? "";
-    elements.detailPanel.hidden = selection.view === "children";
+    if (showsDocumentProjection) {
+      elements.commandDetail.hidden = true;
+    }
+    elements.detailPanel.dataset.view = selection.facet?.renderer ?? "";
+    elements.detailPanel.hidden = selection.facet?.kind === "collection";
+    if (
+      selection.facet?.kind === "collection"
+      && selection.facet.resolver?.type === "command"
+    ) {
+      void loadCollection(command.address, selection.facet.id).catch(() => {});
+    }
     updateCommandPath(
       window.history,
       window.location,
       command,
       {
-        ...selection,
+        defaultFacet: selection.defaultFacet,
+        facet: selection.selectedFacet,
         mode: options.history ?? "none",
       },
     );
+  },
+  onSelectSubject(subject, options = {}) {
+    selectedSubject = subject;
+    const owner = catalog.commandByAddress.get(subject.owner);
+    entryProfile.render(null);
+    runtimeControl?.select(null);
+    commandFacet.select(owner, { facet: subject.collectionFacet });
+    const selection = subjectFacet.select(subject, { facet: options.facet });
+    selectedSubjectFacet = selection.selectedFacet;
+    const resolver = selection.facet?.resolver ?? null;
+    const runCommand = selection.facet?.renderer === "run" && resolver?.type === "command"
+      ? catalog.commandByAddress.get(resolver.address) ?? null
+      : null;
+    commandRun.select(runCommand, {
+      acceptsTail: resolver?.acceptsTail ?? false,
+      arguments: resolver?.arguments ?? [],
+      confirmation: resolver?.confirmation ?? null,
+      key: resolver ? `${subject.canonicalRef}#${selection.facet.id}` : null,
+      label: selection.facet?.label ?? null,
+      useOperations: false,
+    });
+    const runView = selection.facet?.renderer === "run";
+    const showsDocumentProjection = documentProjection.select(subject, selection.facet);
+    elements.commandWorkspace.hidden = !(runView || showsDocumentProjection);
+    elements.commandRunPane.hidden = !runView;
+    elements.detailPanel.dataset.view = selection.facet?.renderer ?? "";
+    elements.detailPanel.hidden = false;
+    elements.selectionStatus.textContent = t(
+      `已选择对象 ${subject.canonicalRef}`,
+      `Selected subject ${subject.canonicalRef}`,
+    );
+    updateCommandPath(
+      window.history,
+      window.location,
+      owner,
+      {
+        defaultSubjectFacet: selection.defaultFacet,
+        facet: subject.collectionFacet,
+        mode: options.history ?? "none",
+        subject: subject.canonicalRef,
+        subjectFacet: selection.selectedFacet,
+      },
+    );
+  },
+});
+const collectionLoader = createCollectionResolutionLoader({
+  onError(owner, facet, error) {
+    explorer.setSubjectCollectionError(
+      owner,
+      facet,
+      error instanceof Error ? error.message : "Cannot resolve Subject collection.",
+    );
+  },
+  onLoading(owner, facet) {
+    explorer.setSubjectCollectionLoading(owner, facet);
+  },
+  onResolved(collection) {
+    explorer.setSubjectCollection(collection);
+  },
+  async resolveCollection(owner, facet) {
+    const command = catalog.commandByAddress.get(owner);
+    const selectedFacet = command?.facets.find((candidate) => candidate.id === facet);
+    if (!command || selectedFacet?.kind !== "collection") {
+      throw new Error(`Cannot resolve missing collection Facet ${owner}#${facet}.`);
+    }
+    return resolveFacet(catalog, command, selectedFacet);
   },
 });
 const dataRootClaim = createDataRootClaimView(elements, {
@@ -216,6 +339,69 @@ async function startApplication() {
   }
 }
 
+async function loadCollection(owner, facet) {
+  return collectionLoader.load(owner, facet);
+}
+
+async function refreshSelectedSubjectCollection() {
+  const selectedRef = selectedSubject?.canonicalRef ?? null;
+  const owner = selectedSubject?.owner ?? null;
+  const facet = selectedSubject?.collectionFacet ?? null;
+  const selectedFacet = selectedSubjectFacet;
+  if (!owner || !facet) {
+    return;
+  }
+  try {
+    const collection = await loadCollection(owner, facet);
+    if (
+      selectedRef
+      && selectedSubject?.canonicalRef === selectedRef
+      && collection?.subjectByRef.has(selectedRef)
+    ) {
+      explorer.selectSubject(owner, facet, selectedRef, {
+        history: "replace",
+        facet: selectedFacet,
+      });
+    }
+  } catch (error) {
+    elements.commandRunFeedback.textContent = error instanceof Error
+      ? error.message
+      : t("刷新 Subject 集合时发生未知错误。", "An unknown error occurred while refreshing Subjects.");
+    elements.commandRunFeedback.dataset.state = "error";
+  }
+}
+
+async function applyCatalogRoute(document, mode = "replace") {
+  const routed = commandAtPath(catalog, window.location.pathname, {
+    allowMissing: !document.requiredComplete,
+  });
+  const route = parseCommandSelection(window.location.search);
+  if (route.subject && !routed) {
+    throw new Error(t("Subject URL 缺少命令所有者。", "A Subject URL requires its command owner."));
+  }
+  await restoreCommandSelection({
+    collectionFacet: route.facet,
+    loadCollection,
+    ownerAddress: routed?.address ?? null,
+    selectOwner() {
+      explorer.setCatalog(catalog, {
+        address: routed?.address,
+        history: mode,
+        facet: route.facet,
+      });
+      return true;
+    },
+    selectSubject(owner, facet, subject, options) {
+      return explorer.selectSubject(owner, facet, subject, {
+        ...options,
+        history: mode,
+      });
+    },
+    subjectFacet: route.subjectFacet,
+    subjectRef: route.subject,
+  });
+}
+
 async function loadCatalog() {
   setLoadState("loading");
   try {
@@ -228,7 +414,8 @@ async function loadCatalog() {
     }
 
     catalog = createCatalog(await response.json());
-    explorer.setCatalog(catalog, { history: "replace" });
+    const document = await entryProfile.loadProfile();
+    await applyCatalogRoute(document);
     setLoadState("ready");
   } catch (error) {
     const message = error instanceof Error
@@ -254,14 +441,7 @@ async function loadApplication() {
       throw new Error(t(`Host 返回 HTTP ${response.status}`, `Host returned HTTP ${response.status}`));
     }
     catalog = createCatalog(await response.json());
-    const routed = commandAtPath(catalog, window.location.pathname, {
-      allowMissing: !document.requiredComplete,
-    });
-    explorer.setCatalog(catalog, {
-      address: routed?.address,
-      history: "replace",
-      view: parseCommandView(window.location.search),
-    });
+    await applyCatalogRoute(document);
     setLoadState("ready");
   } catch (error) {
     const message = error instanceof Error
@@ -281,20 +461,42 @@ elements.profileForm.addEventListener("submit", (event) => {
 });
 elements.finderColumns.addEventListener("keydown", explorer.handleKeyboard);
 elements.retryButton.addEventListener("click", startApplication);
-window.addEventListener("popstate", () => {
+window.addEventListener("popstate", async () => {
   if (!catalog) {
     return;
   }
   try {
     const routed = commandAtPath(catalog, window.location.pathname);
-    if (
-      !routed
-      || !explorer.selectAddress(routed.address, {
-        history: "none",
-        view: parseCommandView(window.location.search),
-      })
-    ) {
-      explorer.setCatalog(catalog, { history: "replace" });
+    const route = parseCommandSelection(window.location.search);
+    if (route.subject && !routed) {
+      throw new Error(t("Subject URL 缺少命令所有者。", "A Subject URL requires its command owner."));
+    }
+    let selectedOwner = false;
+    const restored = await restoreCommandSelection({
+      collectionFacet: route.facet,
+      loadCollection,
+      ownerAddress: routed?.address ?? null,
+      selectOwner() {
+        selectedOwner = Boolean(routed && explorer.selectAddress(routed.address, {
+          history: "none",
+          facet: route.facet,
+        }));
+        if (!selectedOwner) {
+          explorer.setCatalog(catalog, { history: "replace" });
+        }
+        return selectedOwner;
+      },
+      selectSubject(owner, facet, subject, options) {
+        return explorer.selectSubject(owner, facet, subject, {
+          ...options,
+          history: "none",
+        });
+      },
+      subjectFacet: route.subjectFacet,
+      subjectRef: route.subject,
+    });
+    if (route.subject && restored === false && selectedOwner) {
+      explorer.selectAddress(routed.address, { history: "replace" });
     }
     setLoadState("ready");
   } catch (error) {

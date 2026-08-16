@@ -11,10 +11,8 @@ pub use console_cancel::ConsoleCancellation;
 #[cfg(test)]
 pub(crate) use development::resolve_entry_bun;
 pub(crate) use development::resolve_entry_development;
-pub use environment::{CommandExecutionContext, CommandProcessMode};
-pub(crate) use environment::{
-    ExecutionPhase, ProcessEnvironment, catalog_command_data_root, command_data_root,
-};
+pub use environment::{CommandExecutionContext, CommandProcessMode, catalog_command_data_root};
+pub(crate) use environment::{ExecutionPhase, ProcessEnvironment, command_data_root};
 pub use execute::CommandExecutor;
 pub(crate) use guard::{GuardPlan, GuardScope};
 pub(crate) use invocation::Invocation;

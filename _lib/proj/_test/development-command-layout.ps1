@@ -16,9 +16,23 @@ function Assert-ProjDevelopmentCommandLayout {
 }
 
 $ProjRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$RepoRoot = [IO.Path]::GetFullPath((Join-Path $ProjRoot '..\..'))
 Assert-ProjDevelopmentCommandLayout `
     -Condition (-not [IO.Directory]::Exists((Join-Path $ProjRoot '_global'))) `
     -Message 'the removed no-op global guard directory still exists'
+
+$ModuleManifests = @(
+    Get-ChildItem -LiteralPath $ProjRoot -Recurse -File -Filter '_module.json'
+    Get-ChildItem -LiteralPath (Join-Path $RepoRoot '.swaw') `
+        -Recurse -File -Filter '_module.json'
+)
+foreach ($ModuleManifest in $ModuleManifests) {
+    $ModuleDocument = Get-Content -LiteralPath $ModuleManifest.FullName -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    Assert-ProjDevelopmentCommandLayout `
+        -Condition ($ModuleDocument.schema -ceq 'swawkit.command-module/v4') `
+        -Message "legacy module contract remains: $($ModuleManifest.FullName)"
+}
 
 $CommandEntries = [ordered]@{
     bun = '.dev\bun\run.ps1'
@@ -52,7 +66,7 @@ Assert-ProjDevelopmentCommandLayout `
     -Condition ([IO.File]::Exists($SetupManifest) -and
         -not [IO.File]::Exists((Join-Path $SetupRoot 'run.ps1'))) `
     -Message '.dev.setup did not converge to one native Toolchain entry'
-$SetupContract = Get-Content -LiteralPath $SetupManifest -Raw |
+$SetupContract = Get-Content -LiteralPath $SetupManifest -Raw -Encoding UTF8 |
     ConvertFrom-Json
 Assert-ProjDevelopmentCommandLayout `
     -Condition ($SetupContract.schema -ceq 'swawkit.toolchain-command/v1' -and
@@ -74,13 +88,111 @@ foreach ($RuntimeContract in $RuntimeContracts) {
     Assert-ProjDevelopmentCommandLayout `
         -Condition ([IO.File]::Exists($RuntimeManifest)) `
         -Message "Runtime Control manifest is missing: $($RuntimeContract.Path)"
-    $RuntimeDocument = Get-Content -LiteralPath $RuntimeManifest -Raw |
+    $RuntimeDocument = Get-Content -LiteralPath $RuntimeManifest -Raw -Encoding UTF8 |
         ConvertFrom-Json
     Assert-ProjDevelopmentCommandLayout `
         -Condition ($RuntimeDocument.schema -ceq 'swawkit.core-command/v1' -and
             $RuntimeDocument.handler -ceq $RuntimeContract.Handler) `
         -Message "Runtime Control manifest is invalid: $($RuntimeContract.Path)"
 }
+
+$ContextContracts = @(
+    @{ Name = 'new'; Handler = 'context.new' },
+    @{ Name = 'add'; Handler = 'context.add' },
+    @{ Name = 'remove'; Handler = 'context.remove' },
+    @{ Name = 'note'; Handler = 'context.note' },
+    @{ Name = 'prompt'; Handler = 'context.prompt' },
+    @{ Name = 'render'; Handler = 'context.render' },
+    @{ Name = 'show'; Handler = 'context.show' },
+    @{ Name = 'list'; Handler = 'context.list' },
+    @{ Name = 'delete'; Handler = 'context.delete' }
+)
+foreach ($ContextContract in $ContextContracts) {
+    $ContextManifest = Join-Path $ProjRoot (
+        ".context\$($ContextContract.Name)\run.core.json"
+    )
+    Assert-ProjDevelopmentCommandLayout `
+        -Condition ([IO.File]::Exists($ContextManifest)) `
+        -Message "Context manifest is missing: $ContextManifest"
+    $ContextDocument = Get-Content -LiteralPath $ContextManifest -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    Assert-ProjDevelopmentCommandLayout `
+        -Condition ($ContextDocument.schema -ceq 'swawkit.core-command/v1' -and
+            $ContextDocument.handler -ceq $ContextContract.Handler) `
+        -Message "Context manifest is invalid: $ContextManifest"
+}
+
+$ContextModuleManifest = Join-Path $ProjRoot '.context\_module.json'
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ([IO.File]::Exists($ContextModuleManifest)) `
+    -Message '.context does not declare its module facets'
+$ContextModule = Get-Content -LiteralPath $ContextModuleManifest -Raw -Encoding UTF8 |
+    ConvertFrom-Json
+$ContextFacet = @($ContextModule.facets)[0]
+$ContextSubjectKind = @($ContextModule.subjectKinds)[0]
+$ContextOverviewFacet = @($ContextSubjectKind.facets) |
+    Where-Object { $_.id -ceq 'overview' } |
+    Select-Object -First 1
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ($ContextModule.schema -ceq 'swawkit.command-module/v4' -and
+        @($ContextModule.facets).Count -eq 1 -and
+        $ContextFacet.id -ceq 'contexts' -and
+        $ContextFacet.kind -ceq 'collection' -and
+        $ContextFacet.subjectKind.kind -ceq 'context' -and
+        $ContextFacet.subjectKind.provider.type -ceq 'command' -and
+        $ContextFacet.subjectKind.provider.source -ceq 'kernel' -and
+        $ContextFacet.subjectKind.provider.address -ceq '.context' -and
+        $ContextFacet.resolver.type -ceq 'command' -and
+        $ContextFacet.resolver.address -ceq '.context.list' -and
+        @($ContextFacet.resolver.arguments).Count -eq 1 -and
+        $ContextFacet.resolver.arguments[0] -ceq '--json' -and
+        $ContextFacet.resolver.returns -ceq 'swawkit.subject-collection/v2' -and
+        $ContextSubjectKind.kind -ceq 'context' -and
+        @($ContextSubjectKind.facets).Count -eq 7 -and
+        $ContextOverviewFacet.resolver.address -ceq '.context.show' -and
+        $ContextOverviewFacet.resolver.arguments[0].bind -ceq 'subject.id') `
+    -Message '.context collection facet declaration is invalid'
+Assert-ProjDevelopmentCommandLayout `
+    -Condition (-not (Test-Path -LiteralPath (
+        Join-Path $ProjRoot '.context\resource.core.json'
+    ))) `
+    -Message 'the removed Context resource provider manifest still exists'
+
+$LogsModuleManifest = Join-Path $ProjRoot '.logs\_module.json'
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ([IO.File]::Exists($LogsModuleManifest)) `
+    -Message '.logs does not declare its Run Subject facets'
+$LogsModule = Get-Content -LiteralPath $LogsModuleManifest -Raw -Encoding UTF8 |
+    ConvertFrom-Json
+$RunsFacet = @($LogsModule.facets)[0]
+$RunSubjectKind = @($LogsModule.subjectKinds)[0]
+$RunOverviewFacet = @($RunSubjectKind.facets) |
+    Where-Object { $_.id -ceq 'overview' } |
+    Select-Object -First 1
+$RunOpenFacet = @($RunSubjectKind.facets) |
+    Where-Object { $_.id -ceq 'open' } |
+    Select-Object -First 1
+Assert-ProjDevelopmentCommandLayout `
+    -Condition ($LogsModule.schema -ceq 'swawkit.command-module/v4' -and
+        @($LogsModule.facets).Count -eq 1 -and
+        $RunsFacet.id -ceq 'runs' -and
+        $RunsFacet.kind -ceq 'collection' -and
+        $RunsFacet.subjectKind.kind -ceq 'run' -and
+        $RunsFacet.subjectKind.provider.type -ceq 'command' -and
+        $RunsFacet.subjectKind.provider.source -ceq 'kernel' -and
+        $RunsFacet.subjectKind.provider.address -ceq '.logs' -and
+        $RunsFacet.resolver.address -ceq '.logs' -and
+        $RunsFacet.resolver.arguments[0] -ceq '--json' -and
+        $RunsFacet.resolver.returns -ceq 'swawkit.subject-collection/v2' -and
+        $RunSubjectKind.kind -ceq 'run' -and
+        @($RunSubjectKind.facets).Count -eq 2 -and
+        $RunOverviewFacet.resolver.address -ceq '.logs' -and
+        $RunOverviewFacet.resolver.arguments[0] -ceq '--run' -and
+        $RunOverviewFacet.resolver.arguments[1].bind -ceq 'subject.id' -and
+        $RunOverviewFacet.resolver.returns -ceq 'swawkit.command-run-journal/v1' -and
+        $RunOpenFacet.resolver.arguments[0] -ceq '--open' -and
+        $RunOpenFacet.resolver.arguments[1].bind -ceq 'subject.id') `
+    -Message '.logs Run collection facet declaration is invalid'
 
 $DependencyContracts = @(
     @{

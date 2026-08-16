@@ -12,6 +12,7 @@ use swawkit_proj::profile::{EntryProfileRecord, EntryProfileStore};
 use super::*;
 
 mod check;
+mod context_commands;
 mod control;
 mod logs;
 

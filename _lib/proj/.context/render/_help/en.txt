@@ -1,0 +1,5 @@
+Render a Context as deterministic Agent Markdown.
+
+Usage: {{INVOCATION}} <context-id>
+
+This command only reads the persisted Context. It creates no Export or Artifact and does not modify the resource.

@@ -1,8 +1,14 @@
 use std::error::Error;
 use std::fmt;
 use std::io;
+use std::mem::size_of;
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use windows_sys::Win32::UI::{
+    Shell::{SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW, ShellExecuteExW},
+    WindowsAndMessaging::SW_SHOWNORMAL,
+};
 
 use crate::{
     catalog::{CatalogSnapshot, CommandSource},
@@ -13,6 +19,15 @@ use crate::{
 };
 
 pub use crate::run_journal::{RunJournalDocument, RunJournalHistoryDocument};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunSubjectRecord {
+    pub id: String,
+    pub source: &'static str,
+    pub state: &'static str,
+    pub started_at_unix_ms: u64,
+    pub event_count: u64,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandLocator {
@@ -155,6 +170,30 @@ impl CommandJournalAccess {
         read_run_history(&self.module_data_root, &self.address)
     }
 
+    pub fn subject_runs(&self) -> io::Result<Vec<RunSubjectRecord>> {
+        self.history().map(|history| {
+            history
+                .into_runs()
+                .into_iter()
+                .map(|run| RunSubjectRecord {
+                    id: run.id,
+                    source: match run.source {
+                        crate::run_journal::RunJournalSource::Cli => "CLI",
+                        crate::run_journal::RunJournalSource::Web => "Web",
+                    },
+                    state: match run.state {
+                        crate::run_journal::RunJournalStatus::Running => "running",
+                        crate::run_journal::RunJournalStatus::Exited => "exited",
+                        crate::run_journal::RunJournalStatus::Canceled => "canceled",
+                        crate::run_journal::RunJournalStatus::Failed => "failed",
+                    },
+                    started_at_unix_ms: run.started_at_unix_ms,
+                    event_count: run.event_count,
+                })
+                .collect()
+        })
+    }
+
     pub fn run(&self, id: &str, after: u64) -> io::Result<RunJournalDocument> {
         read_run(&self.module_data_root, &self.address, id, after)
     }
@@ -198,9 +237,30 @@ impl CommandJournalAccess {
 
     pub fn open_run_directory(&self, id: &str) -> io::Result<PathBuf> {
         let path = self.run_directory(id)?;
-        Command::new("explorer.exe").arg(&path).spawn()?;
+        open_directory(&path)?;
         Ok(path)
     }
+}
+
+fn open_directory(path: &Path) -> io::Result<()> {
+    let verb = "open".encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+    let path = path
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let mut request = SHELLEXECUTEINFOW {
+        cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI,
+        lpVerb: verb.as_ptr(),
+        lpFile: path.as_ptr(),
+        nShow: SW_SHOWNORMAL,
+        ..Default::default()
+    };
+    if unsafe { ShellExecuteExW(&mut request) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -249,6 +309,8 @@ mod tests {
                 handler: None,
                 module: None,
                 help: None,
+                subject_kinds: Vec::new(),
+                facets: Vec::new(),
                 view: None,
                 diagnostic: None,
                 help_diagnostic: None,

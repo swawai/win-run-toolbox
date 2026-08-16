@@ -1,0 +1,5 @@
+把一个或多个 Catalog 命令加入 Context。
+
+用法：{{INVOCATION}} <context-id> <command-address>...
+
+命令地址必须存在于当前 Catalog；重复添加不会产生重复项。

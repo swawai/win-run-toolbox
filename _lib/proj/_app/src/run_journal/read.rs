@@ -36,20 +36,24 @@ impl RunJournalHistoryDocument {
     pub(crate) fn run_id_at(&self, index: usize) -> Option<String> {
         self.runs.get(index).map(|run| run.id.clone())
     }
+
+    pub(crate) fn into_runs(self) -> Vec<RunJournalSummary> {
+        self.runs
+    }
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunJournalSummary {
-    id: String,
-    source: RunJournalSource,
-    state: RunJournalStatus,
-    started_at_unix_ms: u64,
+pub(crate) struct RunJournalSummary {
+    pub(crate) id: String,
+    pub(crate) source: RunJournalSource,
+    pub(crate) state: RunJournalStatus,
+    pub(crate) started_at_unix_ms: u64,
+    pub(crate) event_count: u64,
     finished_at_unix_ms: Option<u64>,
     exit_code: Option<i32>,
     error: Option<String>,
     argument_count: usize,
-    event_count: u64,
     truncated: bool,
 }
 

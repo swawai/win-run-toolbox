@@ -21,6 +21,7 @@ use crate::{
 mod claim;
 mod command_run;
 mod command_run_native;
+mod facet_resolution;
 mod profile;
 mod runtime;
 
@@ -256,7 +257,7 @@ async fn serves_only_the_declared_local_surface() {
     assert!(index_html.contains("id=\"command-run-operation-list\""));
     assert!(index_html.contains("id=\"command-run-confirmation\""));
     assert!(index_html.contains("class=\"command-run-output\" id=\"command-run-output\""));
-    assert!(index_html.contains("class=\"command-journal-output\" id=\"command-journal-output\""));
+    assert!(index_html.contains("class=\"run-projection-output\" id=\"run-projection-output\""));
 
     for path in [
         "/commands",
@@ -292,14 +293,19 @@ async fn serves_only_the_declared_local_surface() {
         ("/assets/styles/claim.css", "text/css; charset=utf-8"),
         ("/assets/styles/command-run.css", "text/css; charset=utf-8"),
         (
-            "/assets/styles/command-journal.css",
+            "/assets/styles/run-projection.css",
+            "text/css; charset=utf-8",
+        ),
+        (
+            "/assets/styles/context-projection.css",
             "text/css; charset=utf-8",
         ),
         ("/assets/app.js", "text/javascript; charset=utf-8"),
         ("/assets/i18n.js", "text/javascript; charset=utf-8"),
         ("/assets/catalog-model.js", "text/javascript; charset=utf-8"),
+        ("/assets/facet-model.js", "text/javascript; charset=utf-8"),
         (
-            "/assets/command-activity.js",
+            "/assets/facet-resolution-client.js",
             "text/javascript; charset=utf-8",
         ),
         (
@@ -313,6 +319,10 @@ async fn serves_only_the_declared_local_surface() {
             "text/javascript; charset=utf-8",
         ),
         ("/assets/detail.js", "text/javascript; charset=utf-8"),
+        (
+            "/assets/document-projection.js",
+            "text/javascript; charset=utf-8",
+        ),
         ("/assets/entry-profile.js", "text/javascript; charset=utf-8"),
         (
             "/assets/runtime-control.js",
@@ -337,13 +347,30 @@ async fn serves_only_the_declared_local_surface() {
             "text/javascript; charset=utf-8",
         ),
         (
-            "/assets/command-journal.js",
+            "/assets/run-projection-model.js",
             "text/javascript; charset=utf-8",
         ),
         (
-            "/assets/command-journal-client.js",
+            "/assets/run-projection.js",
             "text/javascript; charset=utf-8",
         ),
+        (
+            "/assets/context-projection-model.js",
+            "text/javascript; charset=utf-8",
+        ),
+        (
+            "/assets/context-projection.js",
+            "text/javascript; charset=utf-8",
+        ),
+        (
+            "/assets/subject-collection-model.js",
+            "text/javascript; charset=utf-8",
+        ),
+        (
+            "/assets/subject-explorer.js",
+            "text/javascript; charset=utf-8",
+        ),
+        ("/assets/subject-facet.js", "text/javascript; charset=utf-8"),
     ] {
         let response = send(app.clone(), Method::GET, path, Some(AUTHORITY)).await;
         assert_eq!(response.status(), StatusCode::OK, "{path}");
@@ -450,15 +477,15 @@ async fn serializes_the_complete_catalog_node_contract() {
     fixture.file("home/_lib/proj/.dev/status/run.cmd", "");
     fixture.file(
         "home/_lib/proj/.dev/status/_module.json",
-        r#"{"schema":"swawkit.command-module/v1","requires":[{"provider":".dev.setup","contract":"swawkit.dev/v1"}],"provides":[{"contract":"swawkit.status/v1"}]}"#,
+        r#"{"schema":"swawkit.command-module/v4","requires":[{"provider":".dev.setup","contract":"swawkit.dev/v1"}],"provides":[{"contract":"swawkit.status/v1"}]}"#,
     );
     fixture.file(
         "home/_lib/proj/.dev/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v2","childrenColumn":{"width":"wide"}}"#,
+        r#"{"schema":"swawkit.command-view/web/v4","childrenColumn":{"width":"wide"}}"#,
     );
     fixture.file(
         "home/_lib/proj/.dev/status/_view/web.json",
-        r#"{"schema":"swawkit.command-view/web/v2","run":{"operations":[{"id":"preview","label":"Preview","arguments":[]},{"id":"apply","label":"Apply","arguments":["--apply"],"confirmation":"Confirm cleanup."}]}}"#,
+        r#"{"schema":"swawkit.command-view/web/v4","run":{"operations":[{"id":"preview","label":"Preview","arguments":[]},{"id":"apply","label":"Apply","arguments":["--apply"],"confirmation":"Confirm cleanup."}]}}"#,
     );
     fixture.file(
         "home/_lib/proj/.dev/status/_help/zh-CN.txt",
@@ -483,6 +510,29 @@ async fn serializes_the_complete_catalog_node_contract() {
             "handler": null,
             "module": null,
             "help": null,
+            "subjectKinds": [],
+            "facets": [
+                {
+                    "id": "children",
+                    "kind": "collection",
+                    "renderer": "collection",
+                    "icon": "□",
+                    "label": "子命令",
+                    "summary": "浏览静态子命令",
+                    "resolver": {
+                        "type": "catalog",
+                        "relation": "children"
+                    }
+                },
+                {
+                    "id": "overview",
+                    "kind": "projection",
+                    "renderer": "overview",
+                    "icon": "i",
+                    "label": "概览",
+                    "summary": "查看调用与命令属性"
+                }
+            ],
             "view": {
                 "childrenColumn": {
                     "width": "wide"
@@ -503,7 +553,7 @@ async fn serializes_the_complete_catalog_node_contract() {
             "adapter": "cmd",
             "handler": null,
             "module": {
-                "schema": "swawkit.command-module/v1",
+                "schema": "swawkit.command-module/v4",
                 "requires": [{
                     "provider": ".dev.setup",
                     "contract": "swawkit.dev/v1"
@@ -516,6 +566,31 @@ async fn serializes_the_complete_catalog_node_contract() {
                 "summary": "Show .dev.status",
                 "text": "Show .dev.status\nUse swawkit .dev.status"
             },
+            "subjectKinds": [],
+            "facets": [
+                {
+                    "id": "overview",
+                    "kind": "projection",
+                    "renderer": "overview",
+                    "icon": "i",
+                    "label": "概览",
+                    "summary": "查看调用与命令属性"
+                },
+                {
+                    "id": "run",
+                    "kind": "operation",
+                    "renderer": "run",
+                    "icon": ">",
+                    "label": "执行",
+                    "summary": "设置参数并启动命令",
+                    "resolver": {
+                        "type": "command",
+                        "address": ".dev.status",
+                        "arguments": [],
+                        "acceptsTail": true
+                    }
+                }
+            ],
             "view": {
                 "run": {
                     "operations": [

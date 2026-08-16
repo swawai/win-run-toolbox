@@ -13,19 +13,9 @@ export function isCommandRunActive(snapshot) {
 
 export function isCommandRunSupported(command) {
   return command?.runnable === true
-    && isCommandJournalSupported(command);
-}
-
-export function isCommandJournalSupported(command) {
-  return typeof command?.address === "string"
+    && typeof command?.address === "string"
     && command.address.length > 0
     && COMMAND_RUN_SOURCES.has(command.source);
-}
-
-export function commandJournalLocator(command) {
-  return isCommandJournalSupported(command)
-    ? `${command.source}/${command.address}`
-    : null;
 }
 
 export function commandRunStatus(snapshot) {

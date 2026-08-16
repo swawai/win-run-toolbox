@@ -55,6 +55,15 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn run_ids_accept_new_global_and_legacy_storage_shapes() {
+    assert!(valid_run_id(
+        "000000000000000018cc320bd7eaa8b8-00014b4c-0000000000000004"
+    ));
+    assert!(valid_run_id("0000000000000001-00000001-0000000000000001"));
+    assert!(!valid_run_id("../run"));
+}
+
+#[test]
 fn publishes_append_only_events_and_an_atomic_terminal_state() {
     let fixture = Fixture::new();
     let journal = fixture.start(RunJournalSource::Cli);

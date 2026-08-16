@@ -151,6 +151,9 @@ export function normalizeFacets(value, field, invalid) {
     if (kind === "collection" && resolver === null) {
       throw invalid(`${facetField} collection must declare a resolver.`);
     }
+    if (kind === "projection" && resolver?.type !== "command") {
+      throw invalid(`${facetField} projection must declare a command resolver.`);
+    }
     if (
       (kind === "collection" && resolver?.type === "command")
         !== (subjectKind !== null)

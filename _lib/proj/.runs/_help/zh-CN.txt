@@ -1,6 +1,7 @@
 查询命令的持久运行记录，或在资源管理器中打开一次运行的日志目录。
 
 用法:
+  {{INVOCATION}}
   {{INVOCATION}} --json [<command-locator>]
   {{INVOCATION}} --run <run-id> [--after <cursor>]
   {{INVOCATION}} --open <run-id>
@@ -9,8 +10,7 @@
   {{INVOCATION}} <command-address> --run <run-id> [--after <cursor>]
   {{INVOCATION}} <command-address> --open <run-id>
 
-不带 locator 的 `--json` 服务于 `.logs` 的全局 `runs` Subject 集合；带 locator 的 `--json` 服务于具体命令的“运行记录” Facet，两者返回相同的 `::run/<run-id>` 身份。命令范围查询使用正常 CLI 地址，例如 `.dev.status` 或 `proj.build.app`。只有来源有歧义时，
-才需要写成 `kernel/.dev.status` 或 `action/proj.build.app`。
+不带参数时，列出所有命令最近的持久运行。不带 locator 的 `--json` 服务于 `.runs` 的全局 `all` Subject 集合；带 locator 的 `--json` 服务于具体命令的“运行记录” Facet，两者返回相同的 `::run/<run-id>` 身份。命令范围查询使用正常 CLI 地址，例如 `.dev.status` 或 `proj.build.app`。`kernel/.dev.status` 与 `action/proj.build.app` 是供 Facet 等协议调用者显式固定来源的 locator 形式；日常 CLI 不需要它来消歧。Kernel、Action 的地址命名空间分别由前导点号（或短横线）和无前导点号区分，漏写点号不会自动改成 Kernel 命令。
 
 不带操作参数时输出按时间倒序排列的 JSON 清单，`latest: 1` 表示最近一次运行。
 `--latest 1..3` 在同一次读取中输出最近三次运行，适合人工查询；Agent 应优先保存并使用

@@ -2,24 +2,17 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::os::windows::ffi::OsStrExt;
-use std::os::windows::io::{FromRawHandle, OwnedHandle};
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::System::Environment::SetEnvironmentVariableW;
-use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, OpenJobObjectW};
-use windows_sys::Win32::System::Threading::{
-    CREATE_NO_WINDOW, EVENT_MODIFY_STATE, GetCurrentProcess, OpenEventW, SetEvent,
-};
+use windows_sys::Win32::System::JobObjects::IsProcessInJob;
+use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, GetCurrentProcess};
 
 use super::Utf8LossyDecoder;
-use crate::launch::{
-    WORKER_JOB_NAME_ENV, WORKER_PROTOCOL_ENV, WORKER_PROTOCOL_VERSION, WORKER_READY_EVENT_NAME_ENV,
-};
+use crate::launch::{WORKER_PROTOCOL_ENV, WORKER_PROTOCOL_VERSION};
 
-const JOB_OBJECT_ASSIGN_PROCESS_ACCESS: u32 = 0x0001;
 const NORMAL_MARKER: &str = "web-native-worker.marker";
 const CANCEL_PID_MARKER: &str = "web-native-worker-descendant.pid";
 const STDOUT_SENTINEL: &str = "SWAWKIT_WEB_NATIVE_STDOUT_SENTINEL";
@@ -60,7 +53,7 @@ fn decoder_flushes_an_incomplete_sequence_at_eof() {
 // value is also an exact libtest filter.
 #[test]
 fn webnativeworkerfixture() {
-    if !join_declared_worker_boundary() {
+    if !enter_declared_worker_fixture() {
         return;
     }
 
@@ -72,7 +65,7 @@ fn webnativeworkerfixture() {
 
 #[test]
 fn webnativeworkercancelfixture() {
-    if !join_declared_worker_boundary() {
+    if !enter_declared_worker_fixture() {
         return;
     }
 
@@ -103,11 +96,9 @@ fn webnativeworkercancelfixture() {
         .expect("wait for native worker descendant");
 }
 
-fn join_declared_worker_boundary() -> bool {
+fn enter_declared_worker_fixture() -> bool {
     let protocol = env::var_os(WORKER_PROTOCOL_ENV);
-    let job_name = env::var_os(WORKER_JOB_NAME_ENV);
-    let ready_event_name = env::var_os(WORKER_READY_EVENT_NAME_ENV);
-    if protocol.is_none() && job_name.is_none() && ready_event_name.is_none() {
+    if protocol.is_none() {
         return false;
     }
 
@@ -116,44 +107,19 @@ fn join_declared_worker_boundary() -> bool {
         Some(OsStr::new(WORKER_PROTOCOL_VERSION)),
         "invalid native worker protocol"
     );
-    let job_name = job_name.expect("native worker Job Object name");
-    let ready_event_name = ready_event_name.expect("native worker ready event name");
-    let job_name = null_terminated(&job_name);
-    let ready_event_name = null_terminated(&ready_event_name);
-
-    let job = owned_handle(
-        unsafe { OpenJobObjectW(JOB_OBJECT_ASSIGN_PROCESS_ACCESS, 0, job_name.as_ptr()) },
-        "open native worker Job Object",
-    );
-    let ready = owned_handle(
-        unsafe { OpenEventW(EVENT_MODIFY_STATE, 0, ready_event_name.as_ptr()) },
-        "open native worker ready event",
-    );
+    let mut in_job = 0;
     assert_ne!(
-        unsafe { AssignProcessToJobObject(raw_handle(&job), GetCurrentProcess()) },
+        unsafe { IsProcessInJob(GetCurrentProcess(), std::ptr::null_mut(), &mut in_job) },
         0,
-        "assign copied libtest process to native worker Job Object: {}",
+        "inspect native worker Job membership: {}",
         std::io::Error::last_os_error()
     );
-    drop(job);
-
-    for name in [
-        WORKER_PROTOCOL_ENV,
-        WORKER_JOB_NAME_ENV,
-        WORKER_READY_EVENT_NAME_ENV,
-    ] {
-        let name = null_terminated(OsStr::new(name));
-        assert_ne!(
-            unsafe { SetEnvironmentVariableW(name.as_ptr(), std::ptr::null()) },
-            0,
-            "clear native worker declaration: {}",
-            std::io::Error::last_os_error()
-        );
-    }
+    assert_ne!(in_job, 0, "native worker process is outside its Job Object");
+    let name = null_terminated(OsStr::new(WORKER_PROTOCOL_ENV));
     assert_ne!(
-        unsafe { SetEvent(raw_handle(&ready)) },
+        unsafe { SetEnvironmentVariableW(name.as_ptr(), std::ptr::null()) },
         0,
-        "signal native worker ready event: {}",
+        "clear native worker declaration: {}",
         std::io::Error::last_os_error()
     );
     true
@@ -166,18 +132,4 @@ fn windows_powershell() -> PathBuf {
 
 fn null_terminated(value: &OsStr) -> Vec<u16> {
     value.encode_wide().chain(std::iter::once(0)).collect()
-}
-
-fn owned_handle(handle: HANDLE, action: &str) -> OwnedHandle {
-    assert!(
-        !handle.is_null(),
-        "{action}: {}",
-        std::io::Error::last_os_error()
-    );
-    unsafe { OwnedHandle::from_raw_handle(handle) }
-}
-
-fn raw_handle(handle: &OwnedHandle) -> HANDLE {
-    use std::os::windows::io::AsRawHandle;
-    handle.as_raw_handle() as HANDLE
 }

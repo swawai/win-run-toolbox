@@ -19,7 +19,6 @@ function Assert-ProjLauncherRuntimeTest {
     }
 }
 
-. (Join-Path $PSScriptRoot '_lib\windows-job-fixture.ps1')
 . (Join-Path $PSScriptRoot '_lib\runtime-fixture.ps1')
 
 function Invoke-ProjLauncherRuntimeProcess {
@@ -127,20 +126,15 @@ $RuntimeCorePath = Join-Path $RuntimeRelease 'swawkit-proj.exe'
 $RuntimeHostPath = Join-Path $RuntimeRelease 'swawkit-proj-host.exe'
 $RuntimeToolchainPath = Join-Path $RuntimeRelease 'swawkit-proj-toolchain.exe'
 $EntryName = "test-launcher-$([Guid]::NewGuid().ToString('N'))"
-$EntryPath = Join-Path $RuntimeHome "Favorites\$EntryName.exe"
+$EntryPath = Join-Path $RuntimeHome "$EntryName.exe"
 $DataRoot = Join-Path $RuntimeHome "data\proj.$EntryName"
-$RootEntryName = "test-root-launcher-$([Guid]::NewGuid().ToString('N'))"
-$RootEntryPath = Join-Path $RuntimeHome "$RootEntryName.exe"
-$RootDataRoot = Join-Path $RuntimeHome "data\proj.$RootEntryName"
 $TargetRoot = Join-Path $TemporaryRoot 'target'
 $ActionRoot = Join-Path $TargetRoot '.swaw'
 $ProbeRoot = Join-Path $ActionRoot 'probe'
-$HangRoot = Join-Path $ActionRoot 'hang'
 $InvocationRoot = Join-Path $TemporaryRoot 'invocation'
 $CapturePath = Join-Path $DataRoot 'modules\action\probe\capture.json'
-$HangMarkerPath = Join-Path $DataRoot 'modules\action\hang\started.txt'
-$NestedRoot = Join-Path $TemporaryRoot 'nested\level'
-$NestedEntry = Join-Path $NestedRoot 'outside-supported-layout.exe'
+$UnsupportedRoot = Join-Path $RuntimeHome 'Favorites'
+$UnsupportedEntry = Join-Path $UnsupportedRoot 'unsupported-layout.exe'
 $BootstrapHome = Join-Path $TemporaryRoot 'bootstrap-home'
 $BootstrapEntry = Join-Path $BootstrapHome 'bootstrap-entry.exe'
 $BootstrapScript = Join-Path $BootstrapHome '_lib\proj\bootstrap.ps1'
@@ -191,11 +185,9 @@ try {
     foreach ($Directory in @(
         (Split-Path -Path $RuntimeCorePath -Parent),
         (Join-Path $RuntimeKernelRoot '_help'),
-        (Split-Path -Path $EntryPath -Parent),
         $ProbeRoot,
-        $HangRoot,
         $InvocationRoot,
-        $NestedRoot,
+        $UnsupportedRoot,
         (Split-Path -Path $BootstrapScript -Parent)
     )) {
         [void][IO.Directory]::CreateDirectory($Directory)
@@ -219,8 +211,7 @@ try {
         -Recurse `
         -Force
     [IO.File]::Copy($LauncherPath, $EntryPath, $false)
-    [IO.File]::Copy($LauncherPath, $RootEntryPath, $false)
-    [IO.File]::Copy($LauncherPath, $NestedEntry, $false)
+    [IO.File]::Copy($LauncherPath, $UnsupportedEntry, $false)
     [IO.File]::Copy($LauncherPath, $BootstrapEntry, $false)
 
     $BootstrapFixture = @'
@@ -241,11 +232,7 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
 )
 [IO.File]::WriteAllText(
     (Join-Path $HomeRoot 'bootstrap-ran.txt'),
-    ((@(
-        [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL
-        [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME
-        [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME
-    )) -join '|'),
+    [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL,
     [Text.UTF8Encoding]::new($false)
 )
 '@
@@ -255,22 +242,20 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
         [Text.UTF8Encoding]::new($false)
     )
 
-    $Bootstrapped = Invoke-ProjLauncherJobTestProcess `
+    $Bootstrapped = Invoke-ProjLauncherRuntimeProcess `
         -Executable $BootstrapEntry `
         -Arguments '/d /c exit 0' `
         -WorkingDirectory $InvocationRoot
     Assert-ProjLauncherRuntimeTest `
         -Condition (
             $Bootstrapped.ExitCode -eq 0 -and
-            $Bootstrapped.InJob -and
             [IO.File]::Exists($BootstrapCore) -and
             [IO.File]::Exists($BootstrapMarker) -and
-            [IO.File]::ReadAllText($BootstrapMarker) -ceq '||'
+            [IO.File]::ReadAllText($BootstrapMarker) -ceq ''
         ) `
         -Message (
             'Launcher did not Bootstrap a missing shared Core: ' +
             "exit=$($Bootstrapped.ExitCode); " +
-            "job=$($Bootstrapped.InJob); " +
             "core=$([IO.File]::Exists($BootstrapCore)); " +
             "marker=$([IO.File]::Exists($BootstrapMarker)); " +
             "stdout=$($Bootstrapped.StandardOutput); " +
@@ -290,18 +275,6 @@ $CmdPath = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
     Assert-ProjLauncherRuntimeTest `
         -Condition ([IO.File]::Exists((Join-Path $DataRoot '_entry.json'))) `
         -Message 'copied Launcher did not create its entry-owned DataRoot'
-
-    $RootHelp = Invoke-ProjLauncherRuntimeProcess `
-        -Executable $RootEntryPath `
-        -Arguments '--help' `
-        -WorkingDirectory $InvocationRoot
-    Assert-ProjLauncherRuntimeTest `
-        -Condition (
-            $RootHelp.ExitCode -eq 0 -and
-            $RootHelp.StandardOutput.Contains($RootEntryName) -and
-            [IO.File]::Exists((Join-Path $RootDataRoot '_entry.json'))
-        ) `
-        -Message 'Launcher did not support the SWAWKIT_HOME root layout'
 
     $Profile = [ordered]@{
         schema = 'swawkit.entry-profile/v2'
@@ -352,8 +325,6 @@ $Payload = [ordered]@{
     launchEntryFile = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE
     launchProtocol = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_PROTOCOL
     workerProtocol = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL
-    workerJobName = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME
-    workerReadyEventName = [string]$env:SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME
     legacyEntryFile = [string]$env:SWAWKIT_PROJ_ENTRY_FILE
     entryName = [string]$env:SWAWKIT_PROJ_ENTRY_COMMAND
     targetProjectRoot = [string]$env:SWAWKIT_PROJ_TARGET_PROJECT_ROOT
@@ -387,22 +358,6 @@ exit 37
 '@,
         [Text.UTF8Encoding]::new($false)
     )
-    [IO.File]::WriteAllText(
-        (Join-Path $HangRoot 'run.ps1'),
-        @'
-$ErrorActionPreference = 'Stop'
-$MarkerPath = Join-Path $env:SWAWKIT_PROJ_CORE_COMMAND_DATA_ROOT 'started.txt'
-[void][IO.Directory]::CreateDirectory((Split-Path -Path $MarkerPath -Parent))
-[IO.File]::WriteAllText(
-    $MarkerPath,
-    [string]$PID,
-    [Text.UTF8Encoding]::new($false)
-)
-Start-Sleep -Seconds 60
-'@,
-        [Text.UTF8Encoding]::new($false)
-    )
-
     $ManagedPwshSource = Join-Path $RepoRoot (
         'data\proj.swawkit\modules\kernel\.dev\setup\export\pwsh\installs\7.6.4'
     )
@@ -467,8 +422,6 @@ Start-Sleep -Seconds 60
         launchEntryFile = ''
         launchProtocol = ''
         workerProtocol = ''
-        workerJobName = ''
-        workerReadyEventName = ''
         legacyEntryFile = ''
         entryName = $EntryName
         targetProjectRoot = $TargetRoot
@@ -513,20 +466,22 @@ Start-Sleep -Seconds 60
             )
     }
 
-    $WorkerRun = Invoke-ProjLauncherJobTestProcess `
+    $WorkerRun = Invoke-ProjLauncherRuntimeProcess `
         -Executable $EntryPath `
         -Arguments 'probe worker-boundary' `
-        -WorkingDirectory $InvocationRoot
+        -WorkingDirectory $InvocationRoot `
+        -EnvironmentVariables @{
+            SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL = '2'
+        }
     Assert-ProjLauncherRuntimeTest `
         -Condition (
             $WorkerRun.ExitCode -eq 37 -and
-            $WorkerRun.InJob -and
             $WorkerRun.StandardOutput.Contains('worker-stdout-sentinel') -and
             $WorkerRun.StandardError.Contains('worker-stderr-sentinel')
         ) `
         -Message (
-            'Launcher did not execute inside the declared Web worker job: ' +
-            "exit=$($WorkerRun.ExitCode); job=$($WorkerRun.InJob); " +
+            'Launcher did not consume the Web worker mode: ' +
+            "exit=$($WorkerRun.ExitCode); " +
             "stderr=$($WorkerRun.StandardError)"
         )
     $WorkerCapture = [IO.File]::ReadAllText($CapturePath) |
@@ -535,99 +490,25 @@ Start-Sleep -Seconds 60
         -Condition (
             @($WorkerCapture.arguments).Count -eq 1 -and
             [string]$WorkerCapture.arguments[0] -ceq 'worker-boundary' -and
-            [string]::IsNullOrEmpty([string]$WorkerCapture.workerProtocol) -and
-            [string]::IsNullOrEmpty([string]$WorkerCapture.workerJobName) -and
-            [string]::IsNullOrEmpty(
-                [string]$WorkerCapture.workerReadyEventName
-            )
+            [string]::IsNullOrEmpty([string]$WorkerCapture.workerProtocol)
         ) `
-        -Message 'Web worker launch declarations leaked into the command'
+        -Message 'Web worker launch declaration leaked into the command'
 
     $RejectedWorkerDeclaration = Invoke-ProjLauncherRuntimeProcess `
         -Executable $EntryPath `
         -Arguments '--help' `
         -WorkingDirectory $InvocationRoot `
         -EnvironmentVariables @{
-            SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL = '1'
+            SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL = 'foreign'
         }
     Assert-ProjLauncherRuntimeTest `
         -Condition (
             $RejectedWorkerDeclaration.ExitCode -eq 1 -and
             $RejectedWorkerDeclaration.StandardError.Contains(
-                'Web worker process boundary'
+                'Web worker launch declaration'
             )
         ) `
-        -Message 'Launcher accepted an incomplete Web worker declaration'
-
-    $WorkerIdentity = [Guid]::NewGuid().ToString('N')
-    $WorkerJobName = "Local\SwawKit.Proj.Test.Job.$WorkerIdentity"
-    $WorkerReadyName = "Local\SwawKit.Proj.Test.Ready.$WorkerIdentity"
-    $WorkerJob = [IntPtr]::Zero
-    $WorkerReady = [IntPtr]::Zero
-    $WorkerProcess = $null
-    $CommandProcess = $null
-    try {
-        $WorkerJob = [ProjLauncherJobTest]::CreateKillOnCloseJob(
-            $WorkerJobName
-        )
-        $WorkerReady = [ProjLauncherJobTest]::CreateReadyEvent(
-            $WorkerReadyName
-        )
-        $WorkerProcess = Start-ProjLauncherRuntimeProcess `
-            -Executable $EntryPath `
-            -Arguments 'hang' `
-            -WorkingDirectory $InvocationRoot `
-            -EnvironmentVariables @{
-                SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL = '1'
-                SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME = $WorkerJobName
-                SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME = $WorkerReadyName
-            }
-        $WorkerOutput = $WorkerProcess.StandardOutput.ReadToEndAsync()
-        $WorkerError = $WorkerProcess.StandardError.ReadToEndAsync()
-        Assert-ProjLauncherRuntimeTest `
-            -Condition ([ProjLauncherJobTest]::WaitReady($WorkerReady, 5000)) `
-            -Message 'cancellable Launcher did not signal worker readiness'
-        $Deadline = [DateTime]::UtcNow.AddSeconds(5)
-        while (-not [IO.File]::Exists($HangMarkerPath) -and
-            [DateTime]::UtcNow -lt $Deadline) {
-            Start-Sleep -Milliseconds 25
-        }
-        Assert-ProjLauncherRuntimeTest `
-            -Condition ([IO.File]::Exists($HangMarkerPath)) `
-            -Message 'cancellable command did not start its descendant process'
-        $CommandProcess = [Diagnostics.Process]::GetProcessById(
-            [int][IO.File]::ReadAllText($HangMarkerPath)
-        )
-        Assert-ProjLauncherRuntimeTest `
-            -Condition ([ProjLauncherJobTest]::CloseHandle($WorkerJob)) `
-            -Message 'test could not close the worker Job handle'
-        $WorkerJob = [IntPtr]::Zero
-        Assert-ProjLauncherRuntimeTest `
-            -Condition (
-                $WorkerProcess.WaitForExit(5000) -and
-                $CommandProcess.WaitForExit(5000)
-            ) `
-            -Message 'closing the worker Job did not terminate the complete tree'
-        [void]$WorkerOutput.Result
-        [void]$WorkerError.Result
-    } finally {
-        if ($WorkerJob -ne [IntPtr]::Zero) {
-            [void][ProjLauncherJobTest]::CloseHandle($WorkerJob)
-        }
-        if ($null -ne $WorkerProcess) {
-            if (-not $WorkerProcess.HasExited) {
-                $WorkerProcess.Kill()
-                [void]$WorkerProcess.WaitForExit(5000)
-            }
-            $WorkerProcess.Dispose()
-        }
-        if ($null -ne $CommandProcess) {
-            $CommandProcess.Dispose()
-        }
-        if ($WorkerReady -ne [IntPtr]::Zero) {
-            [void][ProjLauncherJobTest]::CloseHandle($WorkerReady)
-        }
-    }
+        -Message 'Launcher accepted an invalid Web worker declaration'
 
     foreach ($ProtocolValue in @('', 'foreign')) {
         $RejectedNestedEntry = Invoke-ProjLauncherRuntimeProcess `
@@ -654,7 +535,7 @@ Start-Sleep -Seconds 60
     }
 
     $RejectedLayout = Invoke-ProjLauncherRuntimeProcess `
-        -Executable $NestedEntry `
+        -Executable $UnsupportedEntry `
         -Arguments '--help' `
         -WorkingDirectory $InvocationRoot
     Assert-ProjLauncherRuntimeTest `
@@ -662,7 +543,7 @@ Start-Sleep -Seconds 60
             $RejectedLayout.ExitCode -eq 1 -and
             $RejectedLayout.StandardError.Contains('Cannot locate')
         ) `
-        -Message 'Launcher accepted a path deeper than the supported layout'
+        -Message 'Launcher accepted an Entry outside SWAWKIT_HOME root'
 } finally {
     foreach ($Name in $PoisonedVariables) {
         [Environment]::SetEnvironmentVariable(

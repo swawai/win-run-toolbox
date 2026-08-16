@@ -84,7 +84,6 @@ pub(super) async fn post_command_run(
     argv.extend(request.arguments.into_iter().map(OsString::from));
     let argument_count = argv.len().saturating_sub(1);
     let spec = EntryRunSpec {
-        id: String::new(),
         entry_file: state.context.entry_file.clone(),
         working_directory: prepared.working_directory,
         argv,

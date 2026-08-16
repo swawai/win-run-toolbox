@@ -302,7 +302,6 @@ fn resolve_command_document(
     let output = context
         .command_runs
         .query(EntryRunSpec {
-            id: String::new(),
             entry_file: context.entry.entry_file.clone(),
             working_directory: context.working_directory.clone(),
             argv,

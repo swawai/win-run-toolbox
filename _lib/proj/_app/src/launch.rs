@@ -8,11 +8,9 @@ use std::path::PathBuf;
 pub const ENTRY_FILE_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_ENTRY_FILE";
 pub const LAUNCH_MODE_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_MODE";
 pub const LAUNCH_PROTOCOL_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_PROTOCOL";
-pub const LAUNCH_PROTOCOL_VERSION: &str = "2";
+pub const LAUNCH_PROTOCOL_VERSION: &str = "3";
 pub const WORKER_PROTOCOL_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL";
-pub const WORKER_PROTOCOL_VERSION: &str = "1";
-pub const WORKER_JOB_NAME_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME";
-pub const WORKER_READY_EVENT_NAME_ENV: &str = "SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME";
+pub const WORKER_PROTOCOL_VERSION: &str = "2";
 const PROJECT_ENVIRONMENT_PREFIX: &str = "SWAWKIT_PROJ_";
 const SWAWKIT_HOME_ENV: &str = "SWAWKIT_HOME";
 
@@ -67,7 +65,7 @@ impl LaunchRequest {
         mut lookup: impl FnMut(&str) -> Option<OsString>,
     ) -> Result<Self, LaunchError> {
         validate_launch_protocol(&mut lookup)?;
-        reject_unconsumed_worker_declarations(&mut lookup)?;
+        reject_unconsumed_worker_declaration(&mut lookup)?;
         let mode = read_mode(&mut lookup)?;
         let entry_file = read_entry_file(&mut lookup)?;
         let argv = direct_argv.into_iter().collect();
@@ -124,19 +122,13 @@ fn validate_launch_protocol(
     )))
 }
 
-fn reject_unconsumed_worker_declarations(
+fn reject_unconsumed_worker_declaration(
     lookup: &mut impl FnMut(&str) -> Option<OsString>,
 ) -> Result<(), LaunchError> {
-    for name in [
-        WORKER_PROTOCOL_ENV,
-        WORKER_JOB_NAME_ENV,
-        WORKER_READY_EVENT_NAME_ENV,
-    ] {
-        if lookup(name).is_some() {
-            return Err(LaunchError::new(format!(
-                "the native Launcher did not consume its Web worker declaration: {name}; rebuild or replace the Entry Launcher"
-            )));
-        }
+    if lookup(WORKER_PROTOCOL_ENV).is_some() {
+        return Err(LaunchError::new(format!(
+            "the native Launcher did not consume its Web worker declaration: {WORKER_PROTOCOL_ENV}; rebuild or replace the Entry Launcher"
+        )));
     }
     Ok(())
 }

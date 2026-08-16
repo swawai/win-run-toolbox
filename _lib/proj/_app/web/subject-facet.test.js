@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   createSubjectFacetView,
+  defaultCommandFacet,
   defaultSubjectFacet,
   subjectFacetItems,
   subjectFacets,
@@ -14,14 +15,12 @@ function facet(id, renderer = id) {
     kind: renderer === "overview" ? "projection" : "operation",
     label: id,
     renderer,
-    resolver: renderer === "overview"
-      ? null
-      : {
+    resolver: {
         acceptsTail: false,
         address: ".fixture",
         arguments: [],
         confirmation: null,
-        returns: null,
+        returns: renderer === "overview" ? "fixture.document/v1" : null,
         type: "command",
       },
     summary: `${id} summary`,
@@ -58,7 +57,7 @@ describe("Subject Facets", () => {
         collection("children", { relation: "children", type: "catalog" }),
         collection("runs", {
           acceptsTail: false,
-          address: ".logs",
+          address: ".runs",
           arguments: [],
           confirmation: null,
           returns: "swawkit.subject-collection/v2",
@@ -84,6 +83,42 @@ describe("Subject Facets", () => {
       handler: "runtime.status",
     };
     expect(defaultSubjectFacet(subject)).toBe("overview");
+    expect(defaultCommandFacet(subject)).toBeNull();
+  });
+
+  test("keeps ordinary Command details outside Facet selection", () => {
+    const subject = {
+      facets: [facet("help"), collection("runs", {
+        acceptsTail: false,
+        address: ".runs",
+        arguments: [],
+        confirmation: null,
+        returns: "swawkit.subject-collection/v2",
+        type: "command",
+      })],
+      address: ".fixture",
+    };
+    expect(defaultCommandFacet(subject)).toBeNull();
+
+    const pane = () => ({ hidden: false });
+    const elements = {
+      commandWorkspace: pane(),
+      entryProfileDetail: pane(),
+      commandDetail: pane(),
+      commandHelpPane: pane(),
+      commandRunPane: pane(),
+    };
+    const view = createSubjectFacetView(elements, {
+      defaultFacet: defaultCommandFacet,
+      fallbackRenderer: "overview",
+    });
+    expect(view.select(subject)).toEqual({
+      defaultFacet: null,
+      facet: null,
+      selectedFacet: null,
+    });
+    expect(elements.commandWorkspace.hidden).toBeFalse();
+    expect(elements.commandDetail.hidden).toBeFalse();
   });
 
   test("renders a custom Facet through its declared renderer", () => {
@@ -112,7 +147,7 @@ describe("Subject Facets", () => {
   });
 
   test("routes overridden conventional ids only by their declared renderer", () => {
-    for (const id of ["help", "logs"]) {
+    for (const id of ["help", "runs"]) {
       const pane = () => ({ hidden: false });
       const elements = {
         commandWorkspace: pane(),
@@ -146,7 +181,7 @@ describe("Subject Facets", () => {
       facets: [
         collection("runs", {
           acceptsTail: false,
-          address: ".logs",
+          address: ".runs",
           arguments: [],
           confirmation: null,
           returns: "swawkit.subject-collection/v2",

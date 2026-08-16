@@ -17,6 +17,7 @@ pub mod host_restart;
 pub mod host_runtime;
 pub mod launch;
 pub mod module_check;
+mod process_job;
 pub mod profile;
 mod run_journal;
 pub mod runtime_cleanup;

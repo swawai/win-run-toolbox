@@ -258,6 +258,7 @@ async fn serves_only_the_declared_local_surface() {
     assert!(index_html.contains("id=\"command-run-confirmation\""));
     assert!(index_html.contains("class=\"command-run-output\" id=\"command-run-output\""));
     assert!(index_html.contains("class=\"run-projection-output\" id=\"run-projection-output\""));
+    assert!(index_html.contains("id=\"module-check-pane\""));
 
     for path in [
         "/commands",
@@ -298,6 +299,10 @@ async fn serves_only_the_declared_local_surface() {
         ),
         (
             "/assets/styles/context-projection.css",
+            "text/css; charset=utf-8",
+        ),
+        (
+            "/assets/styles/module-check-projection.css",
             "text/css; charset=utf-8",
         ),
         ("/assets/app.js", "text/javascript; charset=utf-8"),
@@ -360,6 +365,14 @@ async fn serves_only_the_declared_local_surface() {
         ),
         (
             "/assets/context-projection.js",
+            "text/javascript; charset=utf-8",
+        ),
+        (
+            "/assets/module-check-projection-model.js",
+            "text/javascript; charset=utf-8",
+        ),
+        (
+            "/assets/module-check-projection.js",
             "text/javascript; charset=utf-8",
         ),
         (
@@ -523,14 +536,6 @@ async fn serializes_the_complete_catalog_node_contract() {
                         "type": "catalog",
                         "relation": "children"
                     }
-                },
-                {
-                    "id": "overview",
-                    "kind": "projection",
-                    "renderer": "overview",
-                    "icon": "i",
-                    "label": "概览",
-                    "summary": "查看调用与命令属性"
                 }
             ],
             "view": {
@@ -568,14 +573,6 @@ async fn serializes_the_complete_catalog_node_contract() {
             },
             "subjectKinds": [],
             "facets": [
-                {
-                    "id": "overview",
-                    "kind": "projection",
-                    "renderer": "overview",
-                    "icon": "i",
-                    "label": "概览",
-                    "summary": "查看调用与命令属性"
-                },
                 {
                     "id": "run",
                     "kind": "operation",

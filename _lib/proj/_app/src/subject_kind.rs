@@ -209,7 +209,7 @@ mod tests {
             kind: "run".to_owned(),
             provider: SubjectRef::Command {
                 source: CommandSource::Kernel,
-                address: ".logs".to_owned(),
+                address: ".runs".to_owned(),
             },
         }
         .validate()
@@ -219,7 +219,7 @@ mod tests {
             kind: "run".to_owned(),
             provider: SubjectRef::Instance {
                 kind: "provider".to_owned(),
-                id: "logs".to_owned(),
+                id: "provider-id".to_owned(),
             },
         }
         .validate()

@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -8,7 +7,6 @@ use super::{EntryOutputStream, EntryRunObserver, EntryRunOutcome, EntryRunSpec, 
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_QUERY_OUTPUT_BYTES: usize = 1024 * 1024;
-static NEXT_QUERY: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct EntryQueryOutput {
     pub stdout: String,
@@ -16,13 +14,8 @@ pub(crate) struct EntryQueryOutput {
 
 pub(crate) fn run_entry_query(
     runner: Arc<dyn EntryRunner>,
-    mut spec: EntryRunSpec,
+    spec: EntryRunSpec,
 ) -> Result<EntryQueryOutput, String> {
-    spec.id = format!(
-        "query-{}-{}",
-        std::process::id(),
-        NEXT_QUERY.fetch_add(1, Ordering::Relaxed)
-    );
     run_entry_query_with(runner, spec, QUERY_TIMEOUT, MAX_QUERY_OUTPUT_BYTES)
 }
 
@@ -232,7 +225,6 @@ mod tests {
 
     fn spec() -> EntryRunSpec {
         EntryRunSpec {
-            id: String::new(),
             entry_file: PathBuf::from("entry.exe"),
             working_directory: PathBuf::from("."),
             argv: vec![OsString::from(".query")],

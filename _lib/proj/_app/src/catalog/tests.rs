@@ -93,14 +93,14 @@ fn discovers_control_kernel_and_action_hierarchies() {
         r#"{"schema":"swawkit.core-command/v1","handler":"meta.help"}"#,
     );
     fixture.file(
-        "home/_lib/proj/.logs/run.core.json",
-        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+        "home/_lib/proj/.runs/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.runs"}"#,
     );
     fixture.file("home/_lib/proj/.h/run.ps1", "");
     fixture.file("home/_lib/proj/-con/run.ps1", "");
     fixture.file("home/_lib/proj/--nul/run.ps1", "");
     fixture.file(
-        "home/_lib/proj/.info/_help/zh-CN.txt",
+        "home/_lib/proj/.dev/_help/zh-CN.txt",
         "\n  Inspect {{COMMAND}}.  \nUse {{INVOCATION}}.",
     );
     fixture.file("home/_lib/proj/_private/run.ps1", "");
@@ -145,8 +145,7 @@ fn discovers_control_kernel_and_action_hierarchies() {
             (CommandSource::Kernel, ".dev.setup"),
             (CommandSource::Kernel, ".h"),
             (CommandSource::Kernel, ".help"),
-            (CommandSource::Kernel, ".info"),
-            (CommandSource::Kernel, ".logs"),
+            (CommandSource::Kernel, ".runs"),
             (CommandSource::Action, "build"),
             (CommandSource::Action, "build.host"),
             (CommandSource::Action, "python"),
@@ -197,19 +196,19 @@ fn discovers_control_kernel_and_action_hierarchies() {
     let restart = node(&snapshot, CommandSource::Control, "..runtime.host.restart");
     assert_eq!(restart.handler.as_deref(), Some("host.restart"));
 
-    let info = node(&snapshot, CommandSource::Kernel, ".info");
-    let help = info.help.as_ref().expect("info help");
+    let development = node(&snapshot, CommandSource::Kernel, ".dev");
+    let help = development.help.as_ref().expect("development help");
     assert_eq!(help.summary, "Inspect fixture.");
-    assert!(help.text.contains("Use fixture .info."));
+    assert!(help.text.contains("Use fixture .dev."));
 
     let help_alias = node(&snapshot, CommandSource::Kernel, ".h");
     assert_eq!(help_alias.alias_of.as_deref(), Some(".help"));
     let meta_help = node(&snapshot, CommandSource::Kernel, ".help");
     assert_eq!(meta_help.adapter.as_deref(), Some("core"));
     assert_eq!(meta_help.handler.as_deref(), Some("meta.help"));
-    let meta_logs = node(&snapshot, CommandSource::Kernel, ".logs");
-    assert_eq!(meta_logs.adapter.as_deref(), Some("core"));
-    assert_eq!(meta_logs.handler.as_deref(), Some("meta.logs"));
+    let meta_runs = node(&snapshot, CommandSource::Kernel, ".runs");
+    assert_eq!(meta_runs.adapter.as_deref(), Some("core"));
+    assert_eq!(meta_runs.handler.as_deref(), Some("meta.runs"));
     let root = node(&snapshot, CommandSource::Kernel, "");
     assert!(root.facets.iter().all(|facet| facet.id != "run"));
     let root_help = root
@@ -401,11 +400,11 @@ fn restricts_owned_entries_to_their_catalog_sources() {
     );
     fixture.file(
         "home/_lib/proj/.fake-meta/run.core.json",
-        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.runs"}"#,
     );
     fixture.file(
         "home/_lib/proj/..fake-meta/run.core.json",
-        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.runs"}"#,
     );
     fixture.file("home/_lib/proj/..external/run.ps1", "");
     fixture.file(
@@ -523,10 +522,10 @@ fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
     let fixture = Fixture::new();
     let directory = fixture.directory("home/_lib/proj/.script");
     fixture.file("home/_lib/proj/.script/run.ps1", "");
-    let logs_directory = fixture.directory("home/_lib/proj/.logs");
+    let runs_directory = fixture.directory("home/_lib/proj/.runs");
     fixture.file(
-        "home/_lib/proj/.logs/run.core.json",
-        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+        "home/_lib/proj/.runs/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.runs"}"#,
     );
     let pending = PendingDirectory {
         path: directory,
@@ -559,10 +558,10 @@ fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
     assert!(enabled.runnable);
     assert_eq!(enabled.adapter.as_deref(), Some("pwsh"));
 
-    let logs = scan_node(
+    let runs = scan_node(
         &PendingDirectory {
-            path: logs_directory,
-            address: ".logs".to_owned(),
+            path: runs_directory,
+            address: ".runs".to_owned(),
             source: CommandSource::Kernel,
             is_root: false,
         },
@@ -570,9 +569,9 @@ fn disabled_powershell_is_a_catalog_diagnostic_not_a_hidden_fallback() {
         PwshAvailability::Disabled,
         EntryLanguage::default(),
     );
-    assert!(logs.runnable);
-    assert_eq!(logs.adapter.as_deref(), Some("core"));
-    assert_eq!(logs.handler.as_deref(), Some("meta.logs"));
+    assert!(runs.runnable);
+    assert_eq!(runs.adapter.as_deref(), Some("core"));
+    assert_eq!(runs.handler.as_deref(), Some("meta.runs"));
 }
 
 #[test]

@@ -91,9 +91,7 @@ impl Facet {
         }
 
         match &self.resolver {
-            None if self.kind != FacetKind::Projection => {
-                return Err("only a projection facet may omit its resolver".to_owned());
-            }
+            None => return Err("facet must declare a resolver".to_owned()),
             Some(FacetResolver::Catalog { relation }) => {
                 if self.kind != FacetKind::Collection || relation != "children" {
                     return Err(
@@ -117,7 +115,6 @@ impl Facet {
                     returns.as_deref(),
                 )?;
             }
-            None => {}
         }
 
         let required_target = (self.renderer == FacetRenderer::Help).then_some(".help");

@@ -36,9 +36,6 @@ async fn executes_and_cancels_native_workers_through_the_http_router() {
         .save(EntryProfileRecord::default())
         .expect("save native worker fixture profile");
 
-    // Keep both runs in one registry: run IDs form part of the named Job and
-    // Event boundary, so two fresh registries in one process would both start
-    // at the same PID+sequence identifier.
     let runs = CommandRuns::native();
     let app = router_with_runs(
         AUTHORITY.to_owned(),

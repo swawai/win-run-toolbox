@@ -5,17 +5,13 @@
 
 #define TEXT_CAPACITY 32768u
 #define INVALID_INDEX 0xffffffffu
-#define LAUNCH_PROTOCOL_VALUE L"2"
-#define WORKER_PROTOCOL_VALUE L"1"
+#define LAUNCH_PROTOCOL_VALUE L"3"
+#define WORKER_PROTOCOL_VALUE L"2"
 
 static const WCHAR launch_protocol_name[] =
     L"SWAWKIT_PROJ_CORE_LAUNCH_PROTOCOL";
 static const WCHAR worker_protocol_name[] =
     L"SWAWKIT_PROJ_CORE_LAUNCH_WORKER_PROTOCOL";
-static const WCHAR worker_job_name_name[] =
-    L"SWAWKIT_PROJ_CORE_LAUNCH_WORKER_JOB_NAME";
-static const WCHAR worker_ready_event_name_name[] =
-    L"SWAWKIT_PROJ_CORE_LAUNCH_WORKER_READY_EVENT_NAME";
 
 static WCHAR entry_path[TEXT_CAPACITY];
 static WCHAR core_path[TEXT_CAPACITY];
@@ -24,8 +20,6 @@ static WCHAR bootstrap_path[TEXT_CAPACITY];
 static WCHAR powershell_path[TEXT_CAPACITY];
 static WCHAR child_command_line[TEXT_CAPACITY];
 static WCHAR worker_protocol[16u];
-static WCHAR worker_job_name[TEXT_CAPACITY];
-static WCHAR worker_ready_event_name[TEXT_CAPACITY];
 static CHAR release_selector[66u];
 static STARTUPINFOW startup_info;
 static PROCESS_INFORMATION process_info;
@@ -138,74 +132,24 @@ static BOOL prepare_startup_info(BOOL inherit_handles)
     return TRUE;
 }
 
-static BOOL join_worker_job_if_declared(BOOL host_mode, BOOL *worker_mode)
+static BOOL consume_worker_mode(BOOL host_mode, BOOL *worker_mode)
 {
     BOOL has_protocol = environment_variable_exists(worker_protocol_name);
-    BOOL has_job = environment_variable_exists(worker_job_name_name);
-    BOOL has_ready_event = environment_variable_exists(
-        worker_ready_event_name_name
-    );
-    HANDLE job;
-    HANDLE ready_event;
 
     *worker_mode = FALSE;
-    if (!has_protocol && !has_job && !has_ready_event) {
+    if (!has_protocol) {
         return TRUE;
     }
     if (host_mode
-        || !has_protocol
-        || !has_job
-        || !has_ready_event
         || !read_environment_variable(
             worker_protocol_name,
             worker_protocol,
             16u
         )
         || !wide_equal(worker_protocol, WORKER_PROTOCOL_VALUE)
-        || !read_environment_variable(
-            worker_job_name_name,
-            worker_job_name,
-            TEXT_CAPACITY
-        )
-        || !read_environment_variable(
-            worker_ready_event_name_name,
-            worker_ready_event_name,
-            TEXT_CAPACITY
-        )) {
+        || !SetEnvironmentVariableW(worker_protocol_name, NULL)) {
         return FALSE;
     }
-
-    job = OpenJobObjectW(
-        JOB_OBJECT_ASSIGN_PROCESS,
-        FALSE,
-        worker_job_name
-    );
-    if (job == NULL) {
-        return FALSE;
-    }
-    ready_event = OpenEventW(
-        EVENT_MODIFY_STATE,
-        FALSE,
-        worker_ready_event_name
-    );
-    if (ready_event == NULL) {
-        CloseHandle(job);
-        return FALSE;
-    }
-    if (!AssignProcessToJobObject(job, GetCurrentProcess())) {
-        CloseHandle(ready_event);
-        CloseHandle(job);
-        return FALSE;
-    }
-    if (!CloseHandle(job)
-        || !SetEnvironmentVariableW(worker_protocol_name, NULL)
-        || !SetEnvironmentVariableW(worker_job_name_name, NULL)
-        || !SetEnvironmentVariableW(worker_ready_event_name_name, NULL)
-        || !SetEvent(ready_event)) {
-        CloseHandle(ready_event);
-        return FALSE;
-    }
-    CloseHandle(ready_event);
     *worker_mode = TRUE;
     return TRUE;
 }
@@ -348,17 +292,9 @@ static BOOL locate_layout(void)
 {
     DWORD entry_length = wide_length(entry_path);
     DWORD launcher_directory = last_separator_before(entry_path, entry_length);
-    DWORD home_directory;
 
-    if (launcher_directory == INVALID_INDEX) {
-        return FALSE;
-    }
-    if (try_layout(launcher_directory)) {
-        return TRUE;
-    }
-
-    home_directory = last_separator_before(entry_path, launcher_directory);
-    return home_directory != INVALID_INDEX && try_layout(home_directory);
+    return launcher_directory != INVALID_INDEX
+        && try_layout(launcher_directory);
 }
 
 static BOOL locate_windows_powershell(void)
@@ -531,11 +467,11 @@ void WINAPI launcher_entry(void)
             "[ERROR] Cannot start a Swaw Kit Entry from inside another Entry command.\r\n"
         );
     }
-    if (!join_worker_job_if_declared(host_mode, &worker_mode)) {
+    if (!consume_worker_mode(host_mode, &worker_mode)) {
         fail(
             host_mode,
-            L"Cannot establish the Web worker process boundary.",
-            "[ERROR] Cannot establish the Web worker process boundary.\r\n"
+            L"Cannot consume the Web worker launch declaration.",
+            "[ERROR] Cannot consume the Web worker launch declaration.\r\n"
         );
     }
 
@@ -550,9 +486,9 @@ void WINAPI launcher_entry(void)
         fail(
             host_mode,
             L"Cannot locate the shared Core or Bootstrap entry. "
-            L"Keep the Launcher in SWAWKIT_HOME or one of its direct child directories.",
+            L"Keep the Launcher directly in SWAWKIT_HOME.",
             "[ERROR] Cannot locate the shared Core or Bootstrap entry. "
-            "Keep the Launcher in SWAWKIT_HOME or one of its direct child directories.\r\n"
+            "Keep the Launcher directly in SWAWKIT_HOME.\r\n"
         );
     }
     if (!is_file(core_path) && !run_bootstrap(host_mode, worker_mode)) {

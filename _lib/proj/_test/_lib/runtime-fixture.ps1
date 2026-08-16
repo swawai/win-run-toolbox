@@ -151,8 +151,7 @@ function New-ProjCandidateRuntimeFixture {
         '.check',
         '.dev',
         '.help',
-        '.info',
-        '.logs',
+        '.runs',
         '_help',
         '_shell',
         '_toolchain'

@@ -124,17 +124,14 @@ describe("document projection view", () => {
     expect(nodes.documentProjectionFeedback.textContent).toBe("Invalid Context document.");
   });
 
-  test("leaves resolver-free overview Facets to the local detail renderer", () => {
+  test("leaves the resolver-free Command base detail outside Facet resolution", () => {
     const nodes = elements();
     let called = false;
     const view = createDocumentProjectionView(nodes, {
       resolveDocument() { called = true; },
     });
 
-    expect(view.select({ address: ".report", source: "kernel" }, {
-      ...projection(),
-      resolver: null,
-    })).toBeFalse();
+    expect(view.select({ address: ".report", source: "kernel" }, null)).toBeFalse();
     expect(called).toBeFalse();
     expect(nodes.documentProjectionPane.hidden).toBeTrue();
   });

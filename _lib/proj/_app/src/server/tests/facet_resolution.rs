@@ -33,14 +33,14 @@ fn context_surface(fixture: &Fixture) {
     }
 }
 
-fn logs_surface(fixture: &Fixture) {
+fn runs_surface(fixture: &Fixture) {
     fixture.file(
-        "home/_lib/proj/.logs/run.core.json",
-        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+        "home/_lib/proj/.runs/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.runs"}"#,
     );
     fixture.file(
-        "home/_lib/proj/.logs/_module.json",
-        include_str!("../../../../.logs/_module.json"),
+        "home/_lib/proj/.runs/_module.json",
+        include_str!("../../../../.runs/_module.json"),
     );
 }
 
@@ -266,9 +266,9 @@ async fn resolves_an_instance_projection_only_through_its_declared_via_collectio
 }
 
 #[tokio::test]
-async fn resolves_a_command_runs_collection_through_the_logs_subject_kind_provider() {
+async fn resolves_a_command_runs_collection_through_the_runs_subject_kind_provider() {
     let fixture = Fixture::new();
-    logs_surface(&fixture);
+    runs_surface(&fixture);
     fixture.file("home/_lib/proj/.tool/run.cmd", "");
     fixture
         .profile_store()
@@ -296,14 +296,14 @@ async fn resolves_a_command_runs_collection_through_the_logs_subject_kind_provid
         BTreeMap::from([
             (
                 vec![
-                    ".logs".to_owned(),
+                    ".runs".to_owned(),
                     "--json".to_owned(),
                     "kernel/.tool".to_owned(),
                 ],
                 serde_json::to_string(&collection).expect("Run collection JSON"),
             ),
             (
-                vec![".logs".to_owned(), "--run".to_owned(), "run-01".to_owned()],
+                vec![".runs".to_owned(), "--run".to_owned(), "run-01".to_owned()],
                 serde_json::to_string(&journal).expect("Run journal JSON"),
             ),
         ]),
@@ -334,6 +334,46 @@ async fn resolves_a_command_runs_collection_through_the_logs_subject_kind_provid
     let document: Value = serde_json::from_slice(&body).expect("Run journal JSON");
     assert_eq!(document["schema"], "swawkit.command-run-journal/v1");
     assert_eq!(document["id"], "run-01");
+}
+
+#[tokio::test]
+async fn resolves_the_runs_commands_all_collection_as_a_distinct_global_scope() {
+    let fixture = Fixture::new();
+    runs_surface(&fixture);
+    fixture
+        .profile_store()
+        .save(crate::profile::EntryProfileRecord::default())
+        .expect("ready profile");
+    let owner = json!({"type": "command", "source": "kernel", "address": ".runs"});
+    let run_ref = json!({"type": "instance", "kind": "run", "id": "run-01"});
+    let collection = json!({
+        "protocol": "swawkit.subject-collection/v2",
+        "owner": owner,
+        "facet": "all",
+        "subjects": [{
+            "ref": run_ref,
+            "label": "2026-08-16 00:00:00.000Z",
+            "summary": "kernel/.tool · exited · CLI · 1 events",
+            "facetIds": ["overview", "open"]
+        }]
+    });
+    let app = facet_app(
+        &fixture,
+        BTreeMap::from([(
+            vec![".runs".to_owned(), "--json".to_owned()],
+            serde_json::to_string(&collection).expect("global Run collection JSON"),
+        )]),
+    );
+
+    let response = resolve(app, json!({"subject": owner, "facet": "all"})).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("global Run collection body");
+    let document: Value = serde_json::from_slice(&body).expect("global Run collection JSON");
+    assert_eq!(document["owner"]["address"], ".runs");
+    assert_eq!(document["facet"], "all");
+    assert_eq!(document["subjects"][0]["ref"], run_ref);
 }
 
 #[tokio::test]

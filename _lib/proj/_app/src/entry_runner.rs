@@ -1,6 +1,5 @@
 mod environment;
 mod query;
-mod worker_boundary;
 
 use std::ffi::OsString;
 use std::io::{self, Read};
@@ -9,24 +8,19 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
-use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
 
 use crate::command_event::{CapturedCommandEvent, CommandEventFrameDecoder, CommandProgress};
-use crate::launch::{
-    WORKER_JOB_NAME_ENV, WORKER_PROTOCOL_ENV, WORKER_PROTOCOL_VERSION, WORKER_READY_EVENT_NAME_ENV,
-};
+use crate::launch::{WORKER_PROTOCOL_ENV, WORKER_PROTOCOL_VERSION};
+use crate::process_job::OwnedProcessJob;
 use crate::utf8_output::Utf8LossyDecoder;
 use environment::current_user_environment;
 pub(crate) use query::{EntryQueryOutput, run_entry_query};
-use worker_boundary::{WorkerBoundary, WorkerJob, WorkerReady};
-const WORKER_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const OUTPUT_READ_BUFFER_SIZE: usize = 8192;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct EntryRunSpec {
-    pub id: String,
     pub entry_file: PathBuf,
     pub working_directory: PathBuf,
     pub argv: Vec<OsString>,
@@ -73,9 +67,9 @@ impl EntryRunner for NativeEntryRunner {
         spec: EntryRunSpec,
         observer: Arc<dyn EntryRunObserver>,
     ) -> io::Result<Arc<dyn EntryRunControl>> {
-        let boundary = WorkerBoundary::create(&spec.id)?;
-        let mut command = entry_command(&spec, &boundary)?;
-        let child = command.spawn().map_err(|error| {
+        let job = Arc::new(OwnedProcessJob::create()?);
+        let mut command = entry_command(&spec)?;
+        let mut child = command.spawn().map_err(|error| {
             io::Error::new(
                 error.kind(),
                 format!(
@@ -84,37 +78,18 @@ impl EntryRunner for NativeEntryRunner {
                 ),
             )
         })?;
-
-        let ready = match boundary.wait(&child, WORKER_READY_TIMEOUT) {
-            Ok(ready) => ready,
-            Err(error) => {
-                return Err(failed_before_ready(
-                    child,
-                    &boundary.job,
-                    &format!("cannot establish the Entry Launcher worker boundary: {error}"),
-                    true,
-                ));
-            }
-        };
-        match ready {
-            WorkerReady::Ready => start_monitored(child, boundary.job, observer),
-            WorkerReady::ProcessExited => Err(failed_before_ready(
+        if let Err(error) = job.assign_and_resume(&mut child) {
+            return Err(failed_before_start(
                 child,
-                &boundary.job,
-                "the Entry Launcher exited before joining its worker Job Object",
-                false,
-            )),
-            WorkerReady::TimedOut => Err(failed_before_ready(
-                child,
-                &boundary.job,
-                "the Entry Launcher timed out while joining its worker Job Object",
-                true,
-            )),
+                &job,
+                &format!("cannot establish the Entry Launcher process boundary: {error}"),
+            ));
         }
+        start_monitored(child, job, observer)
     }
 }
 
-fn entry_command(spec: &EntryRunSpec, boundary: &WorkerBoundary) -> io::Result<Command> {
+fn entry_command(spec: &EntryRunSpec) -> io::Result<Command> {
     let environment = current_user_environment()?;
     let mut command = Command::new(&spec.entry_file);
     command
@@ -123,18 +98,16 @@ fn entry_command(spec: &EntryRunSpec, boundary: &WorkerBoundary) -> io::Result<C
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .creation_flags(CREATE_NO_WINDOW)
+        .creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED)
         .env_clear()
         .envs(environment)
-        .env(WORKER_PROTOCOL_ENV, WORKER_PROTOCOL_VERSION)
-        .env(WORKER_JOB_NAME_ENV, &boundary.job_name)
-        .env(WORKER_READY_EVENT_NAME_ENV, &boundary.ready_event_name);
+        .env(WORKER_PROTOCOL_ENV, WORKER_PROTOCOL_VERSION);
     Ok(command)
 }
 
 fn start_monitored(
     mut child: Child,
-    job: Arc<WorkerJob>,
+    job: Arc<OwnedProcessJob>,
     observer: Arc<dyn EntryRunObserver>,
 ) -> io::Result<Arc<dyn EntryRunControl>> {
     let stdout = child
@@ -190,16 +163,9 @@ fn start_monitored(
     }))
 }
 
-fn failed_before_ready(
-    mut child: Child,
-    job: &WorkerJob,
-    reason: &str,
-    terminate_direct_child: bool,
-) -> io::Error {
+fn failed_before_start(mut child: Child, job: &OwnedProcessJob, reason: &str) -> io::Error {
     let _ = job.cancel();
-    if terminate_direct_child {
-        let _ = child.kill();
-    }
+    let _ = child.kill();
     let output = child.wait_with_output();
     let detail = output
         .ok()
@@ -295,7 +261,7 @@ fn monitor_error(
 }
 
 struct NativeEntryRunControl {
-    job: Arc<WorkerJob>,
+    job: Arc<OwnedProcessJob>,
     monitor: Mutex<Option<JoinHandle<()>>>,
 }
 

@@ -1,11 +1,12 @@
 use crate::{
     facet::{Facet, FacetKind, FacetRenderer, FacetResolver},
+    module_check::MODULE_CHECK_PROTOCOL,
     profile::EntryLanguage,
     subject::SUBJECT_COLLECTION_PROTOCOL,
     subject_kind::SubjectKindRef,
 };
 
-use super::{CommandNode, CommandSource, HELP_ADDRESS, LOGS_ADDRESS};
+use super::{CHECK_ADDRESS, CommandNode, CommandSource, HELP_ADDRESS, RUNS_ADDRESS};
 
 pub(super) fn children_facet(language: EntryLanguage) -> Facet {
     Facet {
@@ -26,7 +27,8 @@ pub(super) fn default_facets(
     command: &CommandNode,
     language: EntryLanguage,
     help_available: bool,
-    logs_available: bool,
+    check_available: bool,
+    runs_available: bool,
     run_subject_kind: Option<&SubjectKindRef>,
 ) -> Vec<Facet> {
     let mut facets = Vec::new();
@@ -44,21 +46,6 @@ pub(super) fn default_facets(
             command_resolver(&command.address, [], false),
         ));
     }
-    facets.push(Facet {
-        id: "overview".to_owned(),
-        kind: FacetKind::Projection,
-        renderer: FacetRenderer::Overview,
-        icon: "i".to_owned(),
-        label: text(language, "概览", "Overview").to_owned(),
-        summary: text(
-            language,
-            "查看调用与命令属性",
-            "Inspect invocation and command properties",
-        )
-        .to_owned(),
-        subject_kind: None,
-        resolver: None,
-    });
     if help_available {
         let arguments = if command.address.is_empty() {
             Vec::new()
@@ -80,7 +67,35 @@ pub(super) fn default_facets(
             },
         ));
     }
-    if logs_available
+    if check_available
+        && command.source != CommandSource::Control
+        && !command.address.is_empty()
+        && command.alias_of.is_none()
+        && (command.entry.is_some() || command.module.is_some() || command.diagnostic.is_some())
+    {
+        facets.push(Facet {
+            id: "check".to_owned(),
+            kind: FacetKind::Projection,
+            renderer: FacetRenderer::Overview,
+            icon: "!".to_owned(),
+            label: text(language, "检查", "Check").to_owned(),
+            summary: text(
+                language,
+                "检查可运行状态、依赖与产物",
+                "Check readiness, dependencies, and publications",
+            )
+            .to_owned(),
+            subject_kind: None,
+            resolver: Some(FacetResolver::Command {
+                address: CHECK_ADDRESS.to_owned(),
+                arguments: vec![command.address.clone(), "--json".to_owned()],
+                accepts_tail: false,
+                confirmation: None,
+                returns: Some(MODULE_CHECK_PROTOCOL.to_owned()),
+            }),
+        });
+    }
+    if runs_available
         && command.source != CommandSource::Control
         && !command.address.is_empty()
         && command.runnable
@@ -101,7 +116,7 @@ pub(super) fn default_facets(
                 .to_owned(),
                 subject_kind: Some(subject_kind.clone()),
                 resolver: Some(FacetResolver::Command {
-                    address: LOGS_ADDRESS.to_owned(),
+                    address: RUNS_ADDRESS.to_owned(),
                     arguments: vec![
                         "--json".to_owned(),
                         command_locator(command.source, &command.address),

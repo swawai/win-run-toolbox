@@ -155,13 +155,13 @@ describe("Explorer control-plane behavior", () => {
           selected: selected === "children",
         },
         { kind: "collection", name: "contexts", selected: selected === "contexts" },
-        { name: "logs", selected: selected === "logs" },
+        { name: "unsupported", selected: selected === "unsupported" },
       ],
     );
 
     expect(modelsFor("children").map(({ mode }) => mode)).toEqual(["children"]);
     expect(modelsFor("contexts").map(({ mode }) => mode)).toEqual(["contexts"]);
-    expect(modelsFor("logs")).toEqual([]);
+    expect(modelsFor("unsupported")).toEqual([]);
   });
 
   test("restores vertical offsets only for columns representing the same parent", () => {

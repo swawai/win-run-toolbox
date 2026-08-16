@@ -45,7 +45,7 @@ describe("Facet resolution client", () => {
     };
     const via = {
       facet: "runs",
-      subject: { address: ".logs", source: "kernel", type: "command" },
+      subject: { address: ".runs", source: "kernel", type: "command" },
     };
     await resolveFacet({}, subject, facet, {
       fetchImpl: async (_url, options) => {
@@ -66,7 +66,7 @@ describe("Facet resolution client", () => {
       fetchImpl: async () => { throw new Error("must not fetch"); },
       via: {
         facet: "runs",
-        subject: { address: ".logs", source: "kernel", type: "command" },
+        subject: { address: ".runs", source: "kernel", type: "command" },
       },
     })).rejects.toThrow("recursive provenance");
   });
@@ -84,15 +84,15 @@ describe("Facet resolution client", () => {
       },
     });
 
-    const staleResponse = loader.load(".logs", "runs");
-    const currentResponse = loader.load(".logs", "runs");
+    const staleResponse = loader.load(".runs", "runs");
+    const currentResponse = loader.load(".runs", "runs");
     pending[1].resolve({ value: "current" });
     expect(await currentResponse).toEqual({ value: "current" });
     pending[0].resolve({ value: "stale" });
     expect(await staleResponse).toBeNull();
 
-    const staleError = loader.load(".logs", "runs");
-    const newestResponse = loader.load(".logs", "runs");
+    const staleError = loader.load(".runs", "runs");
+    const newestResponse = loader.load(".runs", "runs");
     pending[3].resolve({ value: "newest" });
     await newestResponse;
     pending[2].reject(new Error("stale failure"));

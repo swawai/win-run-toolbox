@@ -8,6 +8,6 @@
 不会运行目标命令、不会安装依赖，也不会执行 _guard。退出码 0 表示目标可运行且
 所有已声明依赖和产物均 Ready；退出码 1 表示存在未就绪项。
 
-_module.json 使用 swawkit.command-module/v3，消费方通过 requires 声明 Provider
+_module.json 使用 swawkit.command-module/v4，消费方通过 requires 声明 Provider
 命令地址和 producer contract，提供方通过 provides 声明自己发布的 contract。
 --json 输出 swawkit.module-check/v1，适合 Agent、脚本和后续可视化消费。

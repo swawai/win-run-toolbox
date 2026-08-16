@@ -105,7 +105,7 @@ try {
         -ToolchainPath $Artifacts.ToolchainPath
     $EntryPath = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
-        -RelativePath "Favorites\$EntryName.exe"
+        -RelativePath "$EntryName.exe"
     $DataRoot = Join-Path $Runtime.Home "data\proj.$EntryName"
     $CancellationAction = Join-Path $Runtime.Home '.swaw\cancel-tree\run.exe'
     New-ProjCancellationAction -OutputAssembly $CancellationAction

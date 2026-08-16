@@ -14,7 +14,7 @@ use super::*;
 mod check;
 mod context_commands;
 mod control;
-mod logs;
+mod runs;
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 

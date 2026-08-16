@@ -45,15 +45,15 @@ fn reports_an_invalid_runs_override_without_restoring_the_core_default() {
     let fixture = Fixture::new();
     let kernel = fixture.directory("home/_lib/proj");
     let actions = fixture.directory("project/.swaw");
-    fixture.file("home/_lib/proj/.logs/run.cmd", "");
+    fixture.file("home/_lib/proj/.runs/run.cmd", "");
     fixture.file(
-        "home/_lib/proj/.logs/_module.json",
-        include_str!("../../../../.logs/_module.json"),
+        "home/_lib/proj/.runs/_module.json",
+        include_str!("../../../../.runs/_module.json"),
     );
     fixture.file("home/_lib/proj/.tool/run.cmd", "");
     fixture.file(
         "home/_lib/proj/.tool/_module.json",
-        r#"{"schema":"swawkit.command-module/v4","facets":[{"id":"runs","kind":"operation","renderer":"run","icon":"!","label":{"zh-CN":"Logs","en":"Logs"},"summary":{"zh-CN":"Custom logs","en":"Custom logs"},"resolver":{"type":"command","address":".missing","arguments":[{"bind":"commandAddress"}]}}]}"#,
+        r#"{"schema":"swawkit.command-module/v4","facets":[{"id":"runs","kind":"operation","renderer":"run","icon":"!","label":{"zh-CN":"Runs","en":"Runs"},"summary":{"zh-CN":"Custom runs","en":"Custom runs"},"resolver":{"type":"command","address":".missing","arguments":[{"bind":"commandAddress"}]}}]}"#,
     );
 
     let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
@@ -71,16 +71,16 @@ fn a_module_can_replace_the_default_runs_facet() {
     let fixture = Fixture::new();
     let kernel = fixture.directory("home/_lib/proj");
     let actions = fixture.directory("project/.swaw");
-    fixture.file("home/_lib/proj/.logs/run.cmd", "");
+    fixture.file("home/_lib/proj/.runs/run.cmd", "");
     fixture.file(
-        "home/_lib/proj/.logs/_module.json",
-        include_str!("../../../../.logs/_module.json"),
+        "home/_lib/proj/.runs/_module.json",
+        include_str!("../../../../.runs/_module.json"),
     );
-    fixture.file("home/_lib/proj/.custom-logs/run.cmd", "");
+    fixture.file("home/_lib/proj/.custom-runs/run.cmd", "");
     fixture.file("home/_lib/proj/.tool/run.cmd", "");
     fixture.file(
         "home/_lib/proj/.tool/_module.json",
-        r#"{"schema":"swawkit.command-module/v4","facets":[{"id":"runs","kind":"operation","renderer":"run","icon":"!","label":{"zh-CN":"Custom logs","en":"Custom logs"},"summary":{"zh-CN":"Module-owned logs","en":"Module-owned logs"},"resolver":{"type":"command","address":".custom-logs","arguments":[{"bind":"commandAddress"}]}}]}"#,
+        r#"{"schema":"swawkit.command-module/v4","facets":[{"id":"runs","kind":"operation","renderer":"run","icon":"!","label":{"zh-CN":"Custom runs","en":"Custom runs"},"summary":{"zh-CN":"Module-owned runs","en":"Module-owned runs"},"resolver":{"type":"command","address":".custom-runs","arguments":[{"bind":"commandAddress"}]}}]}"#,
     );
 
     let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
@@ -91,24 +91,24 @@ fn a_module_can_replace_the_default_runs_facet() {
         .filter(|facet| facet.id == "runs")
         .collect::<Vec<_>>();
     assert_eq!(runs.len(), 1);
-    assert_eq!(runs[0].label, "Custom logs");
+    assert_eq!(runs[0].label, "Custom runs");
     assert_eq!(runs[0].renderer, FacetRenderer::Run);
     assert!(matches!(
         runs[0].resolver.as_ref(),
         Some(FacetResolver::Command { address, arguments, .. })
-            if address == ".custom-logs" && arguments == &[".tool"]
+            if address == ".custom-runs" && arguments == &[".tool"]
     ));
 }
 
 #[test]
-fn runnable_commands_receive_one_contextual_runs_collection_from_the_logs_provider() {
+fn runnable_commands_receive_one_contextual_runs_collection_from_the_runs_provider() {
     let fixture = Fixture::new();
     let kernel = fixture.directory("home/_lib/proj");
     let actions = fixture.directory("project/.swaw");
-    fixture.file("home/_lib/proj/.logs/run.cmd", "");
+    fixture.file("home/_lib/proj/.runs/run.cmd", "");
     fixture.file(
-        "home/_lib/proj/.logs/_module.json",
-        include_str!("../../../../.logs/_module.json"),
+        "home/_lib/proj/.runs/_module.json",
+        include_str!("../../../../.runs/_module.json"),
     );
     fixture.file("home/_lib/proj/.tool/run.cmd", "");
 
@@ -128,16 +128,68 @@ fn runnable_commands_receive_one_contextual_runs_collection_from_the_logs_provid
         subject_kind.provider,
         crate::subject::SubjectRef::Command {
             source: CommandSource::Kernel,
-            address: ".logs".to_owned(),
+            address: ".runs".to_owned(),
         }
     );
     assert!(matches!(
         runs.resolver.as_ref(),
         Some(FacetResolver::Command { address, arguments, returns, .. })
-            if address == ".logs"
+            if address == ".runs"
                 && arguments == &["--json", "kernel/.tool"]
                 && returns.as_deref() == Some(crate::subject::SUBJECT_COLLECTION_PROTOCOL)
     ));
+
+    let runs_command = node(&snapshot, CommandSource::Kernel, ".runs");
+    assert_eq!(runs_command.facets[0].id, "all");
+    assert_eq!(runs_command.facets[0].label, "全部运行记录");
+    assert!(runs_command.facets.iter().any(|facet| facet.id == "runs"));
+    assert!(matches!(
+        runs_command.facets[0].resolver.as_ref(),
+        Some(FacetResolver::Command { address, arguments, returns, .. })
+            if address == ".runs"
+                && arguments == &["--json"]
+                && returns.as_deref() == Some(crate::subject::SUBJECT_COLLECTION_PROTOCOL)
+    ));
+}
+
+#[test]
+fn command_details_are_not_facets_and_check_is_one_core_default() {
+    let fixture = Fixture::new();
+    let kernel = fixture.directory("home/_lib/proj");
+    let actions = fixture.directory("project/.swaw");
+    fixture.file(
+        "home/_lib/proj/.check/run.core.json",
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.check"}"#,
+    );
+    fixture.file("home/_lib/proj/.tool/run.cmd", "");
+    fixture.file("home/_lib/proj/.broken/run.cmd", "");
+    fixture.file("home/_lib/proj/.broken/_module.json", "{}");
+    fixture.file("home/_lib/proj/.group/child/run.cmd", "");
+
+    let snapshot = CatalogSnapshot::discover_roots(&kernel, &actions, "fixture").expect("catalog");
+    let tool = node(&snapshot, CommandSource::Kernel, ".tool");
+    assert!(tool.facets.iter().all(|facet| facet.id != "overview"));
+    let check = tool
+        .facets
+        .iter()
+        .find(|facet| facet.id == "check")
+        .expect("default check Facet");
+    assert_eq!(check.kind, FacetKind::Projection);
+    assert_eq!(check.renderer, FacetRenderer::Overview);
+    assert!(matches!(
+        check.resolver.as_ref(),
+        Some(FacetResolver::Command { address, arguments, returns, .. })
+            if address == ".check"
+                && arguments == &[".tool", "--json"]
+                && returns.as_deref()
+                    == Some(crate::module_check::MODULE_CHECK_PROTOCOL)
+    ));
+
+    let broken = node(&snapshot, CommandSource::Kernel, ".broken");
+    assert!(!broken.runnable);
+    assert!(broken.facets.iter().any(|facet| facet.id == "check"));
+    let group = node(&snapshot, CommandSource::Kernel, ".group");
+    assert!(group.facets.iter().all(|facet| facet.id != "check"));
 }
 
 #[test]
@@ -235,7 +287,7 @@ fn new_module_facets_preserve_declaration_order_before_core_details() {
         .iter()
         .map(|facet| facet.id.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(&ids[..3], ["zeta", "alpha", "overview"]);
+    assert_eq!(&ids[..3], ["zeta", "alpha", "run"]);
 }
 
 #[test]
@@ -244,10 +296,10 @@ fn every_resolved_catalog_facet_satisfies_the_public_wire_contract() {
     let kernel = fixture.directory("home/_lib/proj");
     let actions = fixture.directory("project/.swaw");
     fixture.file("home/_lib/proj/.help/run.cmd", "");
-    fixture.file("home/_lib/proj/.logs/run.cmd", "");
+    fixture.file("home/_lib/proj/.runs/run.cmd", "");
     fixture.file(
-        "home/_lib/proj/.logs/_module.json",
-        include_str!("../../../../.logs/_module.json"),
+        "home/_lib/proj/.runs/_module.json",
+        include_str!("../../../../.runs/_module.json"),
     );
     fixture.file("home/_lib/proj/.inspect/run.cmd", "");
     fixture.file("home/_lib/proj/.group/child/run.cmd", "");

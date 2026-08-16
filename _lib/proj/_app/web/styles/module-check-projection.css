@@ -1,0 +1,122 @@
+.module-check-pane {
+  padding: 27px 26px;
+}
+
+.module-check-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 8px;
+}
+
+.module-check-heading h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: clamp(22px, 2.3vw, 28px);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.module-check-heading p {
+  margin: 12px 0 0;
+  color: var(--ui-text-muted);
+  font-size: 12px;
+}
+
+.module-check-state {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+  color: var(--ui-status-ok);
+  background: var(--ui-surface-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.module-check-state[data-state="blocked"] {
+  color: var(--ui-status-error);
+  background: var(--ui-status-error-surface);
+}
+
+.module-check-diagnostic {
+  margin: 16px 0 0;
+  padding: 12px;
+  border-radius: var(--radius-control);
+  color: var(--ui-status-error);
+  background: var(--ui-status-error-surface);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.module-check-list,
+.module-check-tree,
+.module-check-exports {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module-check-item,
+.module-check-list > li {
+  padding: 9px 10px;
+  border-top: 1px solid var(--ui-border);
+  color: var(--ui-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.module-check-list > li:last-child {
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.module-check-item-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.module-check-marker {
+  width: 16px;
+  flex: 0 0 16px;
+  color: var(--ui-status-ok);
+  font-weight: 800;
+  text-align: center;
+}
+
+.module-check-item[data-state="blocked"] > .module-check-item-heading .module-check-marker {
+  color: var(--ui-status-error);
+}
+
+.module-check-item-detail {
+  display: block;
+  margin: 4px 0 0 24px;
+  color: var(--ui-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.module-check-tree .module-check-tree,
+.module-check-exports {
+  margin: 8px 0 0 24px;
+}
+
+.module-check-exports li {
+  padding: 3px 0;
+  color: var(--ui-text-muted);
+}
+
+.module-check-empty {
+  color: var(--ui-text-muted) !important;
+}
+
+@media (max-width: 560px) {
+  .module-check-pane {
+    padding: 23px 18px;
+  }
+
+  .module-check-heading {
+    gap: 10px;
+  }
+}

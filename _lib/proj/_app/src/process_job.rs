@@ -3,7 +3,7 @@ use std::mem::size_of;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::process::Child;
 
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
 };
@@ -14,19 +14,19 @@ use windows_sys::Win32::System::JobObjects::{
 };
 use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
 
-use crate::command::{CommandError, CommandResult};
-
-/// Owns one command process tree. The root process is created suspended, joined
-/// to this Job Object, and only then resumed, so descendants cannot escape in a
-/// spawn-to-assign race. Closing the Job is also a fail-safe tree terminator.
-pub(super) struct OwnedProcessJob {
+/// Owns one process tree from before its root process can execute.
+///
+/// The caller must create the root process with `CREATE_SUSPENDED`, assign it
+/// here, and only then resume it. This closes the spawn-to-assign window in
+/// which a descendant could otherwise escape the Job Object.
+pub(crate) struct OwnedProcessJob {
     handle: OwnedHandle,
 }
 
 impl OwnedProcessJob {
-    pub(super) fn create() -> CommandResult<Self> {
+    pub(crate) fn create() -> io::Result<Self> {
         let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        let handle = owned(handle, "create the command Job Object")?;
+        let handle = owned(handle, "create the process Job Object")?;
         let mut information = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         information.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         if unsafe {
@@ -38,12 +38,12 @@ impl OwnedProcessJob {
             )
         } == 0
         {
-            return Err(last_error("configure the command Job Object"));
+            return Err(last_error("configure the process Job Object"));
         }
         Ok(Self { handle })
     }
 
-    pub(super) fn assign_and_resume(&self, child: &mut Child) -> CommandResult<()> {
+    pub(crate) fn assign_and_resume(&self, child: &mut Child) -> io::Result<()> {
         if unsafe {
             AssignProcessToJobObject(
                 self.handle.as_raw_handle() as HANDLE,
@@ -51,29 +51,39 @@ impl OwnedProcessJob {
             )
         } == 0
         {
-            return Err(last_error(
-                "assign the suspended command entry to its Job Object",
-            ));
+            return Err(last_error("assign the suspended process to its Job Object"));
         }
         let thread = initial_thread(child.id())?;
         if unsafe { ResumeThread(thread.as_raw_handle() as HANDLE) } == u32::MAX {
-            return Err(last_error("resume the command entry"));
+            return Err(last_error("resume the process entry"));
         }
         Ok(())
     }
 
-    pub(super) fn terminate(&self) -> io::Result<()> {
-        if unsafe { TerminateJobObject(self.handle.as_raw_handle() as HANDLE, 1) } == 0 {
-            return Err(contextual_error("terminate the command process tree"));
+    pub(crate) fn cancel(&self) -> io::Result<()> {
+        self.terminate_with_exit_code(ERROR_CANCELLED)
+    }
+
+    pub(crate) fn terminate_remaining(&self) -> io::Result<()> {
+        self.terminate_with_exit_code(0)
+    }
+
+    pub(crate) fn terminate(&self) -> io::Result<()> {
+        self.terminate_with_exit_code(1)
+    }
+
+    fn terminate_with_exit_code(&self, exit_code: u32) -> io::Result<()> {
+        if unsafe { TerminateJobObject(self.handle.as_raw_handle() as HANDLE, exit_code) } == 0 {
+            return Err(last_error("terminate the process tree"));
         }
         Ok(())
     }
 }
 
-fn initial_thread(process_id: u32) -> CommandResult<OwnedHandle> {
+fn initial_thread(process_id: u32) -> io::Result<OwnedHandle> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
     if snapshot == INVALID_HANDLE_VALUE {
-        return Err(last_error("inspect the suspended command entry threads"));
+        return Err(last_error("inspect the suspended process threads"));
     }
     let snapshot = Snapshot(snapshot);
     let mut entry = THREADENTRY32 {
@@ -85,19 +95,18 @@ fn initial_thread(process_id: u32) -> CommandResult<OwnedHandle> {
     while available {
         if entry.th32OwnerProcessID == process_id {
             if matching_thread.replace(entry.th32ThreadID).is_some() {
-                return Err(CommandError::new(
-                    "the suspended command entry unexpectedly has multiple threads",
+                return Err(io::Error::other(
+                    "the suspended process unexpectedly has multiple threads",
                 ));
             }
         }
         entry.dwSize = size_of::<THREADENTRY32>() as u32;
         available = unsafe { Thread32Next(snapshot.0, &mut entry) } != 0;
     }
-    let thread_id = matching_thread.ok_or_else(|| {
-        CommandError::new("cannot find the suspended command entry's initial thread")
-    })?;
+    let thread_id = matching_thread
+        .ok_or_else(|| io::Error::other("cannot find the suspended process initial thread"))?;
     let handle = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, thread_id) };
-    owned(handle, "open the suspended command entry thread")
+    owned(handle, "open the suspended process initial thread")
 }
 
 struct Snapshot(HANDLE);
@@ -108,19 +117,14 @@ impl Drop for Snapshot {
     }
 }
 
-fn owned(handle: HANDLE, action: &str) -> CommandResult<OwnedHandle> {
+fn owned(handle: HANDLE, action: &str) -> io::Result<OwnedHandle> {
     if handle.is_null() {
         return Err(last_error(action));
     }
     Ok(unsafe { OwnedHandle::from_raw_handle(handle) })
 }
 
-fn last_error(action: &str) -> CommandError {
-    let error = contextual_error(action);
-    CommandError::new(error.to_string())
-}
-
-fn contextual_error(action: &str) -> io::Error {
+fn last_error(action: &str) -> io::Error {
     let error = io::Error::last_os_error();
     io::Error::new(error.kind(), format!("cannot {action}: {error}"))
 }
@@ -137,9 +141,9 @@ mod tests {
     };
 
     #[test]
-    fn termination_owns_descendants_created_by_the_command() {
+    fn termination_owns_descendants_created_by_the_process() {
         let root = std::env::temp_dir().join(format!(
-            "swawkit-command-job-{}-{}",
+            "swawkit-process-job-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -189,7 +193,7 @@ mod tests {
         assert_eq!(
             unsafe { WaitForSingleObject(descendant.as_raw_handle() as HANDLE, 10_000) },
             WAIT_OBJECT_0,
-            "the command descendant survived Job termination"
+            "the process descendant survived Job termination"
         );
         drop(descendant);
         std::fs::remove_dir_all(root).unwrap();

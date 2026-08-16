@@ -1,4 +1,3 @@
-mod job;
 mod journaled;
 
 use std::env;

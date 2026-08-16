@@ -203,7 +203,7 @@ mod tests {
                 "_lib/proj/_bin/releases/{}/swawkit-proj.exe",
                 "a".repeat(64)
             ));
-            let entry_file = root.join("Favorites/project-one.exe");
+            let entry_file = root.join("project-one.exe");
             let invocation_dir = root.join("work");
             for directory in [
                 executable.parent().expect("executable parent"),

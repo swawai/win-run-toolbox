@@ -13,7 +13,8 @@ use swawkit_proj::{
 
 use super::{CliError, write_output};
 
-const LOGS_ADDRESS: &str = ".logs";
+const RUNS_ADDRESS: &str = ".runs";
+const ALL_RUNS_FACET: &str = "all";
 const MAX_LATEST_RANGE: usize = 32;
 const RUNS_FACET: &str = "runs";
 const RUN_KIND: &str = "run";
@@ -28,12 +29,21 @@ pub(super) fn dispatch(
     let Some(address) = argv.first().and_then(|value| value.to_str()) else {
         return Ok(None);
     };
-    if address != LOGS_ADDRESS {
+    if address != RUNS_ADDRESS {
         return Ok(None);
     }
-    require_logs_command(snapshot)?;
+    require_runs_command(snapshot)?;
 
     match argv.get(1..) {
+        Some([]) => {
+            write_global_history(&run_collection(
+                snapshot,
+                context,
+                data_root,
+                profile_state,
+            )?)?;
+            return Ok(Some(0));
+        }
         Some([option]) if option == "--json" => {
             write_json(&run_collection(
                 snapshot,
@@ -94,7 +104,7 @@ pub(super) fn dispatch(
 
     let target = argv
         .get(1)
-        .ok_or_else(logs_usage)
+        .ok_or_else(runs_usage)
         .and_then(|value| unicode_argument(value, "command address"))?;
     let locator = CommandLocator::from_cli_target(snapshot, target)
         .map_err(|error| CliError::new(error.to_string()))?;
@@ -138,7 +148,7 @@ pub(super) fn dispatch(
             write_output(&path.display().to_string())
                 .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))?;
         }
-        _ => return Err(logs_usage()),
+        _ => return Err(runs_usage()),
     }
     Ok(Some(0))
 }
@@ -200,9 +210,9 @@ fn run_collection(
         protocol: SUBJECT_COLLECTION_PROTOCOL.to_owned(),
         owner: SubjectRef::Command {
             source: CommandSource::Kernel,
-            address: LOGS_ADDRESS.to_owned(),
+            address: RUNS_ADDRESS.to_owned(),
         },
-        facet: RUNS_FACET.to_owned(),
+        facet: ALL_RUNS_FACET.to_owned(),
         subjects,
     })
 }
@@ -259,7 +269,7 @@ fn run_facet_ids(snapshot: &CatalogSnapshot) -> Result<Vec<String>, CliError> {
         .iter()
         .find(|command| {
             command.source == CommandSource::Kernel
-                && command.address == LOGS_ADDRESS
+                && command.address == RUNS_ADDRESS
                 && command.alias_of.is_none()
         })
         .ok_or_else(|| CliError::new("Run Subject owner command is unavailable"))?;
@@ -373,17 +383,17 @@ fn civil_date(days_since_epoch: i64) -> (i64, i64, i64) {
     (year, month, day)
 }
 
-fn require_logs_command(snapshot: &CatalogSnapshot) -> Result<(), CliError> {
+fn require_runs_command(snapshot: &CatalogSnapshot) -> Result<(), CliError> {
     if snapshot.commands.iter().any(|command| {
         command.source == CommandSource::Kernel
-            && command.address == LOGS_ADDRESS
+            && command.address == RUNS_ADDRESS
             && command.adapter.as_deref() == Some("core")
-            && command.handler.as_deref() == Some("meta.logs")
+            && command.handler.as_deref() == Some("meta.runs")
             && command.runnable
     }) {
         Ok(())
     } else {
-        Err(CliError::new("command not found: .logs"))
+        Err(CliError::new("command not found: .runs"))
     }
 }
 
@@ -436,9 +446,31 @@ fn write_numbered_history(document: &RunJournalHistoryDocument) -> Result<(), Cl
     write_json(&value)
 }
 
-fn logs_usage() -> CliError {
+fn write_global_history(document: &SubjectCollection) -> Result<(), CliError> {
+    let mut lines = vec!["Recent Runs:".to_owned()];
+    if document.subjects.is_empty() {
+        lines.push("  none".to_owned());
+    } else {
+        for (index, subject) in document.subjects.iter().enumerate() {
+            let SubjectRef::Instance { id, .. } = &subject.reference else {
+                return Err(CliError::new("global run collection invariant failed"));
+            };
+            lines.push(format!(
+                "  {}. {}  {}",
+                index + 1,
+                subject.label,
+                subject.summary
+            ));
+            lines.push(format!("     {id}"));
+        }
+    }
+    write_output(&lines.join("\n"))
+        .map_err(|error| CliError::new(format!("cannot write CLI output: {error}")))
+}
+
+fn runs_usage() -> CliError {
     CliError::new(
-        "usage: .logs [--json [<command-locator>] | --run <run-id> [--after <cursor>] | --open <run-id>] | .logs <command-address> [--latest <n|n..m> | --run <run-id> [--after <cursor>] | --open <run-id>]",
+        "usage: .runs [--json [<command-locator>] | --run <run-id> [--after <cursor>] | --open <run-id>] | .runs <command-address> [--latest <n|n..m> | --run <run-id> [--after <cursor>] | --open <run-id>]",
     )
 }
 

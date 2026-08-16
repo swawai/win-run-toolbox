@@ -209,7 +209,7 @@ try {
         -ToolchainPath $Artifacts.ToolchainPath
     $EntryPath = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
-        -RelativePath "Favorites\$EntryName.exe"
+        -RelativePath "$EntryName.exe"
     $ActionAddress = 'abandon-journal'
     $ActionPath = Join-Path $Runtime.Home ".swaw\$ActionAddress\run.exe"
     New-ProjJournalAbandonmentAction -OutputAssembly $ActionPath
@@ -338,13 +338,13 @@ try {
         ) `
         -Message 'process termination bypassed the intended read-time reconciliation boundary'
 
-    $Logs = Invoke-ProjJournalEntry `
+    $Runs = Invoke-ProjJournalEntry `
         -EntryPath $EntryPath `
-        -Arguments @('.logs', $ActionAddress, '--run', $RunId, '--after', '0')
+        -Arguments @('.runs', $ActionAddress, '--run', $RunId, '--after', '0')
     Assert-ProjJournalAbandonment `
-        -Condition ($Logs.ExitCode -eq 0) `
-        -Message "the public .logs command could not reconcile the run: $($Logs.Text)"
-    $Document = $Logs.Text | ConvertFrom-Json
+        -Condition ($Runs.ExitCode -eq 0) `
+        -Message "the public .runs command could not reconcile the run: $($Runs.Text)"
+    $Document = $Runs.Text | ConvertFrom-Json
     $RetainedOutput = [string]::Join(
         '',
         [string[]]@($Document.events | Where-Object { $_.kind -ceq 'output' } |

@@ -92,7 +92,7 @@ describe("command URL contract", () => {
     expect(parseCommandFacet("")).toBeNull();
     expect(parseCommandFacet("?facet=help")).toBe("help");
     expect(parseCommandFacet("?facet=edit")).toBe("edit");
-    expect(parseCommandFacet("?facet=logs")).toBe("logs");
+    expect(parseCommandFacet("?facet=runs")).toBe("runs");
     expect(parseCommandFacet("?facet=runs")).toBe("runs");
     expect(parseCommandFacet("?facet=validate")).toBe("validate");
     expect(() => parseCommandFacet("?facet=Invalid")).toThrow("无效");
@@ -220,7 +220,14 @@ describe("command URL contract", () => {
           kind: "projection",
           label: "Overview",
           renderer: "overview",
-          resolver: null,
+          resolver: {
+            acceptsTail: false,
+            address: ".context.show",
+            arguments: ["test"],
+            confirmation: null,
+            returns: "swawkit.context/v1",
+            type: "command",
+          },
           summary: "Inspect Context",
         }],
       }],

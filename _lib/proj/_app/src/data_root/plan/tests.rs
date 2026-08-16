@@ -39,7 +39,7 @@ fn request<'a>(
     current: &'a DataRootInventory,
 ) -> DataRootPlanningRequest<'a> {
     DataRootPlanningRequest {
-        entry_file: Path::new(r"D:\kit\Favorites\project-one.exe"),
+        entry_file: Path::new(r"D:\kit\project-one.exe"),
         identity,
         current,
     }

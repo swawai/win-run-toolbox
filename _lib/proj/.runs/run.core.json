@@ -1,4 +1,4 @@
 {
   "schema": "swawkit.core-command/v1",
-  "handler": "meta.logs"
+  "handler": "meta.runs"
 }

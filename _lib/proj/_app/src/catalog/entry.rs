@@ -35,7 +35,7 @@ const CORE_HANDLERS: [&str; 20] = [
     "host.restart",
     "meta.check",
     "meta.help",
-    "meta.logs",
+    "meta.runs",
     "runtime.cleanup",
     "runtime.status",
 ];
@@ -54,7 +54,7 @@ impl ResolvedEntry {
         match source {
             CommandSource::Control => !matches!(
                 self.handler.as_deref(),
-                Some("meta.check" | "meta.help" | "meta.logs")
+                Some("meta.check" | "meta.help" | "meta.runs")
             ),
             CommandSource::Kernel => {
                 matches!(
@@ -70,7 +70,7 @@ impl ResolvedEntry {
                         | (".context.show", Some("context.show"))
                         | (".check", Some("meta.check"))
                         | (".help", Some("meta.help"))
-                        | (".logs", Some("meta.logs"))
+                        | (".runs", Some("meta.runs"))
                 ) || (self.handler.as_deref() == Some("entry.profile.set")
                     && EntryProfileRecord::is_profile_setting_address(address))
             }

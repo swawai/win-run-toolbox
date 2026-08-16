@@ -158,41 +158,48 @@ Assert-ProjDevelopmentCommandLayout `
     ))) `
     -Message 'the removed Context resource provider manifest still exists'
 
-$LogsModuleManifest = Join-Path $ProjRoot '.logs\_module.json'
+$RunsModuleManifest = Join-Path $ProjRoot '.runs\_module.json'
 Assert-ProjDevelopmentCommandLayout `
-    -Condition ([IO.File]::Exists($LogsModuleManifest)) `
-    -Message '.logs does not declare its Run Subject facets'
-$LogsModule = Get-Content -LiteralPath $LogsModuleManifest -Raw -Encoding UTF8 |
+    -Condition ([IO.File]::Exists($RunsModuleManifest)) `
+    -Message '.runs does not declare its Run Subject facets'
+$RunsModule = Get-Content -LiteralPath $RunsModuleManifest -Raw -Encoding UTF8 |
     ConvertFrom-Json
-$RunsFacet = @($LogsModule.facets)[0]
-$RunSubjectKind = @($LogsModule.subjectKinds)[0]
+$AllRunsFacet = @($RunsModule.facets)[0]
+$RunSubjectKind = @($RunsModule.subjectKinds)[0]
 $RunOverviewFacet = @($RunSubjectKind.facets) |
     Where-Object { $_.id -ceq 'overview' } |
     Select-Object -First 1
 $RunOpenFacet = @($RunSubjectKind.facets) |
     Where-Object { $_.id -ceq 'open' } |
     Select-Object -First 1
+$RunsContractChecks = @(
+    ($RunsModule.schema -ceq 'swawkit.command-module/v4')
+    (@($RunsModule.facets).Count -eq 1)
+    ($AllRunsFacet.id -ceq 'all')
+    ($AllRunsFacet.kind -ceq 'collection')
+    (-not [string]::IsNullOrWhiteSpace($AllRunsFacet.label.'zh-CN'))
+    ($AllRunsFacet.label.en -ceq 'All Runs')
+    ($AllRunsFacet.subjectKind.kind -ceq 'run')
+    ($AllRunsFacet.subjectKind.provider.type -ceq 'command')
+    ($AllRunsFacet.subjectKind.provider.source -ceq 'kernel')
+    ($AllRunsFacet.subjectKind.provider.address -ceq '.runs')
+    ($AllRunsFacet.resolver.address -ceq '.runs')
+    (@($AllRunsFacet.resolver.arguments).Count -eq 1)
+    ($AllRunsFacet.resolver.arguments[0] -ceq '--json')
+    ($AllRunsFacet.resolver.returns -ceq 'swawkit.subject-collection/v2')
+    ($RunSubjectKind.kind -ceq 'run')
+    (@($RunSubjectKind.facets).Count -eq 2)
+    ($RunOverviewFacet.resolver.address -ceq '.runs')
+    ($RunOverviewFacet.resolver.arguments[0] -ceq '--run')
+    ($RunOverviewFacet.resolver.arguments[1].bind -ceq 'subject.id')
+    ($RunOverviewFacet.resolver.returns -ceq 'swawkit.command-run-journal/v1')
+    ($RunOpenFacet.resolver.address -ceq '.runs')
+    ($RunOpenFacet.resolver.arguments[0] -ceq '--open')
+    ($RunOpenFacet.resolver.arguments[1].bind -ceq 'subject.id')
+)
 Assert-ProjDevelopmentCommandLayout `
-    -Condition ($LogsModule.schema -ceq 'swawkit.command-module/v4' -and
-        @($LogsModule.facets).Count -eq 1 -and
-        $RunsFacet.id -ceq 'runs' -and
-        $RunsFacet.kind -ceq 'collection' -and
-        $RunsFacet.subjectKind.kind -ceq 'run' -and
-        $RunsFacet.subjectKind.provider.type -ceq 'command' -and
-        $RunsFacet.subjectKind.provider.source -ceq 'kernel' -and
-        $RunsFacet.subjectKind.provider.address -ceq '.logs' -and
-        $RunsFacet.resolver.address -ceq '.logs' -and
-        $RunsFacet.resolver.arguments[0] -ceq '--json' -and
-        $RunsFacet.resolver.returns -ceq 'swawkit.subject-collection/v2' -and
-        $RunSubjectKind.kind -ceq 'run' -and
-        @($RunSubjectKind.facets).Count -eq 2 -and
-        $RunOverviewFacet.resolver.address -ceq '.logs' -and
-        $RunOverviewFacet.resolver.arguments[0] -ceq '--run' -and
-        $RunOverviewFacet.resolver.arguments[1].bind -ceq 'subject.id' -and
-        $RunOverviewFacet.resolver.returns -ceq 'swawkit.command-run-journal/v1' -and
-        $RunOpenFacet.resolver.arguments[0] -ceq '--open' -and
-        $RunOpenFacet.resolver.arguments[1].bind -ceq 'subject.id') `
-    -Message '.logs Run collection facet declaration is invalid'
+    -Condition ($RunsContractChecks -notcontains $false) `
+    -Message '.runs Run collection facet declaration is invalid'
 
 $DependencyContracts = @(
     @{

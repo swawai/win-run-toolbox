@@ -17,7 +17,8 @@ mod defaults;
 use defaults::{children_facet, default_facets};
 
 const HELP_ADDRESS: &str = ".help";
-const LOGS_ADDRESS: &str = ".logs";
+const CHECK_ADDRESS: &str = ".check";
+const RUNS_ADDRESS: &str = ".runs";
 const RUN_KIND: &str = "run";
 
 #[derive(Clone, Copy)]
@@ -54,8 +55,11 @@ pub(super) fn resolve_command_facets(commands: &mut [CommandNode], language: Ent
     let help_available = capabilities
         .get(HELP_ADDRESS)
         .is_some_and(|capability| capability.web_runnable());
-    let logs_available = capabilities
-        .get(LOGS_ADDRESS)
+    let check_available = capabilities
+        .get(CHECK_ADDRESS)
+        .is_some_and(|capability| capability.web_runnable());
+    let runs_available = capabilities
+        .get(RUNS_ADDRESS)
         .is_some_and(|capability| capability.web_runnable());
     let subject_kind_providers = commands
         .iter()
@@ -79,7 +83,7 @@ pub(super) fn resolve_command_facets(commands: &mut [CommandNode], language: Ent
                 SubjectRef::Command {
                     source: CommandSource::Kernel,
                     address,
-                } if address == LOGS_ADDRESS
+                } if address == RUNS_ADDRESS
             )
         })
         .cloned()
@@ -95,7 +99,8 @@ pub(super) fn resolve_command_facets(commands: &mut [CommandNode], language: Ent
             command,
             language,
             help_available,
-            logs_available,
+            check_available,
+            runs_available,
             run_subject_kind.as_ref(),
         );
         let core_ids = children

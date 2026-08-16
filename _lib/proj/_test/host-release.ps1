@@ -62,7 +62,7 @@ try {
         -ToolchainPath $Artifacts.ToolchainPath
     $EntryPath = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
-        -RelativePath 'Favorites\host-release.exe'
+        -RelativePath 'host-release.exe'
     $PrimaryTree = Start-ProjOwnedProcessTree `
         -FilePath $EntryPath `
         -WorkingDirectory $Runtime.Home

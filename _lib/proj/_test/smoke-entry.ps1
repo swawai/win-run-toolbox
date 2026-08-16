@@ -76,7 +76,7 @@ try {
         -ToolchainPath $Artifacts.ToolchainPath
     $EntryPath = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
-        -RelativePath "Favorites\$EntryName.exe"
+        -RelativePath "$EntryName.exe"
     $DataRoot = Join-Path $Runtime.Home "data\proj.$EntryName"
 
     foreach ($Name in $PoisonedEnvironment.Keys) {
@@ -200,23 +200,6 @@ try {
             '.dev.setup did not execute through Catalog, Core, and the ' +
             "candidate Toolchain: $($DevelopmentSetup.Text)"
         )
-
-    $InvocationDirectory = (Get-Location).ProviderPath
-    $Info = Invoke-ProjEntrySmoke `
-        -EntryPath $EntryPath `
-        -Arguments @('.info')
-    Assert-ProjEntrySmoke `
-        -Condition (
-            $Info.ExitCode -eq 0 -and
-            $Info.Text.Contains(".info") -and
-            $Info.Text.Contains((Join-Path $Runtime.KernelRoot '.info')) -and
-            $Info.Text.Contains($EntryName) -and
-            $Info.Text.Contains($EntryPath) -and
-            $Info.Text.Contains($Runtime.Home) -and
-            $Info.Text.Contains($DataRoot) -and
-            $Info.Text.Contains($InvocationDirectory)
-        ) `
-        -Message ".info did not expose the Core command context: $($Info.Text)"
 
     $RemovedWeb = Invoke-ProjEntrySmoke `
         -EntryPath $EntryPath `

@@ -47,6 +47,12 @@ describe("Facet model", () => {
     });
   });
 
+  test("rejects the removed resolver-free command overview Facet", () => {
+    expect(() => normalizeFacets([
+      facet(),
+    ], "facets", invalid)).toThrow("projection must declare a command resolver");
+  });
+
   test("requires collection and projection command resolvers to return documents", () => {
     expect(() => normalizeFacets([
       facet({

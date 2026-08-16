@@ -33,7 +33,7 @@ fn request(
 fn native_launcher_arguments_are_preserved() {
     let result = request(
         &[".demo", "", "a&b|c", "带 空格"],
-        &[(ENTRY_FILE_ENV, r"C:\swaw\Favorites\项目.exe")],
+        &[(ENTRY_FILE_ENV, r"C:\swaw\项目.exe")],
     )
     .unwrap();
 
@@ -50,7 +50,7 @@ fn internal_host_mode_is_transport_metadata_not_a_user_argument() {
     let result = request(
         &["--swawkit-internal-host", ".demo"],
         &[
-            (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
+            (ENTRY_FILE_ENV, r"C:\swaw\project.exe"),
             (LAUNCH_MODE_ENV, "internal-host"),
         ],
     )
@@ -68,7 +68,7 @@ fn explicit_cli_mode_is_accepted() {
     let result = request(
         &[],
         &[
-            (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
+            (ENTRY_FILE_ENV, r"C:\swaw\project.exe"),
             (LAUNCH_MODE_ENV, "cli"),
         ],
     )
@@ -82,7 +82,7 @@ fn worker_mode_is_explicit_launcher_transport() {
     let result = request(
         &[".demo"],
         &[
-            (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
+            (ENTRY_FILE_ENV, r"C:\swaw\project.exe"),
             (LAUNCH_MODE_ENV, "worker"),
         ],
     )
@@ -101,12 +101,12 @@ fn current_native_launcher_protocol_is_required() {
     let outdated = request(
         &[],
         &[
-            (LAUNCH_PROTOCOL_ENV, "1"),
-            (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
+            (LAUNCH_PROTOCOL_ENV, "2"),
+            (ENTRY_FILE_ENV, r"C:\swaw\project.exe"),
         ],
     )
     .unwrap_err();
-    assert!(outdated.to_string().contains("expected '2'"));
+    assert!(outdated.to_string().contains("expected '3'"));
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn launch_mode_is_required_by_the_current_protocol() {
         ),
         (
             ENTRY_FILE_ENV.to_owned(),
-            OsString::from(r"C:\swaw\Favorites\project.exe"),
+            OsString::from(r"C:\swaw\project.exe"),
         ),
     ]);
 
@@ -136,7 +136,7 @@ fn native_launcher_must_consume_worker_declarations() {
     let error = request(
         &[],
         &[
-            (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
+            (ENTRY_FILE_ENV, r"C:\swaw\project.exe"),
             (WORKER_PROTOCOL_ENV, WORKER_PROTOCOL_VERSION),
         ],
     )
@@ -151,7 +151,7 @@ fn unknown_launch_mode_fails_closed() {
     let error = request(
         &[],
         &[
-            (ENTRY_FILE_ENV, r"C:\swaw\Favorites\project.exe"),
+            (ENTRY_FILE_ENV, r"C:\swaw\project.exe"),
             (LAUNCH_MODE_ENV, "daemon"),
         ],
     )

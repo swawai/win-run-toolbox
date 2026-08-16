@@ -6,4 +6,4 @@ Usage:
 
 This command only reads the Catalog, _module.json, Provider State, and Export root. It does not run the target command, install dependencies, or execute Guards. Exit code 0 means the command and all declared contracts are ready; exit code 1 means at least one item is not ready.
 
-_module.json uses swawkit.command-module/v3. Consumers declare Provider commands and producer contracts through requires; providers declare published contracts through provides.
+_module.json uses swawkit.command-module/v4. Consumers declare Provider commands and producer contracts through requires; providers declare published contracts through provides.

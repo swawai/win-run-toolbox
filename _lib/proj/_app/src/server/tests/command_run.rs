@@ -166,7 +166,6 @@ async fn publishes_the_contract_and_incremental_output_cursor() {
 
     let specs = runner.specs();
     let spec = &specs[0];
-    assert_eq!(spec.id, id);
     assert_eq!(spec.entry_file, fixture.context().entry_file);
     assert_eq!(spec.working_directory, fixture.root.join("home"));
     assert_eq!(

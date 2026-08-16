@@ -18,8 +18,8 @@ MSVC/Windows SDK，不依赖系统 PATH 中碰巧存在的编译器。没有可�
 `_lib/proj/_launcher/build.json` 编译契约，但 Action 的 work/export 不写入共享缓存。
 它绝不修改 Favorites/template.proj1.exe 或根 swawkit.exe。
 
-模板可在 SWAWKIT_HOME 根目录或其一级目录（如 Favorites）内复制并改名。无参数
-启动 Host、托盘和本地 Web 控制台；带参数时同步执行 Rust CLI，保留原生参数边界
-并返回真实退出码。移出上述范围后会拒绝启动，避免记录绝对路径。
+Favorites/template.proj1.exe 只是待复制模板；复制并改名后的 Entry 必须直接放在
+SWAWKIT_HOME 根目录。无参数启动 Host、托盘和本地 Web 控制台；带参数时同步执行
+Rust CLI，保留原生参数边界并返回真实退出码。放入子目录后会拒绝启动。
 
 该 Action 不接受动态参数。Launcher 编译和候选原子落盘只有这一条组件主路径。

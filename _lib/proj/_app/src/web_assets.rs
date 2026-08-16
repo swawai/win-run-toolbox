@@ -18,6 +18,7 @@ const CLAIM_CSS: &str = include_str!("../web/styles/claim.css");
 const COMMAND_RUN_CSS: &str = include_str!("../web/styles/command-run.css");
 const RUN_PROJECTION_CSS: &str = include_str!("../web/styles/run-projection.css");
 const CONTEXT_PROJECTION_CSS: &str = include_str!("../web/styles/context-projection.css");
+const MODULE_CHECK_PROJECTION_CSS: &str = include_str!("../web/styles/module-check-projection.css");
 
 const APP_JS: &str = include_str!("../web/app.js");
 const I18N_JS: &str = include_str!("../web/i18n.js");
@@ -42,6 +43,9 @@ const RUN_PROJECTION_MODEL_JS: &str = include_str!("../web/run-projection-model.
 const RUN_PROJECTION_JS: &str = include_str!("../web/run-projection.js");
 const CONTEXT_PROJECTION_MODEL_JS: &str = include_str!("../web/context-projection-model.js");
 const CONTEXT_PROJECTION_JS: &str = include_str!("../web/context-projection.js");
+const MODULE_CHECK_PROJECTION_MODEL_JS: &str =
+    include_str!("../web/module-check-projection-model.js");
+const MODULE_CHECK_PROJECTION_JS: &str = include_str!("../web/module-check-projection.js");
 const SUBJECT_COLLECTION_MODEL_JS: &str = include_str!("../web/subject-collection-model.js");
 const SUBJECT_KIND_MODEL_JS: &str = include_str!("../web/subject-kind-model.js");
 const SUBJECT_EXPLORER_JS: &str = include_str!("../web/subject-explorer.js");
@@ -66,6 +70,9 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
         "styles/run-projection.css" => Some(("text/css; charset=utf-8", RUN_PROJECTION_CSS)),
         "styles/context-projection.css" => {
             Some(("text/css; charset=utf-8", CONTEXT_PROJECTION_CSS))
+        }
+        "styles/module-check-projection.css" => {
+            Some(("text/css; charset=utf-8", MODULE_CHECK_PROJECTION_CSS))
         }
         "app.js" => Some(("text/javascript; charset=utf-8", APP_JS)),
         "i18n.js" => Some(("text/javascript; charset=utf-8", I18N_JS)),
@@ -103,6 +110,13 @@ pub(crate) async fn asset(Path(path): Path<String>) -> Response {
             CONTEXT_PROJECTION_MODEL_JS,
         )),
         "context-projection.js" => Some(("text/javascript; charset=utf-8", CONTEXT_PROJECTION_JS)),
+        "module-check-projection-model.js" => Some((
+            "text/javascript; charset=utf-8",
+            MODULE_CHECK_PROJECTION_MODEL_JS,
+        )),
+        "module-check-projection.js" => {
+            Some(("text/javascript; charset=utf-8", MODULE_CHECK_PROJECTION_JS))
+        }
         "subject-collection-model.js" => Some((
             "text/javascript; charset=utf-8",
             SUBJECT_COLLECTION_MODEL_JS,

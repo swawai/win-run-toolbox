@@ -17,8 +17,9 @@ use crate::run_journal::{
 };
 use crate::utf8_output::Utf8LossyDecoder;
 
-use super::{AdapterLaunch, job::OwnedProcessJob, prepare_command, process_creation_flags};
+use super::{AdapterLaunch, prepare_command, process_creation_flags};
 use crate::command::{CommandError, CommandProcessMode, CommandResult, ProcessEnvironment};
+use crate::process_job::OwnedProcessJob;
 
 const OUTPUT_READ_BUFFER_SIZE: usize = 8192;
 
@@ -49,14 +50,14 @@ pub(crate) fn run_process_journaled(
             process_creation_flags(process_mode)
                 | windows_sys::Win32::System::Threading::CREATE_SUSPENDED,
         );
-    let job = OwnedProcessJob::create()?;
+    let job = OwnedProcessJob::create().map_err(job_error)?;
     let mut child = command.spawn().map_err(|error| {
         CommandError::new(format!(
             "cannot start command entry '{}': {error}",
             entry_path.display()
         ))
     })?;
-    if let Err(error) = job.assign_and_resume(&mut child) {
+    if let Err(error) = job.assign_and_resume(&mut child).map_err(job_error) {
         // Assignment can fail before the Job owns the still-suspended process.
         // It has never executed and therefore has no descendants, so terminate
         // and reap precisely this root before returning the launch error.
@@ -69,6 +70,10 @@ pub(crate) fn run_process_journaled(
         };
     }
     monitor_child(&mut child, &job, journal, phase)
+}
+
+fn job_error(error: io::Error) -> CommandError {
+    CommandError::new(error.to_string())
 }
 
 fn monitor_child(

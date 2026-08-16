@@ -57,6 +57,11 @@ impl CommandLocator {
                 ));
             }
         };
+        if source_for_cli_address(address) != Some(source) {
+            return Err(CommandJournalAccessError::InvalidLocator(
+                "the command locator source does not match the address namespace".to_owned(),
+            ));
+        }
         Ok(Self {
             source,
             address: address.to_owned(),
@@ -78,21 +83,27 @@ impl CommandLocator {
         if target.contains('/') {
             return Self::parse(target);
         }
-        let mut matches = catalog.commands.iter().filter(|command| {
-            command.source != CommandSource::Control && command.address == target
-        });
-        let command = matches
-            .next()
+        let source =
+            source_for_cli_address(target).ok_or(CommandJournalAccessError::CommandNotFound)?;
+        let command = catalog
+            .commands
+            .iter()
+            .find(|command| command.source == source && command.address == target)
             .ok_or(CommandJournalAccessError::CommandNotFound)?;
-        if matches.next().is_some() {
-            return Err(CommandJournalAccessError::AmbiguousCommand(
-                target.to_owned(),
-            ));
-        }
         Ok(Self {
             source: command.source,
             address: command.address.clone(),
         })
+    }
+}
+
+fn source_for_cli_address(address: &str) -> Option<CommandSource> {
+    if address.starts_with("..") {
+        None
+    } else if address.starts_with('.') || address.starts_with('-') {
+        Some(CommandSource::Kernel)
+    } else {
+        Some(CommandSource::Action)
     }
 }
 
@@ -112,7 +123,6 @@ pub enum CommandJournalAccessError {
     InvalidLocator(String),
     ProfileRequired,
     CommandNotFound,
-    AmbiguousCommand(String),
     CatalogInvariant(String),
 }
 
@@ -125,10 +135,6 @@ impl fmt::Display for CommandJournalAccessError {
             Self::ProfileRequired => formatter
                 .write_str("a ready Entry Profile is required to locate Action command journals"),
             Self::CommandNotFound => formatter.write_str("command not found"),
-            Self::AmbiguousCommand(address) => write!(
-                formatter,
-                "command address '{address}' is ambiguous; use '<source>/<address>'"
-            ),
         }
     }
 }
@@ -287,21 +293,21 @@ mod tests {
             "kernel/.dev/status",
             "control/..entry",
             "kernel/",
+            "action/.dev.status",
+            "kernel/proj.build",
+            "kernel/..runtime",
         ] {
             assert!(CommandLocator::parse(invalid).is_err(), "{invalid}");
         }
     }
 
     #[test]
-    fn cli_targets_use_the_existing_command_namespace() {
-        let catalog = CatalogSnapshot {
-            protocol: "fixture",
-            entry_name: "swawkit".to_owned(),
-            language: "en",
-            commands: vec![crate::catalog::CommandNode {
-                address: ".dev.status".to_owned(),
-                source: CommandSource::Kernel,
-                parent: Some(".dev".to_owned()),
+    fn cli_targets_infer_the_lexically_disjoint_command_namespace() {
+        fn command(address: &str, source: CommandSource) -> crate::catalog::CommandNode {
+            crate::catalog::CommandNode {
+                address: address.to_owned(),
+                source,
+                parent: None,
                 alias_of: None,
                 runnable: true,
                 entry: Some("run.exe".to_owned()),
@@ -315,13 +321,41 @@ mod tests {
                 diagnostic: None,
                 help_diagnostic: None,
                 directory: PathBuf::new(),
-            }],
+            }
+        }
+
+        let catalog = CatalogSnapshot {
+            protocol: "fixture",
+            entry_name: "swawkit".to_owned(),
+            language: "en",
+            commands: vec![
+                command(".dev.status", CommandSource::Kernel),
+                command("-literal", CommandSource::Kernel),
+                command("proj.build", CommandSource::Action),
+            ],
         };
         assert_eq!(
             CommandLocator::from_cli_target(&catalog, ".dev.status")
                 .unwrap()
                 .to_string(),
             "kernel/.dev.status"
+        );
+        assert_eq!(
+            CommandLocator::from_cli_target(&catalog, "-literal")
+                .unwrap()
+                .to_string(),
+            "kernel/-literal"
+        );
+        assert_eq!(
+            CommandLocator::from_cli_target(&catalog, "proj.build")
+                .unwrap()
+                .to_string(),
+            "action/proj.build"
+        );
+        assert_eq!(
+            CommandLocator::from_cli_target(&catalog, "dev.status"),
+            Err(CommandJournalAccessError::CommandNotFound),
+            "omitting the Kernel dot must not redirect to a Kernel command"
         );
     }
 }

@@ -11,7 +11,7 @@ function collectionFacet() {
     renderer: "collection",
     resolver: {
       acceptsTail: false,
-      address: ".logs",
+      address: ".runs",
       arguments: ["--json"],
       confirmation: null,
       returns: "swawkit.subject-collection/v2",
@@ -19,7 +19,7 @@ function collectionFacet() {
     },
     subjectKind: {
       kind: "run",
-      provider: { type: "command", source: "kernel", address: ".logs" },
+      provider: { type: "command", source: "kernel", address: ".runs" },
     },
     summary: "Browse runs",
   };
@@ -39,7 +39,7 @@ function runKind() {
         subjectKind: null,
         resolver: {
           type: "command",
-          address: ".logs",
+          address: ".runs",
           arguments: [{ bind: "subject.id" }],
           acceptsTail: false,
           confirmation: null,
@@ -69,7 +69,7 @@ function runKind() {
 
 function catalog() {
   const command = {
-    address: ".logs",
+    address: ".runs",
     aliasOf: null,
     runnable: true,
     source: "kernel",
@@ -83,7 +83,7 @@ function catalog() {
 function collection(facetIds = ["overview", "open"]) {
   return {
     facet: "runs",
-    owner: { type: "command", source: "kernel", address: ".logs" },
+    owner: { type: "command", source: "kernel", address: ".runs" },
     protocol: "swawkit.subject-collection/v2",
     subjects: [{
       ref: { type: "instance", kind: "run", id: "run-01" },
@@ -94,7 +94,7 @@ function collection(facetIds = ["overview", "open"]) {
   };
 }
 
-const owner = { type: "command", source: "kernel", address: ".logs" };
+const owner = { type: "command", source: "kernel", address: ".runs" };
 
 describe("Subject collection v2 model", () => {
   test("binds trusted Subject templates to an instance ref", () => {

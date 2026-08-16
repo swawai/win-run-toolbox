@@ -3,6 +3,7 @@ import {
   childrenOf,
   createCatalog,
   isGroup,
+  sortCommands,
 } from "./catalog-model.js";
 
 const protocol = "swawkit.command-catalog/v13";
@@ -74,6 +75,26 @@ describe("Catalog v13 model", () => {
 
     expect(group.runnable).toBe(true);
     expect(isGroup(catalog, group)).toBe(true);
+  });
+
+  test("sorts sibling commands by address regardless of group capability", () => {
+    const catalog = createCatalog(payload([
+      node(".dev"),
+      node(".dev.git", { parent: ".dev" }),
+      node(".dev.git.name", { parent: ".dev.git" }),
+      node(".dev.apply", { parent: ".dev" }),
+      node(".dev.project", { parent: ".dev" }),
+      node(".dev.project.root", { parent: ".dev.project" }),
+      node(".dev.language", { parent: ".dev" }),
+    ]));
+
+    expect(sortCommands(catalog, childrenOf(catalog, ".dev")).map(({ address }) => address))
+      .toEqual([
+        ".dev.apply",
+        ".dev.git",
+        ".dev.language",
+        ".dev.project",
+      ]);
   });
 
   test("keeps typed Profile settings and their ancestors available during setup", () => {
@@ -376,7 +397,7 @@ describe("Catalog v13 model", () => {
         summary: "Inspect Run",
         resolver: {
           type: "command",
-          address: ".logs",
+          address: ".runs",
           arguments: [{ bind: "subject.id" }],
           returns: "swawkit.command-run-journal/v1",
         },
@@ -391,21 +412,21 @@ describe("Catalog v13 model", () => {
       summary: "Browse Runs",
       resolver: {
         type: "command",
-        address: ".logs",
+        address: ".runs",
         arguments: ["--json", "kernel/.tool"],
         returns: "swawkit.subject-collection/v2",
       },
       subjectKind: {
         kind: "run",
-        provider: { type: "command", source: "kernel", address: ".logs" },
+        provider: { type: "command", source: "kernel", address: ".runs" },
       },
     };
     const catalog = createCatalog(payload([
-      node(".logs", {
+      node(".runs", {
         runnable: true,
         entry: "run.core.json",
         adapter: "core",
-        handler: "meta.logs",
+        handler: "meta.runs",
         subjectKinds: [runs],
       }),
       node(".tool", {
@@ -417,16 +438,16 @@ describe("Catalog v13 model", () => {
     ]));
 
     expect(catalog.commandByAddress.get(".tool").facets[0].subjectKind.provider.address)
-      .toBe(".logs");
+      .toBe(".runs");
 
     const missingProvider = structuredClone(runsFacet);
     missingProvider.subjectKind.provider.address = ".tool";
     expect(() => createCatalog(payload([
-      node(".logs", {
+      node(".runs", {
         runnable: true,
         entry: "run.core.json",
         adapter: "core",
-        handler: "meta.logs",
+        handler: "meta.runs",
         subjectKinds: [runs],
       }),
       node(".tool", {
@@ -449,24 +470,17 @@ describe("Catalog v13 model", () => {
       node(".context.list", {
         facets: [
           {
-            id: "overview",
+            id: "check",
             kind: "projection",
             renderer: "overview",
-            icon: "i",
-            label: "概览",
-            summary: "查看命令",
-          },
-          {
-            id: "check",
-            kind: "operation",
-            renderer: "run",
             icon: "!",
             label: "检查",
             summary: "检查模块",
             resolver: {
               type: "command",
               address: ".check",
-              arguments: [".context.list"],
+              arguments: [".context.list", "--json"],
+              returns: "swawkit.module-check/v1",
             },
           },
         ],
@@ -474,15 +488,13 @@ describe("Catalog v13 model", () => {
     ]));
 
     const facets = catalog.commandByAddress.get(".context.list").facets;
-    expect(facets[0].id).toBe("overview");
-    expect(facets[0].resolver).toBeNull();
-    expect(facets[1].id).toBe("check");
-    expect(facets[1].resolver).toEqual({
+    expect(facets[0].id).toBe("check");
+    expect(facets[0].resolver).toEqual({
       acceptsTail: false,
       address: ".check",
-      arguments: [".context.list"],
+      arguments: [".context.list", "--json"],
       confirmation: null,
-      returns: null,
+      returns: "swawkit.module-check/v1",
       type: "command",
     });
     expect(() => createCatalog(payload([

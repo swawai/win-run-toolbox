@@ -123,7 +123,7 @@ try {
         -ToolchainPath $Artifacts.ToolchainPath
     $script:ProjShellEntry = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
-        -RelativePath "Favorites\$EntryName.exe"
+        -RelativePath "$EntryName.exe"
     $RuntimeBin = $Runtime.RuntimeBin
     $DataRoot = Join-Path $Runtime.Home "data\proj.$EntryName"
 

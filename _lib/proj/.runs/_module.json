@@ -2,13 +2,13 @@
   "schema": "swawkit.command-module/v4",
   "facets": [
     {
-      "id": "runs",
+      "id": "all",
       "kind": "collection",
       "renderer": "collection",
       "icon": "◆",
       "label": {
-        "zh-CN": "运行",
-        "en": "Runs"
+        "zh-CN": "全部运行记录",
+        "en": "All Runs"
       },
       "summary": {
         "zh-CN": "浏览所有命令最近的持久运行",
@@ -19,12 +19,12 @@
         "provider": {
           "type": "command",
           "source": "kernel",
-          "address": ".logs"
+          "address": ".runs"
         }
       },
       "resolver": {
         "type": "command",
-        "address": ".logs",
+        "address": ".runs",
         "arguments": ["--json"],
         "returns": "swawkit.subject-collection/v2"
       }
@@ -49,7 +49,7 @@
           },
           "resolver": {
             "type": "command",
-            "address": ".logs",
+            "address": ".runs",
             "arguments": ["--run", { "bind": "subject.id" }],
             "returns": "swawkit.command-run-journal/v1"
           }
@@ -69,7 +69,7 @@
           },
           "resolver": {
             "type": "command",
-            "address": ".logs",
+            "address": ".runs",
             "arguments": ["--open", { "bind": "subject.id" }]
           }
         }

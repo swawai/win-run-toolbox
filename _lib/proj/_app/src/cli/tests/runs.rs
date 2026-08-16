@@ -1,18 +1,18 @@
 use super::*;
 
 #[test]
-fn logs_read_history_and_latest_after_the_target_stops_being_runnable() {
+fn runs_read_history_and_latest_after_the_target_stops_being_runnable() {
     let fixture = Fixture::new();
-    let logs_directory = fixture.command(
-        ".logs",
+    let runs_directory = fixture.command(
+        ".runs",
         "run.core.json",
-        r#"{"schema":"swawkit.core-command/v1","handler":"meta.logs"}"#,
+        r#"{"schema":"swawkit.core-command/v1","handler":"meta.runs"}"#,
     );
     fs::write(
-        logs_directory.join("_module.json"),
-        include_str!("../../../../.logs/_module.json"),
+        runs_directory.join("_module.json"),
+        include_str!("../../../../.runs/_module.json"),
     )
-    .expect("write Logs module contract");
+    .expect("write Runs module contract");
     let command_directory = fixture.command(
         ".demo",
         "run.cmd",
@@ -40,13 +40,14 @@ fn logs_read_history_and_latest_after_the_target_stops_being_runnable() {
     fs::remove_file(command_directory.join("run.cmd")).unwrap();
 
     for arguments in [
-        vec![".logs", "--json"],
-        vec![".logs", "--json", "kernel/.demo"],
-        vec![".logs", "--run", &run_id],
-        vec![".logs", ".demo"],
-        vec![".logs", ".demo", "--latest", "1"],
-        vec![".logs", ".demo", "--latest", "1..3"],
-        vec![".logs", ".demo", "--run", &run_id, "--after", "0"],
+        vec![".runs"],
+        vec![".runs", "--json"],
+        vec![".runs", "--json", "kernel/.demo"],
+        vec![".runs", "--run", &run_id],
+        vec![".runs", ".demo"],
+        vec![".runs", ".demo", "--latest", "1"],
+        vec![".runs", ".demo", "--latest", "1..3"],
+        vec![".runs", ".demo", "--run", &run_id, "--after", "0"],
     ] {
         assert_eq!(
             run_with_approver(&fixture.context, &argv(&arguments), &mut unexpected_claim).unwrap(),
@@ -56,9 +57,13 @@ fn logs_read_history_and_latest_after_the_target_stops_being_runnable() {
 
     let missing = run_with_approver(
         &fixture.context,
-        &argv(&[".logs", ".missing"]),
+        &argv(&[".runs", ".missing"]),
         &mut unexpected_claim,
     )
     .unwrap_err();
     assert!(missing.to_string().contains("command not found"));
+
+    let removed =
+        run_with_approver(&fixture.context, &argv(&[".logs"]), &mut unexpected_claim).unwrap_err();
+    assert!(removed.to_string().contains("command not found: .logs"));
 }

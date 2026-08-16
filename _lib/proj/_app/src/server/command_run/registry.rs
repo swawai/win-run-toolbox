@@ -43,7 +43,7 @@ impl CommandRuns {
     pub fn start(
         &self,
         address: String,
-        mut spec: EntryRunSpec,
+        spec: EntryRunSpec,
         journal_request: StartRunJournal,
     ) -> Result<CommandRunDocument, RegistryError> {
         let run = {
@@ -57,7 +57,6 @@ impl CommandRuns {
             }
             let journal = RunJournal::start(journal_request).map_err(RegistryError::Journal)?;
             let id = journal.id().map_err(RegistryError::Journal)?;
-            spec.id = id.clone();
             let run = Arc::new(CommandRun::new(id.clone(), address, journal));
             state.active += 1;
             state.order.push_back(id.clone());

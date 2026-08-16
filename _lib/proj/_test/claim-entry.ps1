@@ -62,7 +62,7 @@ try {
         -ToolchainPath $Artifacts.ToolchainPath
     $EntryPath = Add-ProjCandidateRuntimeEntry `
         -Runtime $Runtime `
-        -RelativePath "Favorites\$EntryName.exe"
+        -RelativePath "$EntryName.exe"
     $DataRoot = Join-Path $Runtime.Home "data\proj.$EntryName"
     $RecordPath = Join-Path $DataRoot '_entry.json'
 

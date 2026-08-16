@@ -1,6 +1,9 @@
 import { createCatalog } from "./catalog-model.js";
 import { createDataRootClaimView } from "./claim.js";
-import { createSubjectFacetView } from "./subject-facet.js";
+import {
+  createSubjectFacetView,
+  defaultCommandFacet,
+} from "./subject-facet.js";
 import { createCommandRunView } from "./command-run.js";
 import { createContextProjectionRenderer } from "./context-projection.js";
 import { createDetailView } from "./detail.js";
@@ -8,6 +11,7 @@ import { createDocumentProjectionView } from "./document-projection.js";
 import { createExplorerView } from "./explorer.js";
 import { createEntryProfileView } from "./entry-profile.js";
 import { setLanguage, t } from "./i18n.js";
+import { createModuleCheckProjectionRenderer } from "./module-check-projection.js";
 import { createRuntimeControlView } from "./runtime-control.js";
 import { createRunProjectionRenderer } from "./run-projection.js";
 import {
@@ -98,6 +102,14 @@ const elements = {
   issueCard: document.querySelector("#issue-card"),
   loadingState: document.querySelector("#loading-state"),
   moduleContractSection: document.querySelector("#module-contract-section"),
+  moduleCheckDependencies: document.querySelector("#module-check-dependencies"),
+  moduleCheckDiagnostic: document.querySelector("#module-check-diagnostic"),
+  moduleCheckGuards: document.querySelector("#module-check-guards"),
+  moduleCheckMeta: document.querySelector("#module-check-meta"),
+  moduleCheckPane: document.querySelector("#module-check-pane"),
+  moduleCheckPublications: document.querySelector("#module-check-publications"),
+  moduleCheckState: document.querySelector("#module-check-state"),
+  moduleCheckTitle: document.querySelector("#module-check-title"),
   moduleProvides: document.querySelector("#module-provides"),
   moduleRequires: document.querySelector("#module-requires"),
   propertyAddress: document.querySelector("#property-address"),
@@ -155,10 +167,14 @@ const commandRun = createCommandRunView(elements, {
     }
   },
 });
-const commandFacet = createSubjectFacetView(elements);
+const commandFacet = createSubjectFacetView(elements, {
+  defaultFacet: defaultCommandFacet,
+  fallbackRenderer: "overview",
+});
 const subjectFacet = createSubjectFacetView();
 const documentProjection = createDocumentProjectionView(elements, {
   renderers: [
+    createModuleCheckProjectionRenderer(elements),
     createContextProjectionRenderer(elements),
     createRunProjectionRenderer(elements),
   ],

@@ -2,7 +2,7 @@ mod check;
 mod claim;
 mod context_commands;
 mod control;
-mod logs;
+mod runs;
 
 use std::error::Error;
 use std::ffi::OsString;
@@ -100,7 +100,7 @@ fn run_with_dependencies(
         return Ok(exit_code);
     }
     if let Some(exit_code) =
-        logs::dispatch(&snapshot, argv, context, resolved.path(), &profile_state)?
+        runs::dispatch(&snapshot, argv, context, resolved.path(), &profile_state)?
     {
         return Ok(exit_code);
     }

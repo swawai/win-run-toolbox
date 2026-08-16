@@ -372,11 +372,9 @@ export function isGroup(catalog, command) {
 }
 
 export function sortCommands(catalog, commands) {
-  return [...commands].sort((left, right) => {
-    const groupOrder = Number(isGroup(catalog, right))
-      - Number(isGroup(catalog, left));
-    return groupOrder || catalog.collator.compare(left.address, right.address);
-  });
+  return [...commands].sort((left, right) => (
+    catalog.collator.compare(left.address, right.address)
+  ));
 }
 
 export function leafName(address) {
